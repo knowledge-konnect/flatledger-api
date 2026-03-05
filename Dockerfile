@@ -4,20 +4,24 @@ WORKDIR /src
 
 # Copy solution and project files
 COPY SocietyLedger.sln ./
-COPY SocietyLedger.Api/SocietyLedger.Api.csproj SocietyLedger.Api/
-COPY SocietyLedger.Application/SocietyLedger.Application.csproj SocietyLedger.Application/
-COPY SocietyLedger.Domain/SocietyLedger.Domain.csproj SocietyLedger.Domain/
-COPY SocietyLedger.Infrastructure/SocietyLedger.Infrastructure.csproj SocietyLedger.Infrastructure/
-COPY SocietyLedger.Shared/SocietyLedger.Shared.csproj SocietyLedger.Shared/
+COPY SocietyLedger.Api/SocietyLedger.Api.csproj src/SocietyLedger.Api/
+COPY SocietyLedger.Application/SocietyLedger.Application.csproj src/SocietyLedger.Application/
+COPY SocietyLedger.Domain/SocietyLedger.Domain.csproj src/SocietyLedger.Domain/
+COPY SocietyLedger.Infrastructure/SocietyLedger.Infrastructure.csproj src/SocietyLedger.Infrastructure/
+COPY SocietyLedger.Shared/SocietyLedger.Shared.csproj src/SocietyLedger.Shared/
 
 # Restore dependencies
 RUN dotnet restore SocietyLedger.sln
 
-# Copy all source files
-COPY . .
+# Copy all source files into the expected src/ layout
+COPY SocietyLedger.Api/ src/SocietyLedger.Api/
+COPY SocietyLedger.Application/ src/SocietyLedger.Application/
+COPY SocietyLedger.Domain/ src/SocietyLedger.Domain/
+COPY SocietyLedger.Infrastructure/ src/SocietyLedger.Infrastructure/
+COPY SocietyLedger.Shared/ src/SocietyLedger.Shared/
 
 # Publish the API project
-RUN dotnet publish SocietyLedger.Api/SocietyLedger.Api.csproj \
+RUN dotnet publish src/SocietyLedger.Api/SocietyLedger.Api.csproj \
     -c Release \
     -o /app/publish \
     --no-restore
