@@ -199,9 +199,9 @@ builder.Services.AddInfrastructureServices(builder.Configuration);
 builder.Services.AddSharedServices();
 
 // ----------------------------
-// Hangfire — background job processing
+// Hangfire — background job processing (disabled for now)
 // ----------------------------
-builder.Services.AddHangfireServices(builder.Configuration);
+// builder.Services.AddHangfireServices(builder.Configuration);
 
 // ----------------------------
 // Background services
@@ -223,7 +223,11 @@ app.UseSwaggerUI(c =>
     c.RoutePrefix = string.Empty; 
 });
 
-app.UseHttpsRedirection();
+// Skip HTTPS redirect on Render — SSL is terminated at the load balancer
+if (!app.Environment.IsProduction())
+{
+    app.UseHttpsRedirection();
+}
 
 // Secure headers
 app.Use(async (ctx, next) =>
