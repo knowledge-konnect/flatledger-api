@@ -1,0 +1,644 @@
+2026-02-09 11:50:26.088 [INF] Starting SocietyLedger API...
+2026-02-09 11:50:31.943 [INF] Starting web application...
+2026-02-09 11:55:05.491 [INF] Login successful for "ramakrishna@gmail.com"
+2026-02-09 11:55:21.817 [INF] Flat statuses fetched successfully (count: 3)
+2026-02-09 11:55:49.703 [INF] Flat statuses fetched successfully (count: 3)
+2026-02-09 11:57:47.286 [INF] Flat statuses fetched successfully (count: 3)
+2026-02-09 11:57:51.245 [INF] Flat statuses fetched successfully (count: 3)
+2026-02-09 12:00:07.477 [INF] Users listed for society by user 25
+2026-02-09 12:00:09.506 [INF] Flat statuses fetched successfully (count: 3)
+2026-02-09 12:00:50.032 [INF] Flat statuses fetched successfully (count: 3)
+2026-02-09 12:06:04.782 [INF] Flat statuses fetched successfully (count: 3)
+2026-02-09 12:06:09.310 [INF] Flat statuses fetched successfully (count: 3)
+2026-02-09 12:08:17.013 [INF] Flat statuses fetched successfully (count: 3)
+2026-02-09 12:08:39.486 [INF] Flat statuses fetched successfully (count: 3)
+2026-02-09 12:10:02.051 [INF] Flat statuses fetched successfully (count: 3)
+2026-02-09 12:12:55.217 [INF] Flat statuses fetched successfully (count: 3)
+2026-02-09 12:12:55.331 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 12:13:43.163 [INF] Flat statuses fetched successfully (count: 3)
+2026-02-09 12:13:43.185 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 12:15:32.059 [INF] Flat statuses fetched successfully (count: 3)
+2026-02-09 12:17:25.938 [INF] Starting SocietyLedger API...
+2026-02-09 12:17:27.890 [INF] Starting web application...
+2026-02-09 12:18:33.815 [INF] Flat statuses fetched successfully (count: 3)
+2026-02-09 12:20:14.036 [INF] Flat statuses fetched successfully (count: 3)
+2026-02-09 12:20:35.111 [INF] Flat statuses fetched successfully (count: 3)
+2026-02-09 12:21:21.599 [INF] Login successful for "ramakrishna@gmail.com"
+2026-02-09 12:21:31.266 [INF] Flat statuses fetched successfully (count: 3)
+2026-02-09 12:22:15.313 [INF] Login successful for "ramakrishna@gmail.com"
+2026-02-09 12:24:42.807 [INF] Starting SocietyLedger API...
+2026-02-09 12:24:45.075 [INF] Starting web application...
+2026-02-09 12:25:24.166 [INF] Flat statuses fetched successfully (count: 3)
+2026-02-09 12:25:24.213 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 12:25:41.072 [INF] Flat statuses fetched successfully (count: 3)
+2026-02-09 12:25:41.113 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 13:21:23.519 [INF] Starting SocietyLedger API...
+2026-02-09 13:21:25.960 [INF] Starting web application...
+2026-02-09 13:27:36.813 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 13:33:14.349 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 13:34:21.014 [ERR] Error creating maintenance payment for user 25
+Microsoft.EntityFrameworkCore.DbUpdateException: An error occurred while saving the entity changes. See the inner exception for details.
+ ---> Npgsql.PostgresException (0x80004005): 23503: insert or update on table "maintenance_payments" violates foreign key constraint "fk_maintenance_bill"
+
+DETAIL: Detail redacted as it may contain sensitive data. Specify 'Include Error Detail' in the connection string to include this information.
+   at Npgsql.Internal.NpgsqlConnector.ReadMessageLong(Boolean async, DataRowLoadingMode dataRowLoadingMode, Boolean readingNotifications, Boolean isReadingPrependedMessage)
+   at System.Runtime.CompilerServices.PoolingAsyncValueTaskMethodBuilder`1.StateMachineBox`1.System.Threading.Tasks.Sources.IValueTaskSource<TResult>.GetResult(Int16 token)
+   at Npgsql.NpgsqlDataReader.NextResult(Boolean async, Boolean isConsuming, CancellationToken cancellationToken)
+   at Npgsql.NpgsqlDataReader.NextResult(Boolean async, Boolean isConsuming, CancellationToken cancellationToken)
+   at Npgsql.NpgsqlCommand.ExecuteReader(Boolean async, CommandBehavior behavior, CancellationToken cancellationToken)
+   at Npgsql.NpgsqlCommand.ExecuteReader(Boolean async, CommandBehavior behavior, CancellationToken cancellationToken)
+   at Npgsql.NpgsqlCommand.ExecuteDbDataReaderAsync(CommandBehavior behavior, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.Storage.RelationalCommand.ExecuteReaderAsync(RelationalCommandParameterObject parameterObject, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.Storage.RelationalCommand.ExecuteReaderAsync(RelationalCommandParameterObject parameterObject, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.Update.ReaderModificationCommandBatch.ExecuteAsync(IRelationalConnection connection, CancellationToken cancellationToken)
+  Exception data:
+    Severity: ERROR
+    SqlState: 23503
+    MessageText: insert or update on table "maintenance_payments" violates foreign key constraint "fk_maintenance_bill"
+    Detail: Detail redacted as it may contain sensitive data. Specify 'Include Error Detail' in the connection string to include this information.
+    SchemaName: public
+    TableName: maintenance_payments
+    ConstraintName: fk_maintenance_bill
+    File: ri_triggers.c
+    Line: 2610
+    Routine: ri_ReportViolation
+   --- End of inner exception stack trace ---
+   at Microsoft.EntityFrameworkCore.Update.ReaderModificationCommandBatch.ExecuteAsync(IRelationalConnection connection, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.Update.Internal.BatchExecutor.ExecuteAsync(IEnumerable`1 commandBatches, IRelationalConnection connection, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.Update.Internal.BatchExecutor.ExecuteAsync(IEnumerable`1 commandBatches, IRelationalConnection connection, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.Update.Internal.BatchExecutor.ExecuteAsync(IEnumerable`1 commandBatches, IRelationalConnection connection, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.Storage.RelationalDatabase.SaveChangesAsync(IList`1 entries, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.ChangeTracking.Internal.StateManager.SaveChangesAsync(IList`1 entriesToSave, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.ChangeTracking.Internal.StateManager.SaveChangesAsync(StateManager stateManager, Boolean acceptAllChangesOnSuccess, CancellationToken cancellationToken)
+   at Npgsql.EntityFrameworkCore.PostgreSQL.Storage.Internal.NpgsqlExecutionStrategy.ExecuteAsync[TState,TResult](TState state, Func`4 operation, Func`4 verifySucceeded, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.DbContext.SaveChangesAsync(Boolean acceptAllChangesOnSuccess, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.DbContext.SaveChangesAsync(Boolean acceptAllChangesOnSuccess, CancellationToken cancellationToken)
+   at SocietyLedger.Infrastructure.Persistence.Repositories.MaintenancePaymentRepository.CreateAsync(Object paymentObj) in E:\society-ledger\src\SocietyLedger.Infrastructure\Persistence\Repositories\MaintenancePaymentRepository.cs:line 91
+   at SocietyLedger.Infrastructure.Services.MaintenancePaymentService.CreateMaintenancePaymentAsync(Int64 userId, CreateMaintenancePaymentRequest request) in E:\society-ledger\src\SocietyLedger.Infrastructure\Services\MaintenancePaymentService.cs:line 68
+2026-02-09 13:34:21.568 [ERR] Unhandled error creating maintenance payment for user 25
+System.InvalidOperationException: An error occurred while creating the maintenance payment.
+ ---> Microsoft.EntityFrameworkCore.DbUpdateException: An error occurred while saving the entity changes. See the inner exception for details.
+ ---> Npgsql.PostgresException (0x80004005): 23503: insert or update on table "maintenance_payments" violates foreign key constraint "fk_maintenance_bill"
+
+DETAIL: Detail redacted as it may contain sensitive data. Specify 'Include Error Detail' in the connection string to include this information.
+   at Npgsql.Internal.NpgsqlConnector.ReadMessageLong(Boolean async, DataRowLoadingMode dataRowLoadingMode, Boolean readingNotifications, Boolean isReadingPrependedMessage)
+   at System.Runtime.CompilerServices.PoolingAsyncValueTaskMethodBuilder`1.StateMachineBox`1.System.Threading.Tasks.Sources.IValueTaskSource<TResult>.GetResult(Int16 token)
+   at Npgsql.NpgsqlDataReader.NextResult(Boolean async, Boolean isConsuming, CancellationToken cancellationToken)
+   at Npgsql.NpgsqlDataReader.NextResult(Boolean async, Boolean isConsuming, CancellationToken cancellationToken)
+   at Npgsql.NpgsqlCommand.ExecuteReader(Boolean async, CommandBehavior behavior, CancellationToken cancellationToken)
+   at Npgsql.NpgsqlCommand.ExecuteReader(Boolean async, CommandBehavior behavior, CancellationToken cancellationToken)
+   at Npgsql.NpgsqlCommand.ExecuteDbDataReaderAsync(CommandBehavior behavior, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.Storage.RelationalCommand.ExecuteReaderAsync(RelationalCommandParameterObject parameterObject, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.Storage.RelationalCommand.ExecuteReaderAsync(RelationalCommandParameterObject parameterObject, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.Update.ReaderModificationCommandBatch.ExecuteAsync(IRelationalConnection connection, CancellationToken cancellationToken)
+  Exception data:
+    Severity: ERROR
+    SqlState: 23503
+    MessageText: insert or update on table "maintenance_payments" violates foreign key constraint "fk_maintenance_bill"
+    Detail: Detail redacted as it may contain sensitive data. Specify 'Include Error Detail' in the connection string to include this information.
+    SchemaName: public
+    TableName: maintenance_payments
+    ConstraintName: fk_maintenance_bill
+    File: ri_triggers.c
+    Line: 2610
+    Routine: ri_ReportViolation
+   --- End of inner exception stack trace ---
+   at Microsoft.EntityFrameworkCore.Update.ReaderModificationCommandBatch.ExecuteAsync(IRelationalConnection connection, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.Update.Internal.BatchExecutor.ExecuteAsync(IEnumerable`1 commandBatches, IRelationalConnection connection, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.Update.Internal.BatchExecutor.ExecuteAsync(IEnumerable`1 commandBatches, IRelationalConnection connection, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.Update.Internal.BatchExecutor.ExecuteAsync(IEnumerable`1 commandBatches, IRelationalConnection connection, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.Storage.RelationalDatabase.SaveChangesAsync(IList`1 entries, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.ChangeTracking.Internal.StateManager.SaveChangesAsync(IList`1 entriesToSave, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.ChangeTracking.Internal.StateManager.SaveChangesAsync(StateManager stateManager, Boolean acceptAllChangesOnSuccess, CancellationToken cancellationToken)
+   at Npgsql.EntityFrameworkCore.PostgreSQL.Storage.Internal.NpgsqlExecutionStrategy.ExecuteAsync[TState,TResult](TState state, Func`4 operation, Func`4 verifySucceeded, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.DbContext.SaveChangesAsync(Boolean acceptAllChangesOnSuccess, CancellationToken cancellationToken)
+   at Microsoft.EntityFrameworkCore.DbContext.SaveChangesAsync(Boolean acceptAllChangesOnSuccess, CancellationToken cancellationToken)
+   at SocietyLedger.Infrastructure.Persistence.Repositories.MaintenancePaymentRepository.CreateAsync(Object paymentObj) in E:\society-ledger\src\SocietyLedger.Infrastructure\Persistence\Repositories\MaintenancePaymentRepository.cs:line 91
+   at SocietyLedger.Infrastructure.Services.MaintenancePaymentService.CreateMaintenancePaymentAsync(Int64 userId, CreateMaintenancePaymentRequest request) in E:\society-ledger\src\SocietyLedger.Infrastructure\Services\MaintenancePaymentService.cs:line 68
+   --- End of inner exception stack trace ---
+   at SocietyLedger.Infrastructure.Services.MaintenancePaymentService.CreateMaintenancePaymentAsync(Int64 userId, CreateMaintenancePaymentRequest request) in E:\society-ledger\src\SocietyLedger.Infrastructure\Services\MaintenancePaymentService.cs:line 79
+   at SocietyLedger.Api.Endpoints.MaintenancePaymentEndpoints.<>c.<<MapMaintenancePaymentRoutes>b__0_0>d.MoveNext() in E:\society-ledger\src\SocietyLedger.Api\Endpoints\MaintenancePaymentEndpoints.cs:line 35
+2026-02-09 13:39:54.291 [INF] Starting SocietyLedger API...
+2026-02-09 13:39:55.767 [INF] Starting web application...
+2026-02-09 13:40:15.625 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 13:40:59.329 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 13:41:55.138 [INF] Login successful for "ramakrishna@gmail.com"
+2026-02-09 13:46:34.661 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 13:50:01.838 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 13:55:34.054 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 14:11:53.463 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 14:30:09.242 [INF] Login successful for "ramakrishna@gmail.com"
+2026-02-09 14:30:13.680 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 14:36:51.874 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 14:36:52.031 [INF] Flat statuses fetched successfully (count: 3)
+2026-02-09 14:36:56.367 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 14:58:18.770 [INF] Starting SocietyLedger API...
+2026-02-09 14:58:22.357 [INF] Starting web application...
+2026-02-09 14:58:51.356 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 14:59:43.599 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 15:08:23.870 [WRN] Error creating maintenance payment for user 25
+SocietyLedger.Domain.Exceptions.AppException: DUPLICATE_PAYMENT
+   at SocietyLedger.Infrastructure.Services.MaintenancePaymentService.CreateMaintenancePaymentAsync(Int64 userId, CreateMaintenancePaymentRequest request)
+   at SocietyLedger.Api.Endpoints.MaintenancePaymentEndpoints.<>c.<<MapMaintenancePaymentRoutes>b__0_0>d.MoveNext() in E:\society-ledger\src\SocietyLedger.Api\Endpoints\MaintenancePaymentEndpoints.cs:line 35
+2026-02-09 15:11:13.678 [WRN] Error creating maintenance payment for user 25
+SocietyLedger.Domain.Exceptions.AppException: DUPLICATE_PAYMENT
+   at SocietyLedger.Infrastructure.Services.MaintenancePaymentService.CreateMaintenancePaymentAsync(Int64 userId, CreateMaintenancePaymentRequest request)
+   at SocietyLedger.Api.Endpoints.MaintenancePaymentEndpoints.<>c.<<MapMaintenancePaymentRoutes>b__0_0>d.MoveNext() in E:\society-ledger\src\SocietyLedger.Api\Endpoints\MaintenancePaymentEndpoints.cs:line 35
+2026-02-09 15:11:34.197 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 15:17:23.818 [WRN] Error creating maintenance payment: "DUPLICATE_PAYMENT"
+SocietyLedger.Domain.Exceptions.AppException: DUPLICATE_PAYMENT
+   at SocietyLedger.Infrastructure.Services.MaintenancePaymentService.CreateMaintenancePaymentAsync(Int64 userId, CreateMaintenancePaymentRequest request)
+   at SocietyLedger.Api.Endpoints.MaintenancePaymentEndpoints.<>c.<<MapMaintenancePaymentRoutes>b__0_0>d.MoveNext()
+2026-02-09 15:18:55.185 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 15:20:11.049 [WRN] Error creating maintenance payment: "DUPLICATE_PAYMENT"
+SocietyLedger.Domain.Exceptions.AppException: DUPLICATE_PAYMENT
+   at SocietyLedger.Infrastructure.Services.MaintenancePaymentService.CreateMaintenancePaymentAsync(Int64 userId, CreateMaintenancePaymentRequest request)
+   at SocietyLedger.Api.Endpoints.MaintenancePaymentEndpoints.<>c.<<MapMaintenancePaymentRoutes>b__0_0>d.MoveNext()
+2026-02-09 16:26:12.670 [INF] Starting SocietyLedger API...
+2026-02-09 16:26:39.858 [INF] Starting web application...
+2026-02-09 16:26:50.659 [INF] HTTP "GET" "/" started. UserId: "anonymous"
+2026-02-09 16:26:51.221 [INF] HTTP "GET" "/" responded 404 in 564.2475ms. UserId: "anonymous"
+2026-02-09 16:27:09.970 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:27:11.038 [INF] HTTP "GET" "/auth/user" responded 200 in 1068.4167ms. UserId: "anonymous"
+2026-02-09 16:27:11.044 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:27:11.427 [INF] HTTP "GET" "/auth/user" responded 200 in 383.3042ms. UserId: "anonymous"
+2026-02-09 16:27:12.345 [INF] HTTP "GET" "/maintenance-payments" started. UserId: "anonymous"
+2026-02-09 16:27:12.345 [INF] HTTP "GET" "/payment-modes" started. UserId: "anonymous"
+2026-02-09 16:27:12.347 [INF] HTTP "GET" "/flats/society/19" started. UserId: "anonymous"
+2026-02-09 16:27:12.453 [INF] HTTP "GET" "/payment-modes" responded 200 in 108.1538ms. UserId: "anonymous"
+2026-02-09 16:27:12.533 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 16:27:12.549 [INF] HTTP "GET" "/flats/society/19" responded 200 in 202.7964ms. UserId: "anonymous"
+2026-02-09 16:27:12.831 [INF] HTTP "GET" "/maintenance-payments" responded 200 in 485.6893ms. UserId: "anonymous"
+2026-02-09 16:27:36.496 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:27:36.522 [INF] HTTP "GET" "/auth/user" responded 200 in 26.6841ms. UserId: "anonymous"
+2026-02-09 16:27:36.526 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:27:36.554 [INF] HTTP "GET" "/auth/user" responded 200 in 27.8716ms. UserId: "anonymous"
+2026-02-09 16:27:38.430 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:27:38.485 [INF] HTTP "GET" "/auth/user" responded 200 in 54.85ms. UserId: "anonymous"
+2026-02-09 16:27:38.488 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:27:38.537 [INF] HTTP "GET" "/auth/user" responded 200 in 48.271ms. UserId: "anonymous"
+2026-02-09 16:27:38.912 [INF] HTTP "GET" "/subscriptions/status" started. UserId: "anonymous"
+2026-02-09 16:27:39.046 [INF] HTTP "GET" "/subscriptions/status" responded 200 in 133.8116ms. UserId: "anonymous"
+2026-02-09 16:27:39.052 [INF] HTTP "GET" "/subscriptions/status" started. UserId: "anonymous"
+2026-02-09 16:27:39.068 [INF] HTTP "GET" "/subscriptions/status" responded 200 in 16.2743ms. UserId: "anonymous"
+2026-02-09 16:27:42.358 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:27:42.451 [INF] HTTP "GET" "/auth/user" responded 200 in 93.214ms. UserId: "anonymous"
+2026-02-09 16:27:42.454 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:27:42.485 [INF] HTTP "GET" "/auth/user" responded 200 in 31.0964ms. UserId: "anonymous"
+2026-02-09 16:27:42.737 [INF] HTTP "GET" "/maintenance-payments" started. UserId: "anonymous"
+2026-02-09 16:27:42.737 [INF] HTTP "GET" "/flats/society/19" started. UserId: "anonymous"
+2026-02-09 16:27:42.737 [INF] HTTP "GET" "/payment-modes" started. UserId: "anonymous"
+2026-02-09 16:27:42.865 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 16:27:42.870 [INF] HTTP "GET" "/maintenance-payments" responded 200 in 133.0745ms. UserId: "anonymous"
+2026-02-09 16:27:42.876 [INF] HTTP "GET" "/payment-modes" responded 200 in 138.3374ms. UserId: "anonymous"
+2026-02-09 16:27:42.886 [INF] HTTP "GET" "/flats/society/19" responded 200 in 149.2104ms. UserId: "anonymous"
+2026-02-09 16:28:17.947 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:28:19.280 [INF] HTTP "GET" "/auth/user" responded 200 in 1333.1887ms. UserId: "anonymous"
+2026-02-09 16:28:22.335 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:28:22.367 [INF] HTTP "GET" "/auth/user" responded 200 in 31.8324ms. UserId: "anonymous"
+2026-02-09 16:28:22.378 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:28:22.428 [INF] HTTP "GET" "/auth/user" responded 200 in 49.5604ms. UserId: "anonymous"
+2026-02-09 16:28:25.358 [INF] HTTP "GET" "/subscriptions/status" started. UserId: "anonymous"
+2026-02-09 16:28:25.379 [INF] HTTP "GET" "/subscriptions/status" responded 200 in 20.7149ms. UserId: "anonymous"
+2026-02-09 16:28:25.395 [INF] HTTP "GET" "/subscriptions/status" started. UserId: "anonymous"
+2026-02-09 16:28:25.418 [INF] HTTP "GET" "/subscriptions/status" responded 200 in 22.2791ms. UserId: "anonymous"
+2026-02-09 16:31:22.542 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:31:22.843 [INF] HTTP "GET" "/auth/user" responded 401 in 300.7251ms. UserId: "anonymous"
+2026-02-09 16:31:22.880 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:31:23.134 [INF] HTTP "GET" "/auth/user" responded 401 in 254.054ms. UserId: "anonymous"
+2026-02-09 16:32:30.441 [INF] HTTP "POST" "/auth/login" started. UserId: "anonymous"
+2026-02-09 16:32:35.687 [INF] Login successful for "ramakrishna@gmail.com"
+2026-02-09 16:32:35.705 [INF] HTTP "POST" "/auth/login" responded 200 in 5263.8769ms. UserId: "anonymous"
+2026-02-09 16:32:36.092 [INF] HTTP "GET" "/subscriptions/status" started. UserId: "anonymous"
+2026-02-09 16:32:36.635 [INF] HTTP "GET" "/subscriptions/status" responded 200 in 542.5957ms. UserId: "anonymous"
+2026-02-09 16:32:36.747 [INF] HTTP "GET" "/subscriptions/status" started. UserId: "anonymous"
+2026-02-09 16:32:36.957 [INF] HTTP "GET" "/subscriptions/status" responded 200 in 210.5866ms. UserId: "anonymous"
+2026-02-09 16:36:03.607 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:36:03.655 [INF] HTTP "GET" "/auth/user" responded 200 in 48.3832ms. UserId: "anonymous"
+2026-02-09 16:36:03.733 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:36:03.802 [INF] HTTP "GET" "/auth/user" responded 200 in 68.0809ms. UserId: "anonymous"
+2026-02-09 16:36:05.134 [INF] HTTP "GET" "/maintenance-payments" started. UserId: "anonymous"
+2026-02-09 16:36:05.134 [INF] HTTP "GET" "/flats/society/19" started. UserId: "anonymous"
+2026-02-09 16:36:05.134 [INF] HTTP "GET" "/payment-modes" started. UserId: "anonymous"
+2026-02-09 16:36:05.210 [INF] HTTP "GET" "/maintenance-payments" responded 200 in 76.001ms. UserId: "anonymous"
+2026-02-09 16:36:05.233 [INF] HTTP "GET" "/payment-modes" responded 200 in 99.2717ms. UserId: "anonymous"
+2026-02-09 16:36:05.350 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 16:36:05.351 [INF] HTTP "GET" "/flats/society/19" responded 200 in 217.2066ms. UserId: "anonymous"
+2026-02-09 16:37:35.150 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:37:35.201 [INF] HTTP "GET" "/auth/user" responded 200 in 50.8515ms. UserId: "anonymous"
+2026-02-09 16:37:35.202 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:37:35.236 [INF] HTTP "GET" "/auth/user" responded 200 in 33.7534ms. UserId: "anonymous"
+2026-02-09 16:37:35.378 [INF] HTTP "GET" "/flats/society/19" started. UserId: "anonymous"
+2026-02-09 16:37:35.378 [INF] HTTP "GET" "/maintenance-payments" started. UserId: "anonymous"
+2026-02-09 16:37:35.378 [INF] HTTP "GET" "/payment-modes" started. UserId: "anonymous"
+2026-02-09 16:37:35.392 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 16:37:35.396 [INF] HTTP "GET" "/flats/society/19" responded 200 in 17.4152ms. UserId: "anonymous"
+2026-02-09 16:37:35.400 [INF] HTTP "GET" "/payment-modes" responded 200 in 21.1001ms. UserId: "anonymous"
+2026-02-09 16:37:35.509 [INF] HTTP "GET" "/maintenance-payments" responded 200 in 130.6193ms. UserId: "anonymous"
+2026-02-09 16:37:42.679 [INF] HTTP "POST" "/auth/logout" started. UserId: "anonymous"
+2026-02-09 16:37:42.683 [INF] HTTP "POST" "/auth/logout" responded 404 in 3.4433ms. UserId: "anonymous"
+2026-02-09 16:37:46.644 [INF] HTTP "POST" "/auth/login" started. UserId: "anonymous"
+2026-02-09 16:37:46.903 [INF] Login successful for "ramakrishna@gmail.com"
+2026-02-09 16:37:46.905 [INF] HTTP "POST" "/auth/login" responded 200 in 261.3645ms. UserId: "anonymous"
+2026-02-09 16:37:47.163 [INF] HTTP "GET" "/subscriptions/status" started. UserId: "anonymous"
+2026-02-09 16:37:47.187 [INF] HTTP "GET" "/subscriptions/status" responded 200 in 23.7965ms. UserId: "anonymous"
+2026-02-09 16:37:47.196 [INF] HTTP "GET" "/subscriptions/status" started. UserId: "anonymous"
+2026-02-09 16:37:47.211 [INF] HTTP "GET" "/subscriptions/status" responded 200 in 14.9934ms. UserId: "anonymous"
+2026-02-09 16:37:49.190 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:37:49.205 [INF] HTTP "GET" "/auth/user" responded 200 in 15.4672ms. UserId: "anonymous"
+2026-02-09 16:37:49.207 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:37:49.220 [INF] HTTP "GET" "/auth/user" responded 200 in 12.6462ms. UserId: "anonymous"
+2026-02-09 16:37:49.387 [INF] HTTP "GET" "/maintenance-payments" started. UserId: "anonymous"
+2026-02-09 16:37:49.388 [INF] HTTP "GET" "/flats/society/19" started. UserId: "anonymous"
+2026-02-09 16:37:49.388 [INF] HTTP "GET" "/payment-modes" started. UserId: "anonymous"
+2026-02-09 16:37:49.457 [INF] HTTP "GET" "/maintenance-payments" responded 200 in 69.9235ms. UserId: "anonymous"
+2026-02-09 16:37:49.471 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 16:37:49.487 [INF] HTTP "GET" "/payment-modes" responded 200 in 99.3357ms. UserId: "anonymous"
+2026-02-09 16:37:49.501 [INF] HTTP "GET" "/flats/society/19" responded 200 in 113.5921ms. UserId: "anonymous"
+2026-02-09 16:42:49.039 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:42:49.130 [INF] HTTP "GET" "/auth/user" responded 200 in 90.4841ms. UserId: "anonymous"
+2026-02-09 16:42:49.135 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:42:49.174 [INF] HTTP "GET" "/auth/user" responded 200 in 39.6513ms. UserId: "anonymous"
+2026-02-09 16:42:49.297 [INF] HTTP "GET" "/maintenance-payments" started. UserId: "anonymous"
+2026-02-09 16:42:49.297 [INF] HTTP "GET" "/flats/society/19" started. UserId: "anonymous"
+2026-02-09 16:42:49.305 [INF] HTTP "GET" "/payment-modes" started. UserId: "anonymous"
+2026-02-09 16:42:49.357 [INF] HTTP "GET" "/maintenance-payments" responded 200 in 59.4124ms. UserId: "anonymous"
+2026-02-09 16:42:49.413 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 16:42:49.423 [INF] HTTP "GET" "/flats/society/19" responded 200 in 125.4324ms. UserId: "anonymous"
+2026-02-09 16:42:49.568 [INF] HTTP "GET" "/payment-modes" responded 200 in 263.2556ms. UserId: "anonymous"
+2026-02-09 16:44:40.974 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:44:41.541 [INF] HTTP "GET" "/auth/user" responded 200 in 566.7334ms. UserId: "anonymous"
+2026-02-09 16:44:41.571 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:44:42.298 [INF] HTTP "GET" "/auth/user" responded 200 in 727.2231ms. UserId: "anonymous"
+2026-02-09 16:44:43.489 [INF] HTTP "GET" "/maintenance-payments" started. UserId: "anonymous"
+2026-02-09 16:44:43.491 [INF] HTTP "GET" "/flats/society/19" started. UserId: "anonymous"
+2026-02-09 16:44:43.503 [INF] HTTP "GET" "/payment-modes" started. UserId: "anonymous"
+2026-02-09 16:44:43.640 [INF] HTTP "GET" "/maintenance-payments" responded 200 in 150.3084ms. UserId: "anonymous"
+2026-02-09 16:44:43.684 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 16:44:43.751 [INF] HTTP "GET" "/flats/society/19" responded 200 in 259.739ms. UserId: "anonymous"
+2026-02-09 16:44:43.702 [INF] HTTP "GET" "/payment-modes" responded 200 in 199.5565ms. UserId: "anonymous"
+2026-02-09 16:45:40.372 [INF] HTTP "POST" "/auth/login" started. UserId: "anonymous"
+2026-02-09 16:45:40.753 [INF] Login successful for "ramakrishna@gmail.com"
+2026-02-09 16:45:40.755 [INF] HTTP "POST" "/auth/login" responded 200 in 382.9681ms. UserId: "anonymous"
+2026-02-09 16:46:14.169 [INF] HTTP "GET" "/maintenance-payments" started. UserId: "anonymous"
+2026-02-09 16:46:14.238 [INF] HTTP "GET" "/maintenance-payments" responded 200 in 69.188ms. UserId: "anonymous"
+2026-02-09 16:47:56.008 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:47:56.923 [INF] HTTP "GET" "/auth/user" responded 200 in 915.0944ms. UserId: "anonymous"
+2026-02-09 16:47:56.926 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:47:56.969 [INF] HTTP "GET" "/auth/user" responded 200 in 43.4031ms. UserId: "anonymous"
+2026-02-09 16:47:57.122 [INF] HTTP "GET" "/maintenance-payments" started. UserId: "anonymous"
+2026-02-09 16:47:57.124 [INF] HTTP "GET" "/flats/society/19" started. UserId: "anonymous"
+2026-02-09 16:47:57.124 [INF] HTTP "GET" "/payment-modes" started. UserId: "anonymous"
+2026-02-09 16:47:57.308 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 16:47:57.324 [INF] HTTP "GET" "/flats/society/19" responded 200 in 200.4954ms. UserId: "anonymous"
+2026-02-09 16:47:57.351 [INF] HTTP "GET" "/payment-modes" responded 200 in 226.9134ms. UserId: "anonymous"
+2026-02-09 16:47:57.449 [INF] HTTP "GET" "/maintenance-payments" responded 200 in 327.5168ms. UserId: "anonymous"
+2026-02-09 16:48:15.373 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:48:15.826 [INF] HTTP "GET" "/auth/user" responded 200 in 452.3154ms. UserId: "anonymous"
+2026-02-09 16:48:15.854 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:48:16.223 [INF] HTTP "GET" "/flats/society/19" started. UserId: "anonymous"
+2026-02-09 16:48:16.238 [INF] HTTP "GET" "/flats/statuses" started. UserId: "anonymous"
+2026-02-09 16:48:16.270 [INF] HTTP "GET" "/auth/user" responded 200 in 416.7039ms. UserId: "anonymous"
+2026-02-09 16:48:16.309 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 16:48:16.373 [INF] HTTP "GET" "/flats/society/19" responded 200 in 150.2592ms. UserId: "anonymous"
+2026-02-09 16:48:16.509 [INF] Flat statuses fetched successfully (count: 3)
+2026-02-09 16:48:16.574 [INF] HTTP "GET" "/flats/statuses" responded 200 in 335.6799ms. UserId: "anonymous"
+2026-02-09 16:48:18.711 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:48:18.854 [INF] HTTP "GET" "/auth/user" responded 200 in 143.3721ms. UserId: "anonymous"
+2026-02-09 16:48:19.722 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:48:19.753 [INF] HTTP "GET" "/auth/user" responded 200 in 30.3435ms. UserId: "anonymous"
+2026-02-09 16:48:19.756 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:48:19.777 [INF] HTTP "GET" "/auth/user" responded 200 in 21.4385ms. UserId: "anonymous"
+2026-02-09 16:48:20.049 [INF] HTTP "GET" "/subscriptions/status" started. UserId: "anonymous"
+2026-02-09 16:48:20.065 [INF] HTTP "GET" "/subscriptions/status" responded 200 in 16.1894ms. UserId: "anonymous"
+2026-02-09 16:48:20.074 [INF] HTTP "GET" "/subscriptions/status" started. UserId: "anonymous"
+2026-02-09 16:48:20.111 [INF] HTTP "GET" "/subscriptions/status" responded 200 in 36.783ms. UserId: "anonymous"
+2026-02-09 16:48:22.872 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:48:22.902 [INF] HTTP "GET" "/auth/user" responded 200 in 29.6719ms. UserId: "anonymous"
+2026-02-09 16:48:22.914 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:48:23.507 [INF] HTTP "GET" "/auth/user" responded 200 in 592.925ms. UserId: "anonymous"
+2026-02-09 16:48:25.597 [INF] HTTP "GET" "/flats/society/19" started. UserId: "anonymous"
+2026-02-09 16:48:25.599 [INF] HTTP "GET" "/flats/statuses" started. UserId: "anonymous"
+2026-02-09 16:48:25.647 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 16:48:25.654 [INF] Flat statuses fetched successfully (count: 3)
+2026-02-09 16:48:25.658 [INF] HTTP "GET" "/flats/society/19" responded 200 in 60.7248ms. UserId: "anonymous"
+2026-02-09 16:48:25.660 [INF] HTTP "GET" "/flats/statuses" responded 200 in 61.1144ms. UserId: "anonymous"
+2026-02-09 16:53:32.521 [INF] HTTP "GET" "/flats/society/123" started. UserId: "anonymous"
+2026-02-09 16:53:32.660 [WRN] No flats found for SocietyId 123
+2026-02-09 16:53:32.668 [INF] HTTP "GET" "/flats/society/123" responded 404 in 146.4679ms. UserId: "anonymous"
+2026-02-09 16:55:00.544 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:55:00.561 [INF] HTTP "GET" "/auth/user" responded 200 in 17.3068ms. UserId: "anonymous"
+2026-02-09 16:55:00.564 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:55:00.579 [INF] HTTP "GET" "/auth/user" responded 200 in 15.2696ms. UserId: "anonymous"
+2026-02-09 16:55:08.525 [INF] HTTP "GET" "/flats/statuses" started. UserId: "anonymous"
+2026-02-09 16:55:08.525 [INF] HTTP "GET" "/flats/society/19" started. UserId: "anonymous"
+2026-02-09 16:55:08.537 [INF] Flat statuses fetched successfully (count: 3)
+2026-02-09 16:55:08.569 [INF] HTTP "GET" "/flats/statuses" responded 200 in 44.5218ms. UserId: "anonymous"
+2026-02-09 16:55:08.577 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 16:55:08.585 [INF] HTTP "GET" "/flats/society/19" responded 200 in 60.4085ms. UserId: "anonymous"
+2026-02-09 16:55:19.279 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:55:19.304 [INF] HTTP "GET" "/auth/user" responded 200 in 25.1767ms. UserId: "anonymous"
+2026-02-09 16:55:19.307 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:55:19.353 [INF] HTTP "GET" "/auth/user" responded 200 in 46.2732ms. UserId: "anonymous"
+2026-02-09 16:55:19.768 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:55:19.791 [INF] HTTP "GET" "/auth/user" responded 200 in 22.358ms. UserId: "anonymous"
+2026-02-09 16:55:19.793 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:55:19.808 [INF] HTTP "GET" "/auth/user" responded 200 in 15.4627ms. UserId: "anonymous"
+2026-02-09 16:55:20.245 [INF] HTTP "GET" "/subscriptions/status" started. UserId: "anonymous"
+2026-02-09 16:55:20.290 [INF] HTTP "GET" "/subscriptions/status" responded 200 in 44.4225ms. UserId: "anonymous"
+2026-02-09 16:55:20.298 [INF] HTTP "GET" "/subscriptions/status" started. UserId: "anonymous"
+2026-02-09 16:55:20.351 [INF] HTTP "GET" "/subscriptions/status" responded 200 in 52.5981ms. UserId: "anonymous"
+2026-02-09 16:59:37.520 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:59:37.701 [INF] HTTP "GET" "/auth/user" responded 200 in 181.4902ms. UserId: "anonymous"
+2026-02-09 16:59:37.705 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 16:59:37.734 [INF] HTTP "GET" "/auth/user" responded 200 in 29.2723ms. UserId: "anonymous"
+2026-02-09 16:59:37.898 [INF] HTTP "GET" "/flats/society/19" started. UserId: "anonymous"
+2026-02-09 16:59:37.898 [INF] HTTP "GET" "/flats/statuses" started. UserId: "anonymous"
+2026-02-09 16:59:37.928 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 16:59:37.934 [INF] HTTP "GET" "/flats/society/19" responded 200 in 36.0046ms. UserId: "anonymous"
+2026-02-09 16:59:38.018 [INF] Flat statuses fetched successfully (count: 3)
+2026-02-09 16:59:38.019 [INF] HTTP "GET" "/flats/statuses" responded 200 in 121.2189ms. UserId: "anonymous"
+2026-02-09 17:00:13.237 [INF] HTTP "GET" "/maintenance-payments" started. UserId: "anonymous"
+2026-02-09 17:00:13.324 [INF] HTTP "GET" "/maintenance-payments" responded 200 in 86.7355ms. UserId: "anonymous"
+2026-02-09 17:01:38.538 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:01:38.594 [INF] HTTP "GET" "/auth/user" responded 200 in 56.5045ms. UserId: "anonymous"
+2026-02-09 17:01:38.597 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:01:39.202 [INF] HTTP "GET" "/auth/user" responded 200 in 604.4266ms. UserId: "anonymous"
+2026-02-09 17:01:39.254 [INF] HTTP "GET" "/subscriptions/status" started. UserId: "anonymous"
+2026-02-09 17:01:39.415 [INF] HTTP "GET" "/subscriptions/status" responded 200 in 161.4487ms. UserId: "anonymous"
+2026-02-09 17:01:39.420 [INF] HTTP "GET" "/subscriptions/status" started. UserId: "anonymous"
+2026-02-09 17:01:39.437 [INF] HTTP "GET" "/subscriptions/status" responded 200 in 16.6662ms. UserId: "anonymous"
+2026-02-09 17:01:40.988 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:01:41.008 [INF] HTTP "GET" "/auth/user" responded 200 in 20.2645ms. UserId: "anonymous"
+2026-02-09 17:01:41.010 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:01:41.028 [INF] HTTP "GET" "/auth/user" responded 200 in 17.9526ms. UserId: "anonymous"
+2026-02-09 17:01:41.533 [INF] HTTP "GET" "/maintenance-payments" started. UserId: "anonymous"
+2026-02-09 17:01:41.538 [INF] HTTP "GET" "/flats/society/19" started. UserId: "anonymous"
+2026-02-09 17:01:41.538 [INF] HTTP "GET" "/payment-modes" started. UserId: "anonymous"
+2026-02-09 17:01:41.596 [INF] HTTP "GET" "/maintenance-payments" responded 200 in 62.3368ms. UserId: "anonymous"
+2026-02-09 17:01:41.624 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 17:01:41.632 [INF] HTTP "GET" "/payment-modes" responded 200 in 94.4187ms. UserId: "anonymous"
+2026-02-09 17:01:41.641 [INF] HTTP "GET" "/flats/society/19" responded 200 in 103.8511ms. UserId: "anonymous"
+2026-02-09 17:01:55.147 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:01:55.171 [INF] HTTP "GET" "/auth/user" responded 200 in 24.3852ms. UserId: "anonymous"
+2026-02-09 17:01:55.189 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:01:55.201 [INF] HTTP "GET" "/auth/user" responded 200 in 12.1235ms. UserId: "anonymous"
+2026-02-09 17:01:55.339 [INF] HTTP "GET" "/payment-modes" started. UserId: "anonymous"
+2026-02-09 17:01:55.339 [INF] HTTP "GET" "/maintenance-payments" started. UserId: "anonymous"
+2026-02-09 17:01:55.339 [INF] HTTP "GET" "/flats/society/19" started. UserId: "anonymous"
+2026-02-09 17:01:55.456 [INF] HTTP "GET" "/maintenance-payments" responded 200 in 116.9308ms. UserId: "anonymous"
+2026-02-09 17:01:55.456 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 17:01:55.463 [INF] HTTP "GET" "/flats/society/19" responded 200 in 124.7832ms. UserId: "anonymous"
+2026-02-09 17:01:55.532 [INF] HTTP "GET" "/payment-modes" responded 200 in 193.2736ms. UserId: "anonymous"
+2026-02-09 17:02:44.884 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:02:44.901 [INF] HTTP "GET" "/auth/user" responded 200 in 17.1734ms. UserId: "anonymous"
+2026-02-09 17:02:44.905 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:02:45.057 [INF] HTTP "GET" "/auth/user" responded 200 in 152.4848ms. UserId: "anonymous"
+2026-02-09 17:02:45.101 [INF] HTTP "GET" "/flats/society/19" started. UserId: "anonymous"
+2026-02-09 17:02:45.102 [INF] HTTP "GET" "/flats/statuses" started. UserId: "anonymous"
+2026-02-09 17:02:45.176 [INF] Flat statuses fetched successfully (count: 3)
+2026-02-09 17:02:45.176 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 17:02:45.179 [INF] HTTP "GET" "/flats/statuses" responded 200 in 77.2184ms. UserId: "anonymous"
+2026-02-09 17:02:45.181 [INF] HTTP "GET" "/flats/society/19" responded 200 in 80.3232ms. UserId: "anonymous"
+2026-02-09 17:04:04.806 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:04:04.962 [INF] HTTP "GET" "/auth/user" responded 200 in 155.0902ms. UserId: "anonymous"
+2026-02-09 17:04:04.969 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:04:05.161 [INF] HTTP "GET" "/auth/user" responded 200 in 192.4684ms. UserId: "anonymous"
+2026-02-09 17:04:05.674 [INF] HTTP "GET" "/flats/society/19" started. UserId: "anonymous"
+2026-02-09 17:04:05.674 [INF] HTTP "GET" "/flats/statuses" started. UserId: "anonymous"
+2026-02-09 17:04:05.812 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 17:04:05.831 [INF] Flat statuses fetched successfully (count: 3)
+2026-02-09 17:04:05.837 [INF] HTTP "GET" "/flats/society/19" responded 200 in 163.2066ms. UserId: "anonymous"
+2026-02-09 17:04:05.838 [INF] HTTP "GET" "/flats/statuses" responded 200 in 164.6468ms. UserId: "anonymous"
+2026-02-09 17:05:03.382 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:05:03.868 [INF] HTTP "GET" "/auth/user" responded 200 in 485.4652ms. UserId: "anonymous"
+2026-02-09 17:05:03.878 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:05:04.100 [INF] HTTP "GET" "/auth/user" responded 200 in 221.915ms. UserId: "anonymous"
+2026-02-09 17:05:04.363 [INF] HTTP "GET" "/flats/society/19" started. UserId: "anonymous"
+2026-02-09 17:05:04.408 [INF] HTTP "GET" "/flats/statuses" started. UserId: "anonymous"
+2026-02-09 17:05:05.124 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 17:05:05.363 [INF] HTTP "GET" "/flats/society/19" responded 200 in 1000.7428ms. UserId: "anonymous"
+2026-02-09 17:05:05.332 [INF] Flat statuses fetched successfully (count: 3)
+2026-02-09 17:05:05.441 [INF] HTTP "GET" "/flats/statuses" responded 200 in 1032.927ms. UserId: "anonymous"
+2026-02-09 17:06:14.079 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:06:14.236 [INF] HTTP "GET" "/auth/user" responded 200 in 157.3044ms. UserId: "anonymous"
+2026-02-09 17:06:14.242 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:06:14.276 [INF] HTTP "GET" "/auth/user" responded 200 in 34.0466ms. UserId: "anonymous"
+2026-02-09 17:06:14.686 [INF] HTTP "GET" "/flats/society/19" started. UserId: "anonymous"
+2026-02-09 17:06:14.687 [INF] HTTP "GET" "/flats/statuses" started. UserId: "anonymous"
+2026-02-09 17:06:14.868 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 17:06:15.074 [INF] Flat statuses fetched successfully (count: 3)
+2026-02-09 17:06:15.080 [INF] HTTP "GET" "/flats/society/19" responded 200 in 394.2864ms. UserId: "anonymous"
+2026-02-09 17:06:15.083 [INF] HTTP "GET" "/flats/statuses" responded 200 in 396.4916ms. UserId: "anonymous"
+2026-02-09 17:07:21.705 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:07:21.794 [INF] HTTP "GET" "/auth/user" responded 200 in 89.2364ms. UserId: "anonymous"
+2026-02-09 17:07:21.797 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:07:21.977 [INF] HTTP "GET" "/auth/user" responded 200 in 179.7839ms. UserId: "anonymous"
+2026-02-09 17:07:22.054 [INF] HTTP "GET" "/flats/society/19" started. UserId: "anonymous"
+2026-02-09 17:07:22.055 [INF] HTTP "GET" "/flats/statuses" started. UserId: "anonymous"
+2026-02-09 17:07:22.099 [INF] Flat statuses fetched successfully (count: 3)
+2026-02-09 17:07:22.101 [INF] HTTP "GET" "/flats/statuses" responded 200 in 46.0159ms. UserId: "anonymous"
+2026-02-09 17:07:22.109 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 17:07:22.111 [INF] HTTP "GET" "/flats/society/19" responded 200 in 56.3839ms. UserId: "anonymous"
+2026-02-09 17:09:02.384 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:09:02.442 [INF] HTTP "GET" "/auth/user" responded 200 in 57.9137ms. UserId: "anonymous"
+2026-02-09 17:09:02.462 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:09:02.550 [INF] HTTP "GET" "/auth/user" responded 200 in 88.0753ms. UserId: "anonymous"
+2026-02-09 17:09:02.869 [INF] HTTP "GET" "/flats/society/19" started. UserId: "anonymous"
+2026-02-09 17:09:02.869 [INF] HTTP "GET" "/flats/statuses" started. UserId: "anonymous"
+2026-02-09 17:09:02.939 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 17:09:02.956 [INF] Flat statuses fetched successfully (count: 3)
+2026-02-09 17:09:02.961 [INF] HTTP "GET" "/flats/society/19" responded 200 in 91.8408ms. UserId: "anonymous"
+2026-02-09 17:09:02.964 [INF] HTTP "GET" "/flats/statuses" responded 200 in 94.9384ms. UserId: "anonymous"
+2026-02-09 17:10:10.350 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:10:10.532 [INF] HTTP "GET" "/auth/user" responded 200 in 181.6755ms. UserId: "anonymous"
+2026-02-09 17:10:10.538 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:10:10.637 [INF] HTTP "GET" "/auth/user" responded 200 in 98.4583ms. UserId: "anonymous"
+2026-02-09 17:10:10.857 [INF] HTTP "GET" "/flats/society/19" started. UserId: "anonymous"
+2026-02-09 17:10:10.857 [INF] HTTP "GET" "/flats/statuses" started. UserId: "anonymous"
+2026-02-09 17:10:10.970 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 17:10:10.979 [INF] HTTP "GET" "/flats/society/19" responded 200 in 122.3044ms. UserId: "anonymous"
+2026-02-09 17:10:11.079 [INF] Flat statuses fetched successfully (count: 3)
+2026-02-09 17:10:11.086 [INF] HTTP "GET" "/flats/statuses" responded 200 in 228.9301ms. UserId: "anonymous"
+2026-02-09 17:10:47.964 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:10:48.045 [INF] HTTP "GET" "/auth/user" responded 200 in 81.7075ms. UserId: "anonymous"
+2026-02-09 17:10:48.051 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:10:48.219 [INF] HTTP "GET" "/auth/user" responded 200 in 167.6209ms. UserId: "anonymous"
+2026-02-09 17:10:48.553 [INF] HTTP "GET" "/users" started. UserId: "anonymous"
+2026-02-09 17:10:49.149 [INF] Users listed for society by user 25
+2026-02-09 17:10:49.177 [INF] HTTP "GET" "/users" responded 200 in 624.1392ms. UserId: "anonymous"
+2026-02-09 17:12:07.340 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:12:07.350 [INF] HTTP "GET" "/auth/user" responded 200 in 10.7324ms. UserId: "anonymous"
+2026-02-09 17:12:07.355 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:12:07.401 [INF] HTTP "GET" "/auth/user" responded 200 in 45.7834ms. UserId: "anonymous"
+2026-02-09 17:12:07.506 [INF] HTTP "GET" "/flats/statuses" started. UserId: "anonymous"
+2026-02-09 17:12:07.506 [INF] HTTP "GET" "/flats/society/19" started. UserId: "anonymous"
+2026-02-09 17:12:07.522 [INF] Flat statuses fetched successfully (count: 3)
+2026-02-09 17:12:07.547 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 17:12:07.551 [INF] HTTP "GET" "/flats/statuses" responded 200 in 44.7433ms. UserId: "anonymous"
+2026-02-09 17:12:07.552 [INF] HTTP "GET" "/flats/society/19" responded 200 in 46.193ms. UserId: "anonymous"
+2026-02-09 17:12:09.289 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:12:09.312 [INF] HTTP "GET" "/auth/user" responded 200 in 22.5633ms. UserId: "anonymous"
+2026-02-09 17:12:09.315 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:12:09.327 [INF] HTTP "GET" "/auth/user" responded 200 in 11.6995ms. UserId: "anonymous"
+2026-02-09 17:12:09.493 [INF] HTTP "GET" "/flats/society/19" started. UserId: "anonymous"
+2026-02-09 17:12:09.494 [INF] HTTP "GET" "/maintenance-payments" started. UserId: "anonymous"
+2026-02-09 17:12:09.494 [INF] HTTP "GET" "/payment-modes" started. UserId: "anonymous"
+2026-02-09 17:12:09.550 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 17:12:09.554 [INF] HTTP "GET" "/maintenance-payments" responded 200 in 60.5379ms. UserId: "anonymous"
+2026-02-09 17:12:09.556 [INF] HTTP "GET" "/flats/society/19" responded 200 in 63.5923ms. UserId: "anonymous"
+2026-02-09 17:12:09.628 [INF] HTTP "GET" "/payment-modes" responded 200 in 134.246ms. UserId: "anonymous"
+2026-02-09 17:14:48.961 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:14:49.028 [INF] HTTP "GET" "/auth/user" responded 200 in 66.988ms. UserId: "anonymous"
+2026-02-09 17:14:49.030 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:14:49.080 [INF] HTTP "GET" "/auth/user" responded 200 in 49.9009ms. UserId: "anonymous"
+2026-02-09 17:14:49.266 [INF] HTTP "GET" "/maintenance-payments" started. UserId: "anonymous"
+2026-02-09 17:14:49.266 [INF] HTTP "GET" "/flats/society/19" started. UserId: "anonymous"
+2026-02-09 17:14:49.266 [INF] HTTP "GET" "/payment-modes" started. UserId: "anonymous"
+2026-02-09 17:14:49.348 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 17:14:49.348 [INF] HTTP "GET" "/maintenance-payments" responded 200 in 82.4434ms. UserId: "anonymous"
+2026-02-09 17:14:49.377 [INF] HTTP "GET" "/payment-modes" responded 200 in 111.1129ms. UserId: "anonymous"
+2026-02-09 17:14:49.381 [INF] HTTP "GET" "/flats/society/19" responded 200 in 115.1438ms. UserId: "anonymous"
+2026-02-09 17:16:50.805 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:16:50.923 [INF] HTTP "GET" "/auth/user" responded 200 in 117.9713ms. UserId: "anonymous"
+2026-02-09 17:16:50.926 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:16:50.944 [INF] HTTP "GET" "/auth/user" responded 200 in 17.9805ms. UserId: "anonymous"
+2026-02-09 17:16:51.094 [INF] HTTP "GET" "/maintenance-payments" started. UserId: "anonymous"
+2026-02-09 17:16:51.095 [INF] HTTP "GET" "/payment-modes" started. UserId: "anonymous"
+2026-02-09 17:16:51.094 [INF] HTTP "GET" "/flats/society/19" started. UserId: "anonymous"
+2026-02-09 17:16:51.244 [INF] HTTP "GET" "/maintenance-payments" responded 200 in 150.868ms. UserId: "anonymous"
+2026-02-09 17:16:51.264 [INF] HTTP "GET" "/payment-modes" responded 200 in 169.0659ms. UserId: "anonymous"
+2026-02-09 17:16:51.343 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 17:16:51.344 [INF] HTTP "GET" "/flats/society/19" responded 200 in 250.7821ms. UserId: "anonymous"
+2026-02-09 17:16:52.573 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:16:52.595 [INF] HTTP "GET" "/auth/user" responded 200 in 21.6643ms. UserId: "anonymous"
+2026-02-09 17:16:52.597 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:16:52.610 [INF] HTTP "GET" "/auth/user" responded 200 in 13.4453ms. UserId: "anonymous"
+2026-02-09 17:16:52.732 [INF] HTTP "GET" "/users" started. UserId: "anonymous"
+2026-02-09 17:16:52.752 [INF] Users listed for society by user 25
+2026-02-09 17:16:52.754 [INF] HTTP "GET" "/users" responded 200 in 21.5108ms. UserId: "anonymous"
+2026-02-09 17:16:55.253 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:16:55.273 [INF] HTTP "GET" "/auth/user" responded 200 in 19.9697ms. UserId: "anonymous"
+2026-02-09 17:16:55.275 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:16:55.288 [INF] HTTP "GET" "/auth/user" responded 200 in 13.6928ms. UserId: "anonymous"
+2026-02-09 17:16:55.452 [INF] HTTP "GET" "/flats/society/19" started. UserId: "anonymous"
+2026-02-09 17:16:55.454 [INF] HTTP "GET" "/flats/statuses" started. UserId: "anonymous"
+2026-02-09 17:16:55.488 [INF] Flat statuses fetched successfully (count: 3)
+2026-02-09 17:16:55.503 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 17:16:55.505 [INF] HTTP "GET" "/flats/statuses" responded 200 in 51.7816ms. UserId: "anonymous"
+2026-02-09 17:16:55.507 [INF] HTTP "GET" "/flats/society/19" responded 200 in 54.4918ms. UserId: "anonymous"
+2026-02-09 17:16:57.382 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:16:57.398 [INF] HTTP "GET" "/auth/user" responded 200 in 16.0885ms. UserId: "anonymous"
+2026-02-09 17:16:57.401 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:16:57.413 [INF] HTTP "GET" "/auth/user" responded 200 in 11.663ms. UserId: "anonymous"
+2026-02-09 17:16:57.536 [INF] HTTP "GET" "/maintenance-payments" started. UserId: "anonymous"
+2026-02-09 17:16:57.537 [INF] HTTP "GET" "/flats/society/19" started. UserId: "anonymous"
+2026-02-09 17:16:57.537 [INF] HTTP "GET" "/payment-modes" started. UserId: "anonymous"
+2026-02-09 17:16:57.556 [INF] HTTP "GET" "/payment-modes" responded 200 in 18.6773ms. UserId: "anonymous"
+2026-02-09 17:16:57.560 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 17:16:57.560 [INF] HTTP "GET" "/maintenance-payments" responded 200 in 24.5447ms. UserId: "anonymous"
+2026-02-09 17:16:57.571 [INF] HTTP "GET" "/flats/society/19" responded 200 in 33.7788ms. UserId: "anonymous"
+2026-02-09 17:17:08.850 [INF] HTTP "POST" "/maintenance-payments" started. UserId: "anonymous"
+2026-02-09 17:17:16.347 [INF] HTTP "POST" "/maintenance-payments" responded 409 in 7497.1978ms. UserId: "anonymous"
+2026-02-09 17:18:11.493 [INF] HTTP "POST" "/maintenance-payments" started. UserId: "anonymous"
+2026-02-09 17:18:12.097 [INF] HTTP "POST" "/maintenance-payments" responded 409 in 604.6084ms. UserId: "anonymous"
+2026-02-09 17:18:46.940 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:18:46.954 [INF] HTTP "GET" "/auth/user" responded 200 in 13.6705ms. UserId: "anonymous"
+2026-02-09 17:18:46.956 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:18:46.972 [INF] HTTP "GET" "/auth/user" responded 200 in 15.6829ms. UserId: "anonymous"
+2026-02-09 17:18:47.054 [INF] HTTP "GET" "/maintenance-payments" started. UserId: "anonymous"
+2026-02-09 17:18:47.058 [INF] HTTP "GET" "/payment-modes" started. UserId: "anonymous"
+2026-02-09 17:18:47.056 [INF] HTTP "GET" "/flats/society/19" started. UserId: "anonymous"
+2026-02-09 17:18:47.082 [INF] HTTP "GET" "/maintenance-payments" responded 200 in 27.8169ms. UserId: "anonymous"
+2026-02-09 17:18:47.076 [INF] HTTP "GET" "/payment-modes" responded 200 in 18.4919ms. UserId: "anonymous"
+2026-02-09 17:18:47.118 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 17:18:47.121 [INF] HTTP "GET" "/flats/society/19" responded 200 in 64.8239ms. UserId: "anonymous"
+2026-02-09 17:19:02.944 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:19:02.966 [INF] HTTP "GET" "/auth/user" responded 200 in 22.5388ms. UserId: "anonymous"
+2026-02-09 17:19:02.973 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:19:02.994 [INF] HTTP "GET" "/auth/user" responded 200 in 20.8141ms. UserId: "anonymous"
+2026-02-09 17:19:03.047 [INF] HTTP "GET" "/flats/society/19" started. UserId: "anonymous"
+2026-02-09 17:19:03.048 [INF] HTTP "GET" "/maintenance-payments" started. UserId: "anonymous"
+2026-02-09 17:19:03.048 [INF] HTTP "GET" "/payment-modes" started. UserId: "anonymous"
+2026-02-09 17:19:03.093 [INF] HTTP "GET" "/maintenance-payments" responded 200 in 45.5268ms. UserId: "anonymous"
+2026-02-09 17:19:03.100 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 17:19:03.229 [INF] HTTP "GET" "/payment-modes" responded 200 in 181.028ms. UserId: "anonymous"
+2026-02-09 17:19:03.253 [INF] HTTP "GET" "/flats/society/19" responded 200 in 205.7827ms. UserId: "anonymous"
+2026-02-09 17:19:13.542 [INF] HTTP "POST" "/maintenance-payments" started. UserId: "anonymous"
+2026-02-09 17:19:14.149 [INF] HTTP "POST" "/maintenance-payments" responded 409 in 606.5751ms. UserId: "anonymous"
+2026-02-09 17:20:03.339 [INF] HTTP "PUT" "/maintenance-payments/24899f87-ccff-420c-8b5d-ffe7ee660313" started. UserId: "anonymous"
+2026-02-09 17:20:33.454 [INF] HTTP "PUT" "/maintenance-payments/24899f87-ccff-420c-8b5d-ffe7ee660313" responded 200 in 30114.2475ms. UserId: "anonymous"
+2026-02-09 17:20:33.462 [INF] HTTP "GET" "/maintenance-payments" started. UserId: "anonymous"
+2026-02-09 17:20:33.572 [INF] HTTP "GET" "/maintenance-payments" responded 200 in 109.4134ms. UserId: "anonymous"
+2026-02-09 17:21:05.842 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:21:05.896 [INF] HTTP "GET" "/auth/user" responded 200 in 54.0988ms. UserId: "anonymous"
+2026-02-09 17:21:05.911 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:21:06.034 [INF] HTTP "GET" "/auth/user" responded 200 in 123.2188ms. UserId: "anonymous"
+2026-02-09 17:21:06.208 [INF] HTTP "GET" "/maintenance-payments" started. UserId: "anonymous"
+2026-02-09 17:21:06.243 [INF] HTTP "GET" "/payment-modes" started. UserId: "anonymous"
+2026-02-09 17:21:06.209 [INF] HTTP "GET" "/flats/society/19" started. UserId: "anonymous"
+2026-02-09 17:21:06.384 [INF] HTTP "GET" "/maintenance-payments" responded 200 in 175.3347ms. UserId: "anonymous"
+2026-02-09 17:21:06.391 [INF] HTTP "GET" "/payment-modes" responded 200 in 148.0423ms. UserId: "anonymous"
+2026-02-09 17:21:06.418 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 17:21:06.428 [INF] HTTP "GET" "/flats/society/19" responded 200 in 219.5405ms. UserId: "anonymous"
+2026-02-09 17:24:51.847 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:24:52.019 [INF] HTTP "GET" "/auth/user" responded 200 in 172.2366ms. UserId: "anonymous"
+2026-02-09 17:24:52.022 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:24:52.039 [INF] HTTP "GET" "/auth/user" responded 200 in 17.7547ms. UserId: "anonymous"
+2026-02-09 17:24:52.197 [INF] HTTP "GET" "/maintenance-payments" started. UserId: "anonymous"
+2026-02-09 17:24:52.198 [INF] HTTP "GET" "/flats/society/19" started. UserId: "anonymous"
+2026-02-09 17:24:52.251 [INF] HTTP "GET" "/payment-modes" started. UserId: "anonymous"
+2026-02-09 17:24:52.273 [INF] HTTP "GET" "/maintenance-payments" responded 200 in 75.1701ms. UserId: "anonymous"
+2026-02-09 17:24:52.418 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 17:24:52.441 [INF] HTTP "GET" "/payment-modes" responded 200 in 190.1345ms. UserId: "anonymous"
+2026-02-09 17:24:52.447 [INF] HTTP "GET" "/flats/society/19" responded 200 in 248.9161ms. UserId: "anonymous"
+2026-02-09 17:25:11.947 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:25:11.970 [INF] HTTP "GET" "/auth/user" responded 200 in 23.396ms. UserId: "anonymous"
+2026-02-09 17:25:12.050 [INF] HTTP "GET" "/maintenance-payments" started. UserId: "anonymous"
+2026-02-09 17:25:12.050 [INF] HTTP "GET" "/flats/society/19" started. UserId: "anonymous"
+2026-02-09 17:25:12.054 [INF] HTTP "GET" "/payment-modes" started. UserId: "anonymous"
+2026-02-09 17:25:12.076 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 17:25:12.087 [INF] HTTP "GET" "/flats/society/19" responded 200 in 37.2123ms. UserId: "anonymous"
+2026-02-09 17:25:12.087 [INF] HTTP "GET" "/payment-modes" responded 200 in 33.1049ms. UserId: "anonymous"
+2026-02-09 17:25:12.357 [INF] HTTP "GET" "/maintenance-payments" responded 200 in 307.1506ms. UserId: "anonymous"
+2026-02-09 17:29:31.197 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:29:31.215 [INF] HTTP "GET" "/auth/user" responded 200 in 18.2414ms. UserId: "anonymous"
+2026-02-09 17:29:31.221 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:29:31.270 [INF] HTTP "GET" "/auth/user" responded 200 in 48.8551ms. UserId: "anonymous"
+2026-02-09 17:30:05.966 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:30:06.093 [INF] HTTP "GET" "/auth/user" responded 200 in 126.8957ms. UserId: "anonymous"
+2026-02-09 17:31:31.998 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:31:32.014 [INF] HTTP "GET" "/auth/user" responded 200 in 16.0951ms. UserId: "anonymous"
+2026-02-09 17:31:39.953 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:31:39.971 [INF] HTTP "GET" "/auth/user" responded 200 in 17.7533ms. UserId: "anonymous"
+2026-02-09 17:43:11.977 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:43:12.132 [INF] HTTP "GET" "/auth/user" responded 200 in 154.8966ms. UserId: "anonymous"
+2026-02-09 17:43:44.100 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:43:44.121 [INF] HTTP "GET" "/auth/user" responded 200 in 21.2787ms. UserId: "anonymous"
+2026-02-09 17:43:44.125 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:43:44.142 [INF] HTTP "GET" "/auth/user" responded 200 in 17.6799ms. UserId: "anonymous"
+2026-02-09 17:43:44.814 [INF] HTTP "GET" "/subscriptions/status" started. UserId: "anonymous"
+2026-02-09 17:43:44.874 [INF] HTTP "GET" "/subscriptions/status" responded 200 in 59.369ms. UserId: "anonymous"
+2026-02-09 17:43:44.903 [INF] HTTP "GET" "/subscriptions/status" started. UserId: "anonymous"
+2026-02-09 17:43:44.943 [INF] HTTP "GET" "/subscriptions/status" responded 200 in 39.3988ms. UserId: "anonymous"
+2026-02-09 17:43:48.551 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:43:48.590 [INF] HTTP "GET" "/auth/user" responded 200 in 38.5954ms. UserId: "anonymous"
+2026-02-09 17:43:48.600 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:43:48.678 [INF] HTTP "GET" "/auth/user" responded 200 in 77.2955ms. UserId: "anonymous"
+2026-02-09 17:43:49.057 [INF] HTTP "GET" "/flats/statuses" started. UserId: "anonymous"
+2026-02-09 17:43:49.057 [INF] HTTP "GET" "/flats/society/19" started. UserId: "anonymous"
+2026-02-09 17:43:49.075 [INF] Flat statuses fetched successfully (count: 3)
+2026-02-09 17:43:49.076 [INF] HTTP "GET" "/flats/statuses" responded 200 in 19.0939ms. UserId: "anonymous"
+2026-02-09 17:43:49.297 [INF] Fetched 12 flats for SocietyId 19
+2026-02-09 17:43:49.302 [INF] HTTP "GET" "/flats/society/19" responded 200 in 244.793ms. UserId: "anonymous"
+2026-02-09 17:43:54.212 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:43:54.231 [INF] HTTP "GET" "/auth/user" responded 200 in 18.6293ms. UserId: "anonymous"
+2026-02-09 17:43:54.235 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:43:54.251 [INF] HTTP "GET" "/auth/user" responded 200 in 15.7676ms. UserId: "anonymous"
+2026-02-09 17:43:54.573 [INF] HTTP "GET" "/users" started. UserId: "anonymous"
+2026-02-09 17:43:54.598 [INF] Users listed for society by user 25
+2026-02-09 17:43:54.602 [INF] HTTP "GET" "/users" responded 200 in 29.3071ms. UserId: "anonymous"
+2026-02-09 17:43:56.212 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:43:56.224 [INF] HTTP "GET" "/auth/user" responded 200 in 12.4712ms. UserId: "anonymous"
+2026-02-09 17:43:56.227 [INF] HTTP "GET" "/auth/user" started. UserId: "anonymous"
+2026-02-09 17:43:56.244 [INF] HTTP "GET" "/auth/user" responded 200 in 16.8197ms. UserId: "anonymous"

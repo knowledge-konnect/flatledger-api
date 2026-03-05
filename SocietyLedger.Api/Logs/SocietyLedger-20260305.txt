@@ -1,0 +1,4 @@
+2026-03-05 16:54:52.422 [INF] Starting SocietyLedger API...
+2026-03-05 16:55:34.008 [INF] HTTP "POST" "/api/auth/login" started. UserId: "anonymous"
+2026-03-05 16:55:41.914 [INF] Login successful for "botsa.santosh9@gmail.com"
+2026-03-05 16:55:41.944 [INF] HTTP "POST" "/api/auth/login" responded 200 in 7937.6249ms. UserId: "anonymous"

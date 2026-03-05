@@ -1,0 +1,17 @@
+E:\society-ledger\src\SocietyLedger.Application\bin\Debug\net9.0\SocietyLedger.Application.deps.json
+E:\society-ledger\src\SocietyLedger.Application\bin\Debug\net9.0\SocietyLedger.Application.dll
+E:\society-ledger\src\SocietyLedger.Application\bin\Debug\net9.0\SocietyLedger.Application.pdb
+E:\society-ledger\src\SocietyLedger.Application\bin\Debug\net9.0\SocietyLedger.Domain.dll
+E:\society-ledger\src\SocietyLedger.Application\bin\Debug\net9.0\SocietyLedger.Shared.dll
+E:\society-ledger\src\SocietyLedger.Application\bin\Debug\net9.0\SocietyLedger.Domain.pdb
+E:\society-ledger\src\SocietyLedger.Application\bin\Debug\net9.0\SocietyLedger.Shared.pdb
+E:\society-ledger\src\SocietyLedger.Application\obj\Debug\net9.0\SocietyLedger.Application.csproj.AssemblyReference.cache
+E:\society-ledger\src\SocietyLedger.Application\obj\Debug\net9.0\SocietyLedger.Application.GeneratedMSBuildEditorConfig.editorconfig
+E:\society-ledger\src\SocietyLedger.Application\obj\Debug\net9.0\SocietyLedger.Application.AssemblyInfoInputs.cache
+E:\society-ledger\src\SocietyLedger.Application\obj\Debug\net9.0\SocietyLedger.Application.AssemblyInfo.cs
+E:\society-ledger\src\SocietyLedger.Application\obj\Debug\net9.0\SocietyLedger.Application.csproj.CoreCompileInputs.cache
+E:\society-ledger\src\SocietyLedger.Application\obj\Debug\net9.0\SocietyL.5DB86FC6.Up2Date
+E:\society-ledger\src\SocietyLedger.Application\obj\Debug\net9.0\SocietyLedger.Application.dll
+E:\society-ledger\src\SocietyLedger.Application\obj\Debug\net9.0\refint\SocietyLedger.Application.dll
+E:\society-ledger\src\SocietyLedger.Application\obj\Debug\net9.0\SocietyLedger.Application.pdb
+E:\society-ledger\src\SocietyLedger.Application\obj\Debug\net9.0\ref\SocietyLedger.Application.dll
