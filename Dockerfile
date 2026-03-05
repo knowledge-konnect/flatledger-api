@@ -2,16 +2,15 @@
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 
-# Copy solution and project files
-COPY SocietyLedger.sln ./
+# Copy project files for restore layer caching
 COPY SocietyLedger.Api/SocietyLedger.Api.csproj src/SocietyLedger.Api/
 COPY SocietyLedger.Application/SocietyLedger.Application.csproj src/SocietyLedger.Application/
 COPY SocietyLedger.Domain/SocietyLedger.Domain.csproj src/SocietyLedger.Domain/
 COPY SocietyLedger.Infrastructure/SocietyLedger.Infrastructure.csproj src/SocietyLedger.Infrastructure/
 COPY SocietyLedger.Shared/SocietyLedger.Shared.csproj src/SocietyLedger.Shared/
 
-# Restore dependencies
-RUN dotnet restore SocietyLedger.sln
+# Restore only the API project (avoids missing test project in .sln)
+RUN dotnet restore src/SocietyLedger.Api/SocietyLedger.Api.csproj
 
 # Copy all source files into the expected src/ layout
 COPY SocietyLedger.Api/ src/SocietyLedger.Api/
@@ -23,8 +22,7 @@ COPY SocietyLedger.Shared/ src/SocietyLedger.Shared/
 # Publish the API project
 RUN dotnet publish src/SocietyLedger.Api/SocietyLedger.Api.csproj \
     -c Release \
-    -o /app/publish \
-    --no-restore
+    -o /app/publish
 
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
