@@ -24,7 +24,15 @@ using System.Threading.RateLimiting;
 var builder = WebApplication.CreateBuilder(args);
 
 // ----------------------------
-// Serilog configuration
+// Render.com PORT support
+// Render injects a PORT env var at runtime; bind to it so the health
+// check and reverse-proxy can reach the process.
+// ----------------------------
+var renderPort = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrEmpty(renderPort))
+    builder.WebHost.UseUrls($"http://+:{renderPort}");
+
+
 // ----------------------------
 LogEventLevel level = LogEventLevel.Information;
 var logTemplate = "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] {Message}{NewLine}{Exception}";

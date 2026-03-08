@@ -1,0 +1,33 @@
+## .NET / C# ##
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## Visual Studio ##
+.vs/
+*.rsuser
+*.vsp
+*.vspx
+
+## ASP.NET Core ##
+appsettings.*.json
+!appsettings.json
+!appsettings.Development.json
+
+## Logs ##
+Logs/
+*.log
+
+## NuGet ##
+*.nupkg
+*.snupkg
+project.lock.json
+packages/
+nuget.config
+
+## OS ##
+.DS_Store
+Thumbs.db
