@@ -54,7 +54,8 @@ namespace SocietyLedger.Api.Extensions
                 options.UseNpgsql(dataSource, npgsql =>
                 {
                     // pgBouncer transaction mode (port 6543): no savepoints, no retry.
-                    npgsql.CommandTimeout(60);
+                    // 120s to handle Supabase free-tier cold starts.
+                    npgsql.CommandTimeout(120);
                 }));
 
             // Common infrastructure helpers
