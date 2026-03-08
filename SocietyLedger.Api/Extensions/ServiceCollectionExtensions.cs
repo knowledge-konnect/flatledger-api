@@ -46,7 +46,17 @@ namespace SocietyLedger.Api.Extensions
             services.AddHttpContextAccessor();
 
             services.AddDbContext<AppDbContext>(options =>
-                options.UseNpgsql(configuration.GetConnectionString("DefaultConnection")));
+                options.UseNpgsql(configuration.GetConnectionString("DefaultConnection"), npgsql =>
+                {
+                    // Retry up to 3 times on transient failures (e.g. Supabase wake-up timeouts)
+                    npgsql.EnableRetryOnFailure(
+                        maxRetryCount: 3,
+                        maxRetryDelay: TimeSpan.FromSeconds(10),
+                        errorCodesToAdd: null);
+
+                    // Increase command timeout for cold-start scenarios (default is 30s)
+                    npgsql.CommandTimeout(60);
+                }));
 
             // Common infrastructure helpers
             services.AddScoped<IUserContext, UserContext>();
