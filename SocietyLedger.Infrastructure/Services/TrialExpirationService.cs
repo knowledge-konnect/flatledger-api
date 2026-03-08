@@ -4,7 +4,6 @@ using Microsoft.Extensions.DependencyInjection;
 using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Domain.Constants;
 using SocietyLedger.Domain.Entities;
-using SocietyLedger.Application.Interfaces.Services;
 
 namespace SocietyLedger.Infrastructure.Services
 {
@@ -41,7 +40,8 @@ namespace SocietyLedger.Infrastructure.Services
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Error in trial expiration check");
-                    await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
+                    try { await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken); }
+                    catch (OperationCanceledException) { break; }
                 }
             }
         }
@@ -52,7 +52,7 @@ namespace SocietyLedger.Infrastructure.Services
             var subscriptionRepo = scope.ServiceProvider.GetRequiredService<ISubscriptionRepository>();
             var eventRepo = scope.ServiceProvider.GetRequiredService<ISubscriptionEventRepository>();
 
-            var expiredTrials = await subscriptionRepo.GetExpiredTrialsAsync();
+            var expiredTrials = (await subscriptionRepo.GetExpiredTrialsAsync()).ToList();
             var now = DateTime.UtcNow;
 
             foreach (var subscription in expiredTrials)
@@ -72,7 +72,8 @@ namespace SocietyLedger.Infrastructure.Services
                         EventType = "trial_expired",
                         OldStatus = SubscriptionStatusCodes.Trial,
                         NewStatus = SubscriptionStatusCodes.Expired,
-                        Metadata = $"{{\"trial_end\":\"{subscription.TrialEnd}\"}}"
+                        Metadata = $"{{\"trial_end\":\"{subscription.TrialEnd}\"}}",
+                        CreatedAt = now
                     });
 
                     _logger.LogInformation("Trial expired for user {UserId}, subscription {SubscriptionId}",
@@ -84,9 +85,9 @@ namespace SocietyLedger.Infrastructure.Services
                 }
             }
 
-            if (expiredTrials.Any())
+            if (expiredTrials.Count > 0)
             {
-                _logger.LogInformation("Processed {Count} expired trials", expiredTrials.Count());
+                _logger.LogInformation("Processed {Count} expired trials", expiredTrials.Count);
             }
         }
     }
