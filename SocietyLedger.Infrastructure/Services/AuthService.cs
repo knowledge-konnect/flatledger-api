@@ -79,25 +79,16 @@ namespace SocietyLedger.Infrastructure.Services
                 is_revoked = false
             };
 
-            // Use transaction to ensure atomicity of user update and token creation
-            await using var transaction = await _db.Database.BeginTransactionAsync();
+            var now = DateTime.UtcNow;
 
-            try
-            {
-                user.LastLogin = DateTime.UtcNow;
-                await _userRepo.UpdateAsync(user);
+            // Direct UPDATE — avoids a SELECT inside a transaction that can time out on pgBouncer.
+            // SaveChangesAsync below is already implicitly atomic.
+            await _db.users
+                .Where(u => u.id == user.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(u => u.last_login, now));
 
-                _db.refresh_tokens.Add(refreshEntity);
-
-                await _db.SaveChangesAsync();
-
-                await transaction.CommitAsync();
-            }
-            catch
-            {
-                await transaction.RollbackAsync();
-                throw;
-            }
+            _db.refresh_tokens.Add(refreshEntity);
+            await _db.SaveChangesAsync();
 
             _logger.LogInformation("User {UserId} logged in successfully from IP {IP}", user.Id, ipAddress);
 

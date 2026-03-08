@@ -2,6 +2,7 @@
 using Hangfire;
 using Hangfire.PostgreSql;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using SocietyLedger.Api.Filters;
 using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Application.Interfaces.Services;
@@ -45,11 +46,14 @@ namespace SocietyLedger.Api.Extensions
 
             services.AddHttpContextAccessor();
 
+            var connectionString = configuration.GetConnectionString("DefaultConnection");
+            var dataSource = new NpgsqlDataSourceBuilder(connectionString)
+                .Build();
+
             services.AddDbContext<AppDbContext>(options =>
-                options.UseNpgsql(configuration.GetConnectionString("DefaultConnection"), npgsql =>
+                options.UseNpgsql(dataSource, npgsql =>
                 {
-                    // pgBouncer transaction mode (port 6543) does not support savepoints,
-                    // so EnableRetryOnFailure must NOT be used. Increase timeout instead.
+                    // pgBouncer transaction mode (port 6543): no savepoints, no retry.
                     npgsql.CommandTimeout(60);
                 }));
 
