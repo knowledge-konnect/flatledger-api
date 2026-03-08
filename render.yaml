@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: societyledger-api
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - fromGroup: FlatLedger
