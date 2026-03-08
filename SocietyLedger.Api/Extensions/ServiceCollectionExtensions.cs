@@ -48,13 +48,8 @@ namespace SocietyLedger.Api.Extensions
             services.AddDbContext<AppDbContext>(options =>
                 options.UseNpgsql(configuration.GetConnectionString("DefaultConnection"), npgsql =>
                 {
-                    // Retry up to 3 times on transient failures (e.g. Supabase wake-up timeouts)
-                    npgsql.EnableRetryOnFailure(
-                        maxRetryCount: 3,
-                        maxRetryDelay: TimeSpan.FromSeconds(10),
-                        errorCodesToAdd: null);
-
-                    // Increase command timeout for cold-start scenarios (default is 30s)
+                    // pgBouncer transaction mode (port 6543) does not support savepoints,
+                    // so EnableRetryOnFailure must NOT be used. Increase timeout instead.
                     npgsql.CommandTimeout(60);
                 }));
 
