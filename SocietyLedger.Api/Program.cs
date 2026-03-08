@@ -348,4 +348,30 @@ app.MapDashboardEndpoints();
 app.MapGroup(ApiRoutes.REPORTS)
    .MapReportRoutes(RouteGroupNames.REPORTS, versionSet);
 
+// ----------------------------
+// DB warmup — wake Supabase before accepting requests.
+// Free-tier Supabase can take 60-90s to resume from idle.
+// ----------------------------
+// Warmup: retry until Supabase wakes (free tier can take 60-90s after inactivity)
+const int maxWarmupAttempts = 5;
+for (int attempt = 1; attempt <= maxWarmupAttempts; attempt++)
+{
+    try
+    {
+        using var scope = app.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await db.Database.ExecuteSqlRawAsync("SELECT 1");
+        Log.Information("Database warmup successful on attempt {Attempt}.", attempt);
+        break;
+    }
+    catch (Exception ex)
+    {
+        Log.Warning("Database warmup attempt {Attempt}/{Max} failed: {Message}", attempt, maxWarmupAttempts, ex.Message);
+        if (attempt < maxWarmupAttempts)
+            await Task.Delay(TimeSpan.FromSeconds(30));
+        else
+            Log.Warning("Database warmup exhausted — first requests may be slow.");
+    }
+}
+
 app.Run();
