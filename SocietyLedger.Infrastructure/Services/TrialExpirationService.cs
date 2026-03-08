@@ -33,10 +33,15 @@ namespace SocietyLedger.Infrastructure.Services
                     await CheckExpiredTrialsAsync();
                     await Task.Delay(_checkInterval, stoppingToken);
                 }
+                catch (OperationCanceledException)
+                {
+                    // Service is stopping — exit gracefully
+                    break;
+                }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Error in trial expiration check");
-                    await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken); // Retry after 5 minutes on error
+                    await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
                 }
             }
         }

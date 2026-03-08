@@ -166,7 +166,9 @@ builder.Services.AddRateLimiter(options =>
 // JWT Authentication
 // ----------------------------
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
-var key = jwtSettings["Key"] ?? throw new InvalidOperationException("JwtSettings:Key is missing in configuration.");
+var key = jwtSettings["Key"];
+if (string.IsNullOrWhiteSpace(key))
+    throw new InvalidOperationException("JwtSettings:Key is missing or empty. Set the JwtSettings__Key environment variable.");
 var issuer = jwtSettings["Issuer"];
 var audience = jwtSettings["Audience"];
 
