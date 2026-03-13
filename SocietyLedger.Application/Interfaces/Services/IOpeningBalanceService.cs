@@ -13,5 +13,10 @@ namespace SocietyLedger.Application.Interfaces.Services
         /// Get opening balance status for a society.
         /// </summary>
         Task<OpeningBalanceStatusResponse> GetStatusAsync(long societyId);
+
+        /// <summary>
+        /// Get opening balance summary for a society.
+        /// </summary>
+        Task<OpeningBalanceSummaryResponse?> GetSummaryAsync(long societyId);
     }
 }

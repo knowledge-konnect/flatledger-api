@@ -17,6 +17,36 @@ namespace SocietyLedger.Infrastructure.Services
         {
             _db = db;
         }
+        public async Task<OpeningBalanceSummaryResponse?> GetSummaryAsync(long societyId)
+        {
+            // Check if opening balance is applied
+            var applied = await _db.adjustments.AnyAsync(a => a.society_id == societyId && a.entry_type == EntryTypeCodes.OpeningBalance && !a.is_deleted)
+                || await _db.society_fund_ledgers.AnyAsync(f => f.society_id == societyId && f.entry_type == EntryTypeCodes.OpeningFund && !f.is_deleted!.Value);
+            if (!applied)
+                return null;
+
+            // Society opening amount (initial fund/bank balance)
+            var societyOpeningAmount = await _db.society_fund_ledgers
+                .Where(f => f.society_id == societyId && f.entry_type == EntryTypeCodes.OpeningFund && !f.is_deleted!.Value)
+                .SumAsync(f => (decimal?)f.amount) ?? 0;
+
+            // Member dues: sum of all member outstanding dues (remaining_amount > 0)
+            var totalMemberDues = await _db.adjustments
+                .Where(a => a.society_id == societyId && a.entry_type == EntryTypeCodes.OpeningBalance && !a.is_deleted && a.remaining_amount > 0)
+                .SumAsync(a => (decimal?)a.remaining_amount) ?? 0;
+
+            // Member advances: sum of all member advances/prepaid amounts (remaining_amount < 0)
+            var totalMemberAdvance = await _db.adjustments
+                .Where(a => a.society_id == societyId && a.entry_type == EntryTypeCodes.OpeningBalance && !a.is_deleted && a.remaining_amount < 0)
+                .SumAsync(a => (decimal?)-a.remaining_amount) ?? 0;
+
+            return new OpeningBalanceSummaryResponse
+            {
+                SocietyOpeningAmount = societyOpeningAmount,
+                TotalMemberDues = totalMemberDues,
+                TotalMemberAdvance = totalMemberAdvance
+            };
+        }
 
         // Carries the minimum status metadata needed from each opening-balance source.
         private sealed record OpeningMeta(DateOnly TransactionDate, DateTime AuditCreatedAt, long CreatedBy);
