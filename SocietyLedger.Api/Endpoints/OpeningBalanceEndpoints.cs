@@ -64,7 +64,7 @@ namespace SocietyLedger.Api.Endpoints
 
             // Get opening balance summary
             app.MapGet("/summary",
-                [Authorize(Roles = RoleCodes.Financial + "," + RoleCodes.SocietyAdmin)]
+                [Authorize]
             [SwaggerOperation(
                     Summary = "Get opening balance summary",
                     Description = "Returns applied opening balance summary for a society. Only accessible to financial/admin roles."
@@ -88,22 +88,13 @@ namespace SocietyLedger.Api.Endpoints
                         Log.Warning("Opening balance summary request by inactive or non-existent user {UserId}", userId);
                         var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "User not found or inactive", ctx.TraceIdentifier);
                         return Results.Json(errorResponse, statusCode: 401);
-                    }
-
-                    // Check if user has Financial or Society Admin role
-                    if (user.Role?.Code != RoleCodes.Financial && user.Role?.Code != RoleCodes.SocietyAdmin)
-                    {
-                        Log.Warning("Opening balance summary request by unauthorized user {UserId}, Role: {Role}", userId, user.Role?.Code);
-                        var errorResponse = ErrorResponse.Create(ErrorCodes.FORBIDDEN, "Only Financial and Society Admin roles can access opening balance summary", ctx.TraceIdentifier);
-                        return Results.Json(errorResponse, statusCode: 403);
-                    }
-
+                    }                
                     var societyId = user.SocietyId;
                     var summary = await openingBalanceService.GetSummaryAsync(societyId);
                     if (summary == null)
                     {
                         Log.Information("Opening balance summary requested but not applied for society {SocietyId}", societyId);
-                        var errorResponse = ErrorResponse.Create(ErrorCodes.NOT_FOUND, "Opening balance not applied for this society", ctx.TraceIdentifier);
+                        var errorResponse = ErrorResponse.Create(ErrorCodes.RESOURCE_NOT_FOUND, "Opening balance not applied for this society", ctx.TraceIdentifier);
                         return Results.Json(errorResponse, statusCode: 404);
                     }
                     return Results.Ok(ApiResponse<OpeningBalanceSummaryResponse>.Success(summary, "Opening balance summary retrieved"));
