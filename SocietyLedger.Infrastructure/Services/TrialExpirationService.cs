@@ -21,6 +21,9 @@ namespace SocietyLedger.Infrastructure.Services
             _serviceProvider = serviceProvider;
         }
 
+        /// <summary>
+        /// Background service that checks and expires trial subscriptions daily.
+        /// </summary>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             _logger.LogInformation("Trial expiration service started");
@@ -46,6 +49,9 @@ namespace SocietyLedger.Infrastructure.Services
             }
         }
 
+        /// <summary>
+        /// Checks and processes expired trial subscriptions.
+        /// </summary>
         private async Task CheckExpiredTrialsAsync()
         {
             using var scope = _serviceProvider.CreateScope();

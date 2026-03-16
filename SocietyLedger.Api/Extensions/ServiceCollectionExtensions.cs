@@ -18,7 +18,9 @@ namespace SocietyLedger.Api.Extensions
 {
     public static class ServiceCollectionExtensions
     {
-
+        /// <summary>
+        /// Registers application-level use-case services and FluentValidation validators.
+        /// </summary>
         public static IServiceCollection AddApplicationServices(this IServiceCollection services, IConfiguration configuration)
         {
             services.AddValidatorsFromAssemblyContaining<RegisterRequestValidator>();
@@ -41,9 +43,13 @@ namespace SocietyLedger.Api.Extensions
             return services;
         }
 
+        /// <summary>
+        /// Registers infrastructure services: EF Core (Npgsql), Dapper, all repositories,
+        /// security helpers (PasswordHasher, TokenService), and Hangfire job classes.
+        /// Uses pgBouncer-compatible settings with a 120-second command timeout for Supabase cold starts.
+        /// </summary>
         public static IServiceCollection AddInfrastructureServices(this IServiceCollection services, IConfiguration configuration)
         {
-
             services.AddHttpContextAccessor();
 
             var connectionString = configuration.GetConnectionString("DefaultConnection");
@@ -88,10 +94,6 @@ namespace SocietyLedger.Api.Extensions
             services.AddScoped<IReportRepository, ReportRepository>();
             services.AddScoped<IReportService, ReportService>();
 
-            // OPTIONAL: prefer repository for refresh tokens instead of direct DbContext access.
-            // Uncomment & implement IRefreshTokenRepository + RefreshTokenRepository if you add it.
-            // services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
-
             services.AddSingleton<PasswordHasher>();
             services.AddScoped<ITokenService, TokenService>();
 
@@ -102,6 +104,9 @@ namespace SocietyLedger.Api.Extensions
             return services;
         }
 
+        /// <summary>
+        /// Registers shared cross-cutting services: logging and in-memory cache.
+        /// </summary>
         public static IServiceCollection AddSharedServices(this IServiceCollection services)
         {
             services.AddLogging();

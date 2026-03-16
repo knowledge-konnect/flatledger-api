@@ -16,6 +16,10 @@ namespace SocietyLedger.Api.Endpoints
 {
     public static class OpeningBalanceEndpoints
     {
+        /// <summary>
+        /// Maps opening balance routes: check status and bulk-upload pre-system dues per flat.
+        /// Opening balances are cleared FIFO when maintenance payments are processed.
+        /// </summary>
         public static void MapOpeningBalanceRoutes(this RouteGroupBuilder app, string groupName, ApiVersionSet versionSet)
         {
             var version_1_0 = new ApiVersion(ApiConstants.API_VERSION_1_0);
@@ -130,21 +134,16 @@ namespace SocietyLedger.Api.Endpoints
                         return Results.Json(errorResponse, statusCode: 401);
                     }
 
-                    // Get user to extract societyId and check role
+                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
+                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
+
+                    // Get user to extract societyId
                     var user = await userRepository.GetByIdAsync(userId);
                     if (user == null || !user.IsActive)
                     {
                         Log.Warning("Opening balance request by inactive or non-existent user {UserId}", userId);
                         var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "User not found or inactive", ctx.TraceIdentifier);
                         return Results.Json(errorResponse, statusCode: 401);
-                    }
-
-                    // Check if user has Treasurer or Society Admin role
-                    if (user.Role?.Code != RoleCodes.Treasurer && user.Role?.Code != RoleCodes.SocietyAdmin)
-                    {
-                        Log.Warning("Opening balance request by unauthorized user {UserId}, Role: {Role}", userId, user.Role?.Code);
-                        var errorResponse = ErrorResponse.Create(ErrorCodes.FORBIDDEN, "Only Treasurer and Society Admin roles can apply opening balance", ctx.TraceIdentifier);
-                        return Results.Json(errorResponse, statusCode: 403);
                     }
 
                     var societyId = user.SocietyId;

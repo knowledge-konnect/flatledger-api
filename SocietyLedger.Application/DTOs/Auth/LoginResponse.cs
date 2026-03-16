@@ -25,12 +25,15 @@ namespace SocietyLedger.Application.DTOs.Auth
         [JsonIgnore]
         public DateTime RefreshTokenExpiresAt { get; set; }
 
-        public IEnumerable<string> Roles { get; set; } = new List<string>();
+        /// <summary>Array of role objects — primary field used by the frontend collectUserRoles helper.</summary>
+        public IEnumerable<SocietyLedger.Application.DTOs.RoleDto> Roles { get; set; } = Enumerable.Empty<SocietyLedger.Application.DTOs.RoleDto>();
+
         public Guid UserPublicId { get; set; }
         public Guid SocietyPublicId { get; set; }
-        public string SocietyName { get; set; }
-        public string UserName { get; set; }
-        public string Role { get; set; }
+        public string SocietyName { get; set; } = string.Empty;
+        public string UserName { get; set; } = string.Empty;      
+        public string? Role { get; set; } 
+        public string? RoleDisplayName { get; set; }
         public bool ForcePasswordChange { get; set; }
     }
 }

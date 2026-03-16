@@ -40,11 +40,9 @@ namespace SocietyLedger.Api.Authorization
             if (httpContext.User.Identity?.IsAuthenticated != true)
                 return false;
 
-            // … with an admin-level role.
+            // … with society_admin role.
             return httpContext.User.HasClaim(
-                       ClaimTypes.Role, RoleCodes.SuperAdmin) ||
-                   httpContext.User.HasClaim(
-                       ClaimTypes.Role, RoleCodes.Admin);
+                       ClaimTypes.Role, RoleCodes.SocietyAdmin);
         }
     }
 }

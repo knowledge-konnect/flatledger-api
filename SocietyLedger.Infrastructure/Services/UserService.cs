@@ -1,9 +1,12 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using SocietyLedger.Application.DTOs;
 using SocietyLedger.Application.DTOs.Auth;
 using SocietyLedger.Application.DTOs.User;
 using SocietyLedger.Application.Interfaces.Repositories;
-using SocietyLedger.Application.Interfaces.Services;using SocietyLedger.Domain.Constants;using SocietyLedger.Domain.Entities;
+using SocietyLedger.Application.Interfaces.Services;
+using SocietyLedger.Domain.Constants;
+using SocietyLedger.Domain.Entities;
 using SocietyLedger.Domain.Exceptions;
 using SocietyLedger.Infrastructure.Persistence.Contexts;
 
@@ -31,6 +34,9 @@ namespace SocietyLedger.Infrastructure.Services
             _db = db;
         }
 
+        /// <summary>
+        /// Returns user details by ID.
+        /// </summary>
         public async Task<UserResponseDto?> GetUserByIdAsync(long userId)
         {
             var user = await GetActiveUserAsync(userId);
@@ -48,13 +54,17 @@ namespace SocietyLedger.Infrastructure.Services
                 LastLogin: user.LastLogin,
                 CreatedAt: user.CreatedAt,
                 UpdatedAt: user.UpdatedAt,
-                SocietyPublicId: user.SocietyPublicId
+                SocietyPublicId: user.SocietyPublicId,
+                Role: role?.Code,
+                Roles: role != null
+                    ? new[] { new RoleDto { Id = role.Id, Code = role.Code, DisplayName = role.DisplayName } }
+                    : null
             );
         }
 
-        // ---------------------------------------------------------------
-        // Self-service profile update (only mobile is allowed via PATCH)
-        // ---------------------------------------------------------------
+        /// <summary>
+        /// Updates user profile (self-service, only mobile allowed).
+        /// </summary>
         public async Task<ProfileResponse> UpdateProfileAsync(long userId, UpdateProfileRequest request)
         {
             if (request == null)
@@ -124,6 +134,9 @@ namespace SocietyLedger.Infrastructure.Services
             return authUser;
         }
 
+        /// <summary>
+        /// Returns all users for admin in the same society.
+        /// </summary>
         public async Task<List<UserResponseDto>> GetUsersForAdminAsync(long authUserId)
         {
             var authUser = await ValidateAdminUserAsync(authUserId, "user list");
@@ -131,6 +144,9 @@ namespace SocietyLedger.Infrastructure.Services
             return users.ToList();
         }
 
+        /// <summary>
+        /// Returns user by public ID for admin.
+        /// </summary>
         public async Task<UserResponseDto> GetUserByPublicIdForAdminAsync(Guid publicId, long authUserId)
         {
             var authUser = await ValidateAdminUserAsync(authUserId, "user get");
@@ -143,6 +159,9 @@ namespace SocietyLedger.Infrastructure.Services
             return user;
         }
 
+        /// <summary>
+        /// Creates a user for admin.
+        /// </summary>
         public async Task<CreateUserResponseDto> CreateUserForAdminAsync(CreateUserDto dto, long authUserId)
         {
             var authUser = await ValidateAdminUserAsync(authUserId, "user create");
@@ -151,6 +170,9 @@ namespace SocietyLedger.Infrastructure.Services
             return created;
         }
 
+        /// <summary>
+        /// Updates a user for admin.
+        /// </summary>
         public async Task<UserResponseDto> UpdateUserForAdminAsync(UpdateUserDto dto, long authUserId)
         {
             var authUser = await ValidateAdminUserAsync(authUserId, "user update");
@@ -159,6 +181,9 @@ namespace SocietyLedger.Infrastructure.Services
             return updated;
         }
 
+        /// <summary>
+        /// Deletes a user for admin.
+        /// </summary>
         public async Task<bool> DeleteUserForAdminAsync(Guid publicId, long authUserId)
         {
             var authUser = await ValidateAdminUserAsync(authUserId, "user delete");
@@ -167,7 +192,9 @@ namespace SocietyLedger.Infrastructure.Services
             return true;
         }
 
-        // Implementation for IUserService
+        /// <summary>
+        /// Returns all users for a society.
+        /// </summary>
         public async Task<IEnumerable<UserResponseDto>> GetBySocietyAsync(long societyId)
         {
             var users = await _userRepo.GetBySocietyIdAsync(societyId);
@@ -175,23 +202,33 @@ namespace SocietyLedger.Infrastructure.Services
             
             // Fetch all roles in a single query to avoid N+1 problem
             var roles = await _roleRepo.GetByIdsAsync(roleIds);
-            var roleDict = roles.ToDictionary(r => r.Id, r => r.DisplayName);
+            var roleDict = roles.ToDictionary(r => r.Id, r => r);
             
-            return users.Select(user => new UserResponseDto(
-                PublicId: user.PublicId,
-                Name: user.Name,
-                Email: user.Email,
-                Mobile: user.Mobile,
-                RoleDisplayName: roleDict.ContainsKey(user.RoleId) ? roleDict[user.RoleId] : string.Empty,
-                IsActive: user.IsActive,
-                ForcePasswordChange: user.ForcePasswordChange,
-                LastLogin: user.LastLogin,
-                CreatedAt: user.CreatedAt,
-                UpdatedAt: user.UpdatedAt,
-                SocietyPublicId: user.SocietyPublicId
-            ));
+            return users.Select(user => {
+                roleDict.TryGetValue(user.RoleId, out var role);
+                return new UserResponseDto(
+                    PublicId: user.PublicId,
+                    Name: user.Name,
+                    Email: user.Email,
+                    Mobile: user.Mobile,
+                    RoleDisplayName: role?.DisplayName ?? string.Empty,
+                    IsActive: user.IsActive,
+                    ForcePasswordChange: user.ForcePasswordChange,
+                    LastLogin: user.LastLogin,
+                    CreatedAt: user.CreatedAt,
+                    UpdatedAt: user.UpdatedAt,
+                    SocietyPublicId: user.SocietyPublicId,
+                    Role: role?.Code,
+                    Roles: role != null
+                        ? new[] { new RoleDto { Id = role.Id, Code = role.Code, DisplayName = role.DisplayName } }
+                        : null
+                );
+            });
         }
 
+        /// <summary>
+        /// Returns user by public ID for a society.
+        /// </summary>
         public async Task<UserResponseDto> GetByPublicIdAsync(Guid publicId, long societyId)
         {
             var user = await _userRepo.GetByPublicIdAsync(publicId, societyId);
@@ -209,10 +246,17 @@ namespace SocietyLedger.Infrastructure.Services
                 LastLogin: user.LastLogin,
                 CreatedAt: user.CreatedAt,
                 UpdatedAt: user.UpdatedAt,
-                SocietyPublicId: user.SocietyPublicId
+                SocietyPublicId: user.SocietyPublicId,
+                Role: role?.Code,
+                Roles: role != null
+                    ? new[] { new RoleDto { Id = role.Id, Code = role.Code, DisplayName = role.DisplayName } }
+                    : null
             );
         }
 
+        /// <summary>
+        /// Creates a user for a society.
+        /// </summary>
         public async Task<CreateUserResponseDto> CreateAsync(CreateUserDto dto, long societyId)
         {
             if (dto == null)
@@ -281,7 +325,7 @@ namespace SocietyLedger.Infrastructure.Services
         }
 
         /// <summary>
-        /// Update user details. Society context ensures isolation.
+        /// Updates user details for a society.
         /// </summary>
         public async Task<UserResponseDto> UpdateAsync(UpdateUserDto dto, long societyId)
         {
@@ -309,10 +353,10 @@ namespace SocietyLedger.Infrastructure.Services
                     throw new DuplicateException("user", "mobile number");
             }
 
-            // Verify role exists
+            // Verify role exists and is valid
             var role = await _roleRepo.GetByCodeAsync(dto.RoleCode);
             if (role == null)
-                throw new InvalidOperationException($"Role with code '{dto.RoleCode}' not found.");
+                throw new ValidationException($"Invalid role code '{dto.RoleCode}'. Must be 'society_admin' or 'viewer'.");
 
             // Update user
             user.Name = dto.Name;
@@ -337,12 +381,14 @@ namespace SocietyLedger.Infrastructure.Services
                 LastLogin: user.LastLogin,
                 CreatedAt: user.CreatedAt,
                 UpdatedAt: user.UpdatedAt,
-                SocietyPublicId: user.SocietyPublicId
+                SocietyPublicId: user.SocietyPublicId,
+                Role: role.Code,
+                Roles: new[] { new RoleDto { Id = role.Id, Code = role.Code, DisplayName = role.DisplayName } }
             );
         }
 
         /// <summary>
-        /// Soft delete a user (sets is_deleted = true).
+        /// Soft deletes a user (sets is_deleted = true).
         /// </summary>
         public async Task DeleteByPublicIdAsync(Guid publicId, long societyId)
         {
@@ -350,6 +396,31 @@ namespace SocietyLedger.Infrastructure.Services
 
             if (user == null)
                 throw new NotFoundException("User", publicId.ToString());
+
+            // Block deletion if this is the last active admin in the society.
+            var isAdmin = await _db.users
+                .Include(u => u.role)
+                .AnyAsync(u => u.public_id == publicId
+                            && u.society_id == societyId
+                            && !u.is_deleted
+                            && u.role != null
+                            && u.role.code == RoleCodes.SocietyAdmin);
+
+            if (isAdmin)
+            {
+                var activeAdminCount = await _db.users
+                    .Include(u => u.role)
+                    .CountAsync(u => u.society_id == societyId
+                                 && !u.is_deleted
+                                 && u.is_active
+                                 && u.role != null
+                                 && u.role.code == RoleCodes.SocietyAdmin);
+
+                if (activeAdminCount <= 1)
+                    throw new ConflictException(
+                        "Cannot delete the only admin user in the society. " +
+                        "Assign another user as admin first.");
+            }
 
             var deleted = await _userRepo.SoftDeleteByPublicIdAsync(publicId, societyId);
             if (deleted)

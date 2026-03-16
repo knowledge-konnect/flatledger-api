@@ -87,10 +87,10 @@ namespace SocietyLedger.Infrastructure.Services
             if (authUser.SocietyPublicId != societyPublicId)
                 throw new AuthorizationException("You can only access maintenance configuration for your own society.");
 
-            // Verify the user has Admin or Treasurer role
+            // Verify the user has Society Admin role
             var role = authUser.Role?.Code ?? string.Empty;
-            if (role != RoleCodes.Admin && role != RoleCodes.Treasurer && role != RoleCodes.SocietyAdmin)
-                throw new AuthorizationException("Only Admin or Treasurer users can access maintenance configuration.");
+            if (role != RoleCodes.SocietyAdmin)
+                throw new AuthorizationException("Only Society Admin users can access maintenance configuration.");
         }
     }
 }

@@ -13,6 +13,9 @@ namespace SocietyLedger.Api.Endpoints
 {
     public static class NotificationRoutes
     {
+        /// <summary>
+        /// Maps notification routes: get and update user notification preferences.
+        /// </summary>
         public static void MapNotificationRoutes(this RouteGroupBuilder app, string groupName, ApiVersionSet versionSet)
         {
             var version_1_0 = new ApiVersion(ApiConstants.API_VERSION_1_0);

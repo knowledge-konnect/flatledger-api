@@ -12,6 +12,9 @@ namespace SocietyLedger.Api.Endpoints
 {
     public static class PaymentModeEndpoints
     {
+        /// <summary>
+        /// Maps payment mode routes: retrieve all available payment modes (cash, UPI, bank transfer, etc.).
+        /// </summary>
         public static void MapPaymentModeRoutes(this RouteGroupBuilder app, string groupName, ApiVersionSet versionSet)
         {
             var version_1_0 = new ApiVersion(ApiConstants.API_VERSION_1_0);

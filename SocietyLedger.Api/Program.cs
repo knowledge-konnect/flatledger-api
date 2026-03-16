@@ -161,8 +161,6 @@ builder.Services.AddRateLimiter(options =>
     };
 });
 
-//builder.Services.ConfigureOptions<ConfigureSwaggerOptions>();
-
 // ----------------------------
 // JWT Authentication
 // ----------------------------
@@ -200,7 +198,6 @@ builder.Services.AddAuthorization(options =>
         policy.Requirements.Add(new SubscriptionRequirement()));
 });
 
-// Register the authorization handler
 builder.Services.AddScoped<IAuthorizationHandler, SubscriptionAuthorizationHandler>();
 // ----------------------------
 // Application services
@@ -209,9 +206,7 @@ builder.Services.AddApplicationServices(builder.Configuration);
 builder.Services.AddInfrastructureServices(builder.Configuration);
 builder.Services.AddSharedServices();
 
-// ----------------------------
-// Hangfire — background job processing (disabled for now)
-// ----------------------------
+// Hangfire background processing is currently disabled.
 // builder.Services.AddHangfireServices(builder.Configuration);
 
 // ----------------------------
@@ -227,12 +222,17 @@ var app = builder.Build();
 // ----------------------------
 // Middleware pipeline
 // ----------------------------
-app.UseSwagger();
-app.UseSwaggerUI(c =>
+// Swagger is only served in non-production environments.
+// In production the schema is private — exposed Swagger reveals the full attack surface.
+if (!app.Environment.IsProduction())
 {
-    c.SwaggerEndpoint("/swagger/v1/swagger.json", "SocietyLedger API V1");
-    c.RoutePrefix = string.Empty; 
-});
+    app.UseSwagger();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "SocietyLedger API V1");
+        c.RoutePrefix = "swagger";
+    });
+}
 
 // Skip HTTPS redirect on Render — SSL is terminated at the load balancer
 if (!app.Environment.IsProduction())
@@ -259,36 +259,6 @@ app.UseMiddleware<ExceptionMiddleware>();
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
-
-// ----------------------------
-// Hangfire Dashboard
-// Secured: accessible only to authenticated admin/super-admin users.
-// Path: /hangfire
-// ----------------------------
-//app.UseHangfireDashboard("/hangfire", new DashboardOptions
-//{
-//    DashboardTitle = "SocietyLedger Jobs",
-//    // Resolve the filter through DI so it can use IWebHostEnvironment / IConfiguration.
-//    Authorization =
-//    [
-//        new HangfireAuthorizationFilter(
-//            app.Services.GetRequiredService<IWebHostEnvironment>(),
-//            app.Services.GetRequiredService<IConfiguration>())
-//    ]
-//});
-
-//// ----------------------------
-//// Recurring Jobs
-//// 1st of every month at 00:05 server time (UTC) — Cron: "5 0 1 * *"
-//// ----------------------------
-//RecurringJob.AddOrUpdate<MonthlyBillingJob>(
-//    recurringJobId: "monthly-billing",
-//    methodCall:    job => job.ExecuteAsync(),
-//    cronExpression: "5 0 1 * *",
-//    new RecurringJobOptions
-//    {
-//        TimeZone = TimeZoneInfo.Utc
-//    });
 
 // Health check endpoint
 app.MapHealthChecks("/health");
@@ -349,11 +319,9 @@ app.MapDashboardEndpoints();
 app.MapGroup(ApiRoutes.REPORTS)
    .MapReportRoutes(RouteGroupNames.REPORTS, versionSet);
 
-// ----------------------------
-// DB warmup — wake Supabase before accepting requests.
-// Free-tier Supabase can take 60-90s to resume from idle.
-// ----------------------------
-// Warmup: retry until Supabase wakes (free tier can take 60-90s after inactivity)
+// Proactively warm up the Supabase connection pool on startup.
+// Free-tier Supabase instances can take 60-90s to resume from idle; retrying here
+// prevents the first real request from timing out.
 const int maxWarmupAttempts = 5;
 for (int attempt = 1; attempt <= maxWarmupAttempts; attempt++)
 {

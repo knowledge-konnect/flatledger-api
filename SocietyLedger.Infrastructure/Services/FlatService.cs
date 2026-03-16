@@ -30,6 +30,9 @@ namespace SocietyLedger.Infrastructure.Services
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
+        /// <summary>
+        /// Returns all flats for a society.
+        /// </summary>
         public async Task<IEnumerable<FlatResponseDto>> GetBySocietyIdAsync(long societyId)
         {
             var list = await _repo.GetBySocietyIdAsync(societyId);
@@ -97,8 +100,7 @@ namespace SocietyLedger.Infrastructure.Services
         }
 
         /// <summary>
-        /// Update an existing flat with tenant isolation.
-        /// Returns the updated DTO if found, or null if not.
+        /// Update an existing flat with tenant isolation. Returns the updated DTO if found, or null if not.
         /// </summary>
         public async Task<FlatResponseDto?> UpdateAsync(UpdateFlatDto dto, long userId)
         {
@@ -126,6 +128,20 @@ namespace SocietyLedger.Infrastructure.Services
                 if (status == null)
                     throw new ValidationException($"Invalid flat status code: {dto.StatusCode}");
                 statusId = status.Id;
+
+                // #4 — Cannot mark a flat as vacant while it has outstanding unpaid bills.
+                if (status.Code == FlatStatusCodes.Vacant)
+                {
+                    var hasUnpaid = await _db.bills
+                        .AnyAsync(b => b.flat_id == existing.Id
+                                    && !b.is_deleted
+                                    && b.status_code != BillStatusCodes.Paid
+                                    && b.status_code != BillStatusCodes.Cancelled);
+
+                    if (hasUnpaid)
+                        throw new ConflictException(
+                            $"Cannot mark flat '{existing.FlatNo}' as vacant — it has outstanding unpaid bills. Settle all dues first.");
+                }
             }
 
             existing.FlatNo = dto.FlatNo ?? existing.FlatNo;
@@ -145,8 +161,7 @@ namespace SocietyLedger.Infrastructure.Services
         
 
         /// <summary>
-        /// Delete a flat by its public UUID with tenant isolation.
-        /// Returns true if deleted, false if not found.
+        /// Delete a flat by its public UUID with tenant isolation. Returns true if deleted, false if not found.
         /// </summary>
         public async Task<bool> DeleteByPublicIdAsync(Guid publicId, long userId)
         {
@@ -155,6 +170,22 @@ namespace SocietyLedger.Infrastructure.Services
             var existing = await _repo.GetByPublicIdAsync(publicId, societyId);
             if (existing == null)
                 throw new NotFoundException("Flat", publicId.ToString());
+
+            // #3 — Block deletion when the flat has outstanding unpaid bills.
+            var unpaidBills = await _db.bills
+                .Where(b => b.flat_id == existing.Id
+                         && !b.is_deleted
+                         && b.status_code != BillStatusCodes.Paid
+                         && b.status_code != BillStatusCodes.Cancelled)
+                .Select(b => new { b.amount, b.paid_amount })
+                .ToListAsync();
+
+            if (unpaidBills.Any())
+            {
+                var totalOutstanding = unpaidBills.Sum(b => b.amount - b.paid_amount);
+                throw new ConflictException(
+                    $"Cannot delete flat '{existing.FlatNo}' — it has {unpaidBills.Count} unpaid bill(s) totaling \u20b9{totalOutstanding:N2}. Settle all dues before deleting.");
+            }
 
             await _repo.DeleteByPublicIdAsync(publicId, societyId);
             await _repo.SaveChangesAsync();
@@ -169,6 +200,9 @@ namespace SocietyLedger.Infrastructure.Services
             return statuses.Select(s => new FlatStatusDto(s.Code, s.DisplayName));
         }
 
+        /// <summary>
+        /// Returns the ledger for a flat, including all adjustments and payments, with running balance.
+        /// </summary>
         public async Task<FlatLedgerResponse> GetFlatLedgerAsync(Guid publicId, long userId, DateTime? startDate = null, DateTime? endDate = null)
         {
             var societyId = await _userContext.GetSocietyIdAsync(userId);
@@ -286,6 +320,9 @@ namespace SocietyLedger.Infrastructure.Services
             };
         }
 
+        /// <summary>
+        /// Returns the financial summary for a flat, including opening balance, bill outstanding, total charges, and payments.
+        /// </summary>
         public async Task<FlatFinancialSummaryResponse> GetFlatFinancialSummaryAsync(Guid publicId, long userId)
         {
             var societyId = await _userContext.GetSocietyIdAsync(userId);

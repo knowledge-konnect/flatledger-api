@@ -81,6 +81,11 @@ namespace SocietyLedger.Application.DTOs.MaintenancePayment
         public decimal                           TotalPaid        { get; init; }
         public List<MaintenancePaymentAllocation> Allocations     { get; init; } = [];
         public decimal                           RemainingAdvance { get; init; }
+        /// <summary>
+        /// Informational message when all dues are already settled and the payment
+        /// was recorded as advance credit, or any other notable allocation outcome.
+        /// </summary>
+        public string?                           Message          { get; init; }
     }
 
     /// <summary>

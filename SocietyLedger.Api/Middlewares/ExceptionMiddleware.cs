@@ -5,6 +5,10 @@ using System.Text.Json;
 
 namespace SocietyLedger.Api.Middlewares
 {
+    /// <summary>
+    /// Global exception middleware that converts unhandled exceptions into structured
+    /// JSON error responses, mapping domain exceptions to the appropriate HTTP status codes.
+    /// </summary>
     public class ExceptionMiddleware
     {
         private readonly RequestDelegate _next;
@@ -16,6 +20,10 @@ namespace SocietyLedger.Api.Middlewares
             _logger = logger;
         }
 
+        /// <summary>
+        /// Invokes the next middleware and catches any unhandled exception,
+        /// converting it to a structured error response.
+        /// </summary>
         public async Task InvokeAsync(HttpContext context)
         {
             try
