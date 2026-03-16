@@ -6,12 +6,14 @@ using Npgsql;
 using SocietyLedger.Api.Filters;
 using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Application.Interfaces.Services;
+using SocietyLedger.Application.Interfaces.Services.Admin;
 using SocietyLedger.Application.Validators.Auth;
 using SocietyLedger.Infrastructure.Data;
 using SocietyLedger.Infrastructure.Jobs;
 using SocietyLedger.Infrastructure.Persistence.Contexts;
 using SocietyLedger.Infrastructure.Persistence.Repositories;
 using SocietyLedger.Infrastructure.Services;
+using SocietyLedger.Infrastructure.Services.Admin;
 using SocietyLedger.Infrastructure.Services.Common;
 using SocietyLedger.Shared.Jwt;
 namespace SocietyLedger.Api.Extensions
@@ -39,6 +41,15 @@ namespace SocietyLedger.Api.Extensions
             services.AddScoped<IBillingService, BillingService>();
             services.AddScoped<IMaintenanceConfigService, MaintenanceConfigService>();
             services.AddScoped<INotificationPreferenceService, NotificationPreferenceService>();
+
+            // SaaS Admin module
+            services.AddScoped<IAdminAuthService, AdminAuthService>();
+            services.AddScoped<IAdminPlanService, AdminPlanService>();
+            services.AddScoped<IAdminSocietyService, AdminSocietyService>();
+            services.AddScoped<IAdminSubscriptionService, AdminSubscriptionService>();
+            services.AddScoped<IAdminPaymentService, AdminPaymentService>();
+            services.AddScoped<IAdminFeatureFlagService, AdminFeatureFlagService>();
+            services.AddScoped<IAdminPlatformSettingService, AdminPlatformSettingService>();
 
             return services;
         }

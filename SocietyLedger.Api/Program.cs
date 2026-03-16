@@ -10,6 +10,7 @@ using Serilog;
 using Serilog.Events;
 using SocietyLedger.Api.Authorization;
 using SocietyLedger.Api.Endpoints;
+using SocietyLedger.Api.Endpoints.Admin;
 using SocietyLedger.Api.Extensions;
 using SocietyLedger.Api.Middlewares;
 using SocietyLedger.Domain.Exceptions;
@@ -196,6 +197,11 @@ builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("ActiveSubscription", policy =>
         policy.Requirements.Add(new SubscriptionRequirement()));
+
+    // SuperAdmin policy: grants access to all /api/admin/* endpoints.
+    // Only JWTs issued by AdminAuthService carry the role:super_admin claim.
+    options.AddPolicy("SuperAdmin", policy =>
+        policy.RequireClaim(System.Security.Claims.ClaimTypes.Role, "super_admin"));
 });
 
 builder.Services.AddScoped<IAuthorizationHandler, SubscriptionAuthorizationHandler>();
@@ -230,7 +236,7 @@ if (!app.Environment.IsProduction())
     app.UseSwaggerUI(c =>
     {
         c.SwaggerEndpoint("/swagger/v1/swagger.json", "SocietyLedger API V1");
-        c.RoutePrefix = "swagger";
+        c.RoutePrefix = "";
     });
 }
 
@@ -315,6 +321,30 @@ app.MapGroup(ApiRoutes.NOTIFICATIONS)
 
 // Dashboard endpoints
 app.MapDashboardEndpoints();
+
+// -----------------------------------------------
+// SaaS Admin module routes
+// -----------------------------------------------
+app.MapGroup(ApiRoutes.ADMIN_AUTH)
+   .MapAdminAuthRoutes(RouteGroupNames.ADMIN_AUTH, versionSet);
+
+app.MapGroup(ApiRoutes.ADMIN_PLANS)
+    .MapAdminPlanRoutes(RouteGroupNames.ADMIN_PLANS, versionSet);
+
+app.MapGroup(ApiRoutes.ADMIN_SOCIETIES)
+    .MapAdminSocietyRoutes(RouteGroupNames.ADMIN_SOCIETIES, versionSet);
+
+app.MapGroup(ApiRoutes.ADMIN_SUBSCRIPTIONS)
+    .MapAdminSubscriptionRoutes(RouteGroupNames.ADMIN_SUBSCRIPTIONS, versionSet);
+
+app.MapGroup(ApiRoutes.ADMIN_PAYMENTS)
+    .MapAdminPaymentRoutes(RouteGroupNames.ADMIN_PAYMENTS, versionSet);
+
+app.MapGroup(ApiRoutes.ADMIN_FEATURES)
+    .MapAdminFeatureFlagRoutes(RouteGroupNames.ADMIN_FEATURES, versionSet);
+
+app.MapGroup(ApiRoutes.ADMIN_SETTINGS)
+    .MapAdminPlatformSettingRoutes(RouteGroupNames.ADMIN_SETTINGS, versionSet);
 
 app.MapGroup(ApiRoutes.REPORTS)
    .MapReportRoutes(RouteGroupNames.REPORTS, versionSet);

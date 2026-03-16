@@ -82,4 +82,7 @@ public partial class society
 
     [InverseProperty("society")]
     public virtual ICollection<user> users { get; set; } = new List<user>();
+
+    [InverseProperty("society")]
+    public virtual ICollection<feature_flag> feature_flags { get; set; } = new List<feature_flag>();
 }

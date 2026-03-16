@@ -24,5 +24,14 @@ namespace SocietyLedger.Shared
         public const string PAYMENT_MODE = "Payment Mode";
         public const string OPENING_BALANCE = "Opening Balance";
         public const string REPORTS = "Reports";
+
+        // SaaS Admin module
+        public const string ADMIN_AUTH = "Admin - Authentication";
+        public const string ADMIN_PLANS = "Admin - Plans";
+        public const string ADMIN_SOCIETIES = "Admin - Societies";
+        public const string ADMIN_SUBSCRIPTIONS = "Admin - Subscriptions";
+        public const string ADMIN_PAYMENTS = "Admin - Payments";
+        public const string ADMIN_FEATURES = "Admin - Feature Flags";
+        public const string ADMIN_SETTINGS = "Admin - Platform Settings";
     }
 }

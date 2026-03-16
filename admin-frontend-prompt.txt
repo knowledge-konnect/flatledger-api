@@ -1,0 +1,501 @@
+================================================================================
+  FRONTEND PROMPT — FlatLedger SaaS Admin Dashboard
+================================================================================
+
+Build a production-ready SaaS Admin Dashboard web application for FlatLedger.
+This is an internal super-admin panel — NOT the society-facing app.
+
+────────────────────────────────────────────────────────────────────────────────
+TECH STACK (recommended)
+────────────────────────────────────────────────────────────────────────────────
+- Framework   : React 18 + TypeScript
+- Styling     : Tailwind CSS + shadcn/ui (or Ant Design Pro)
+- State/Data  : TanStack Query (React Query v5) for server state
+- Forms       : React Hook Form + Zod (validation mirrors backend rules)
+- Routing     : React Router v6 (or Next.js App Router)
+- HTTP client : Axios with an interceptor that attaches Bearer token
+- Auth store  : Zustand (or Context) — persists token in localStorage
+
+────────────────────────────────────────────────────────────────────────────────
+GLOBAL CONVENTIONS
+────────────────────────────────────────────────────────────────────────────────
+Base URL        : https://<API_HOST>   (env var VITE_API_BASE_URL)
+API version     : v1 (all routes are versioned)
+Auth header     : Authorization: Bearer <access_token>
+All responses wrap data in:
+  {
+    "isSuccess": true,
+    "data": <payload>,
+    "message": "...",          // present on mutations
+  }
+Paged responses have data shaped as:
+  {
+    "items": [...],
+    "totalCount": 120,
+    "page": 1,
+    "pageSize": 20,
+    "totalPages": 6
+  }
+Error shape:
+  {
+    "code": "VALIDATION_ERROR",
+    "message": "...",
+    "errors": { "fieldName": ["msg"] }   // validation errors only
+  }
+Token expiry    : 60 minutes — redirect to /login on 401.
+
+────────────────────────────────────────────────────────────────────────────────
+ROUTING STRUCTURE
+────────────────────────────────────────────────────────────────────────────────
+/login                      → Login page (public)
+/dashboard                  → Overview / stats (protected)
+/plans                      → Plan list
+/plans/new                  → Create plan
+/plans/:id/edit             → Edit plan
+/societies                  → Society list
+/societies/:id/edit         → Edit society
+/subscriptions              → Subscription list
+/subscriptions/:id/edit     → Edit subscription
+/payments                   → Payment list (read-only)
+/payments/:id               → Payment detail
+/features                   → Feature flags list
+/features/new               → Create feature flag
+/features/:id/edit          → Edit feature flag
+/settings                   → Platform settings
+All routes except /login are wrapped in a ProtectedRoute component that checks
+for a valid token and redirects to /login otherwise.
+
+────────────────────────────────────────────────────────────────────────────────
+SHARED LAYOUT
+────────────────────────────────────────────────────────────────────────────────
+- Left sidebar with nav links: Dashboard, Plans, Societies, Subscriptions,
+  Payments, Feature Flags, Platform Settings
+- Top bar: admin name, logout button
+- Toast notifications for API success/error responses
+- A reusable <DataTable> component with pagination, search input,
+  loading skeleton, empty state
+
+────────────────────────────────────────────────────────────────────────────────
+MODULE 1 — AUTHENTICATION
+────────────────────────────────────────────────────────────────────────────────
+Page: /login
+
+POST /api/admin/auth/login
+  Request body:
+    {
+      "email": "admin@example.com",   // required, valid email
+      "password": "Secret123!"        // required, min 8 chars
+    }
+  Success 200:
+    {
+      "data": {
+        "accessToken": "eyJ...",
+        "accessTokenExpiresAt": "2026-03-16T11:00:00Z",
+        "adminPublicId": "uuid",
+        "name": "Super Admin",
+        "email": "admin@example.com"
+      }
+    }
+  Error 401: { "code": "INVALID_CREDENTIALS", "message": "Invalid email or password." }
+
+  UI:
+    - Centered card with logo, email + password fields
+    - Show/hide password toggle
+    - Zod schema: email().min(1), string().min(8)
+    - On success: store token + expiry + name in Zustand, navigate to /dashboard
+    - On error: show inline error message under the form
+
+GET /api/admin/auth/me   (Bearer token required)
+  Success 200:
+    {
+      "data": {
+        "adminPublicId": "uuid",
+        "name": "Super Admin",
+        "email": "admin@example.com"
+      }
+    }
+  Use on app boot to rehydrate the admin identity if a token exists in storage.
+
+────────────────────────────────────────────────────────────────────────────────
+MODULE 2 — PLANS
+────────────────────────────────────────────────────────────────────────────────
+GET /api/admin/plans?page=1&pageSize=20&search=&isActive=
+  Query params:
+    page        number (default 1)
+    pageSize    number (default 20)
+    search      string (optional, filter by name)
+    isActive    boolean (optional)
+  Response data.items[]:
+    {
+      "id": "uuid",
+      "name": "Starter",
+      "monthlyAmount": 499.00,
+      "currency": "INR",
+      "isActive": true,
+      "durationMonths": 1,
+      "createdAt": "2026-01-01T00:00:00Z"
+    }
+  UI: table with columns Name | Amount | Currency | Duration | Active | Actions
+      Active column: toggle badge (green/red). Actions: Edit, Delete.
+
+GET /api/admin/plans/:id
+  Response: single AdminPlanDto (same shape as above)
+  Use to pre-fill the edit form.
+
+POST /api/admin/plans
+  Request body:
+    {
+      "name": "Pro",             // required
+      "monthlyAmount": 999.00,   // required, > 0
+      "currency": "INR",         // required
+      "durationMonths": 12       // required, >= 1
+    }
+  Success 200: created AdminPlanDto
+  UI: modal or /plans/new page with React Hook Form + Zod
+
+PUT /api/admin/plans/:id
+  Request body:
+    {
+      "name": "Pro",
+      "monthlyAmount": 999.00,
+      "currency": "INR",
+      "isActive": true,
+      "durationMonths": 12
+    }
+  Success 200: updated AdminPlanDto
+
+DELETE /api/admin/plans/:id
+  Success 200: { "data": "Plan deleted successfully" }
+  UI: confirmation dialog before delete
+
+────────────────────────────────────────────────────────────────────────────────
+MODULE 3 — SOCIETIES
+────────────────────────────────────────────────────────────────────────────────
+GET /api/admin/societies?page=1&pageSize=20&search=&isDeleted=
+  Query params:
+    page        number
+    pageSize    number
+    search      string (optional, filter by name/city)
+    isDeleted   boolean (optional)
+  Response data.items[]:
+    {
+      "id": 1,
+      "publicId": "uuid",
+      "name": "Green Valley",
+      "address": "123 Main St",
+      "city": "Mumbai",
+      "state": "Maharashtra",
+      "pincode": "400001",
+      "currency": "INR",
+      "defaultMaintenanceCycle": "monthly",
+      "createdAt": "2026-01-15T00:00:00Z",
+      "updatedAt": "2026-02-10T00:00:00Z",
+      "isDeleted": false,
+      "deletedAt": null,
+      "onboardingDate": "2026-01-15"
+    }
+  UI: table with Name | City | State | Currency | Cycle | Status (Active/Deleted) | Actions
+      Status: badge. Actions: View (read-only detail panel), Edit.
+
+GET /api/admin/societies/:id
+  Response: single AdminSocietyDto
+
+PUT /api/admin/societies/:id
+  Request body:
+    {
+      "name": "Green Valley",          // required
+      "address": "123 Main St",        // optional
+      "city": "Mumbai",                // optional
+      "state": "Maharashtra",          // optional
+      "pincode": "400001",             // optional
+      "currency": "INR",               // required
+      "defaultMaintenanceCycle": "monthly",  // required
+      "isDeleted": false               // optional — soft-delete toggle
+    }
+  Success 200: updated AdminSocietyDto
+  UI: side-drawer or edit page; include "Soft Delete" toggle prominently
+
+────────────────────────────────────────────────────────────────────────────────
+MODULE 4 — SUBSCRIPTIONS
+────────────────────────────────────────────────────────────────────────────────
+GET /api/admin/subscriptions?page=1&pageSize=20&status=&userId=
+  Query params:
+    page        number
+    pageSize    number
+    status      string (optional): "active" | "cancelled" | "trial" | "expired"
+    userId      number (optional)
+  Response data.items[]:
+    {
+      "id": "uuid",
+      "userId": 42,
+      "userName": "Ravi Kumar",
+      "userEmail": "ravi@example.com",
+      "planId": "uuid",
+      "planName": "Pro",
+      "status": "active",
+      "subscribedAmount": 999.00,
+      "currency": "INR",
+      "currentPeriodStart": "2026-03-01T00:00:00Z",
+      "currentPeriodEnd": "2026-04-01T00:00:00Z",
+      "trialStart": null,
+      "trialEnd": null,
+      "cancelledAt": null,
+      "createdAt": "2026-03-01T00:00:00Z",
+      "updatedAt": "2026-03-01T00:00:00Z"
+    }
+  UI: table with User | Plan | Status | Amount | Period Start | Period End | Actions
+      Status: colored badge (active=green, cancelled=red, trial=yellow, expired=grey)
+
+GET /api/admin/subscriptions/:id
+  Response: single AdminSubscriptionDto (same shape)
+
+PUT /api/admin/subscriptions/:id
+  Request body:
+    {
+      "planId": "uuid",                         // required
+      "status": "active",                       // required
+      "currentPeriodStart": "2026-03-01T00:00:00Z",  // optional
+      "currentPeriodEnd": "2026-04-01T00:00:00Z"     // optional
+    }
+  Success 200: updated AdminSubscriptionDto
+  UI: edit drawer — plan selector (dropdown populated from GET /api/admin/plans),
+      status select, date pickers for period
+
+────────────────────────────────────────────────────────────────────────────────
+MODULE 5 — PAYMENTS  (read-only)
+────────────────────────────────────────────────────────────────────────────────
+GET /api/admin/payments?page=1&pageSize=20&societyId=&paymentType=&from=&to=
+  Query params:
+    page        number
+    pageSize    number
+    societyId   number (optional)
+    paymentType string (optional)
+    from        ISO date string (optional)
+    to          ISO date string (optional)
+  Response data.items[]:
+    {
+      "id": 101,
+      "publicId": "uuid",
+      "societyId": 1,
+      "billId": 55,
+      "flatId": 12,
+      "amount": 3500.00,
+      "datePaid": "2026-03-10T00:00:00Z",
+      "modeCode": "UPI",
+      "reference": "UPI2026031012345",
+      "paymentType": "maintenance",
+      "razorpayPaymentId": null,
+      "verifiedAt": "2026-03-10T00:00:00Z",
+      "isDeleted": false,
+      "createdAt": "2026-03-10T00:00:00Z"
+    }
+  UI: table with Society | Flat | Amount | Mode | Type | Date Paid | Verified | Actions
+      Date range picker + paymentType filter dropdown + societyId search.
+
+GET /api/admin/payments/:id
+  Response: single AdminPaymentDto
+  UI: detail modal or side panel — all fields displayed, no edit controls
+
+────────────────────────────────────────────────────────────────────────────────
+MODULE 6 — FEATURE FLAGS
+────────────────────────────────────────────────────────────────────────────────
+GET /api/admin/features?page=1&pageSize=50&search=&societyId=
+  Query params:
+    page        number
+    pageSize    number
+    search      string (optional, filter by key/description)
+    societyId   number (optional, null = global flags)
+  Response data.items[]:
+    {
+      "id": 1,
+      "key": "MAINTENANCE_REMINDERS",
+      "description": "Send automated maintenance reminder emails",
+      "isEnabled": true,
+      "societyId": null,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-03-01T00:00:00Z"
+    }
+  UI: table with Key | Description | Scope (Global/Society) | Enabled | Actions
+      Enabled column: toggle switch (calls PUT immediately on toggle)
+
+GET /api/admin/features/:id
+  Response: single FeatureFlagDto
+
+POST /api/admin/features
+  Request body:
+    {
+      "key": "MAINTENANCE_REMINDERS",   // required, unique
+      "description": "...",             // optional
+      "isEnabled": false,               // required
+      "societyId": null                 // optional — null means global
+    }
+  Success 200: created FeatureFlagDto
+  Validation: key must be uppercase_snake_case (suggest client-side Zod regex: /^[A-Z0-9_]+$/)
+
+PUT /api/admin/features/:id
+  Request body:
+    {
+      "description": "Updated description",   // optional
+      "isEnabled": true                        // required
+    }
+  Success 200: updated FeatureFlagDto
+
+DELETE /api/admin/features/:id
+  Success 200: { "data": "Feature flag deleted successfully" }
+  UI: confirmation dialog
+
+────────────────────────────────────────────────────────────────────────────────
+MODULE 7 — PLATFORM SETTINGS
+────────────────────────────────────────────────────────────────────────────────
+GET /api/admin/settings?page=1&pageSize=50&search=
+  Query params:
+    page        number
+    pageSize    number
+    search      string (optional, filter by key/description)
+  Response data.items[]:
+    {
+      "id": 1,
+      "key": "MAX_FLATS_PER_SOCIETY",
+      "value": "500",
+      "description": "Maximum number of flats allowed per society",
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-03-01T00:00:00Z"
+    }
+  UI: table with Key | Value | Description | Last Updated | Actions
+      Inline edit — clicking Value cell opens an input field, save on blur/Enter
+
+GET /api/admin/settings/:key
+  Response: single PlatformSettingDto
+  Note: :key is a string (e.g. "MAX_FLATS_PER_SOCIETY"), not a numeric id
+
+PUT /api/admin/settings    (upsert — creates if not exists, updates if exists)
+  Request body:
+    {
+      "key": "MAX_FLATS_PER_SOCIETY",   // required
+      "value": "500",                    // optional
+      "description": "..."              // optional
+    }
+  Success 200: upserted PlatformSettingDto
+
+DELETE /api/admin/settings/:key
+  Success 200: { "data": "Setting deleted successfully" }
+  UI: confirmation dialog before delete
+
+────────────────────────────────────────────────────────────────────────────────
+REUSABLE COMPONENTS TO BUILD
+────────────────────────────────────────────────────────────────────────────────
+<DataTable>
+  Props: columns, data, totalCount, page, pageSize, onPageChange,
+         isLoading, emptyMessage, actions (slot)
+  Includes: loading skeleton rows, empty state illustration, page controls
+
+<SearchBar>   — debounced input (300ms) that fires onSearch callback
+
+<ConfirmDialog>   — "Are you sure?" modal, takes onConfirm callback
+
+<StatusBadge>   — maps status string → color (active=green, cancelled=red, etc.)
+
+<PageHeader>   — title + optional breadcrumb + right-side action slot
+
+useAdminAuth() hook   — exposes { admin, token, login, logout, isAuthenticated }
+
+apiClient (Axios instance)
+  - baseURL from env
+  - request interceptor: inject Authorization header
+  - response interceptor: on 401 → clear auth store and redirect to /login
+                          on other errors → normalise to Error with message
+
+────────────────────────────────────────────────────────────────────────────────
+API CLIENT HELPER EXAMPLES
+────────────────────────────────────────────────────────────────────────────────
+// auth
+export const loginAdmin = (body: AdminLoginRequest) =>
+  apiClient.post<ApiResponse<AdminLoginResponse>>('/api/admin/auth/login', body)
+
+// plans
+export const listPlans = (params: PlanListParams) =>
+  apiClient.get<ApiResponse<PagedResult<AdminPlanDto>>>('/api/admin/plans', { params })
+export const createPlan = (body: AdminPlanCreateRequest) =>
+  apiClient.post<ApiResponse<AdminPlanDto>>('/api/admin/plans', body)
+export const updatePlan = (id: string, body: AdminPlanUpdateRequest) =>
+  apiClient.put<ApiResponse<AdminPlanDto>>(`/api/admin/plans/${id}`, body)
+export const deletePlan = (id: string) =>
+  apiClient.delete<ApiResponse<string>>(`/api/admin/plans/${id}`)
+
+// (same pattern for societies, subscriptions, features, settings)
+
+────────────────────────────────────────────────────────────────────────────────
+ZOD VALIDATION SCHEMAS  (mirror backend validators)
+────────────────────────────────────────────────────────────────────────────────
+loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8)
+})
+
+planCreateSchema = z.object({
+  name: z.string().min(1).max(100),
+  monthlyAmount: z.number().positive(),
+  currency: z.string().length(3),
+  durationMonths: z.number().int().min(1)
+})
+
+planUpdateSchema = planCreateSchema.extend({
+  isActive: z.boolean().optional()
+})
+
+subscriptionUpdateSchema = z.object({
+  planId: z.string().uuid(),
+  status: z.enum(['active', 'cancelled', 'trial', 'expired']),
+  currentPeriodStart: z.string().datetime().optional().nullable(),
+  currentPeriodEnd: z.string().datetime().optional().nullable()
+})
+
+featureFlagCreateSchema = z.object({
+  key: z.string().regex(/^[A-Z0-9_]+$/, 'Key must be UPPER_SNAKE_CASE'),
+  description: z.string().optional(),
+  isEnabled: z.boolean(),
+  societyId: z.number().int().positive().optional().nullable()
+})
+
+featureFlagUpdateSchema = z.object({
+  description: z.string().optional(),
+  isEnabled: z.boolean()
+})
+
+platformSettingSchema = z.object({
+  key: z.string().min(1).max(100),
+  value: z.string().optional().nullable(),
+  description: z.string().optional().nullable()
+})
+
+societyUpdateSchema = z.object({
+  name: z.string().min(1),
+  address: z.string().optional().nullable(),
+  city: z.string().optional().nullable(),
+  state: z.string().optional().nullable(),
+  pincode: z.string().optional().nullable(),
+  currency: z.string().length(3),
+  defaultMaintenanceCycle: z.enum(['monthly', 'quarterly', 'yearly']),
+  isDeleted: z.boolean().optional()
+})
+
+────────────────────────────────────────────────────────────────────────────────
+UX NOTES
+────────────────────────────────────────────────────────────────────────────────
+- Token stored in localStorage key "admin_token"; on app load call GET /me to
+  re-validate; if 401 clear and redirect.
+- All list pages default to page=1, pageSize=20 (settings/features: pageSize=50).
+- Mutations (create/update/delete) should invalidate the relevant React Query
+  cache key on success and show a toast.
+- Payments page is read-only — no edit/delete controls.
+- Feature flags table should show an immediate toggle switch for isEnabled;
+  PUT is fired on toggle change (optimistic update + rollback on error).
+- Platform settings: prefer inline-edit UX since values are usually short strings.
+- Subscriptions edit: the plan dropdown should load from GET /api/admin/plans
+  (no pagination needed — load all active plans).
+- Societies list: show "Deleted" societies in a muted/strikethrough row style;
+  isDeleted toggle in edit form can be used to restore a society.
+
+================================================================================
+END OF PROMPT
+================================================================================
