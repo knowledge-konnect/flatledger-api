@@ -56,8 +56,7 @@ namespace SocietyLedger.Api.Endpoints
             .Produces<ErrorResponse>(409)
             .Produces<ErrorResponse>(500);
 
-            app.MapGet("/",
-    [Authorize("ActiveSubscription")]
+            app.MapGet("/",[Authorize("ActiveSubscription")]
             [SwaggerOperation(
         Summary = "Get all Flats for Current Society",
         Description = "Fetches the list of all flats that belong to the authenticated user's society."

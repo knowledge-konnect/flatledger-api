@@ -60,6 +60,33 @@ namespace SocietyLedger.Infrastructure.Services
             return new JwtSecurityTokenHandler().WriteToken(token);
         }
 
+        /// <inheritdoc/>
+        public string GenerateAdminAccessToken(AdminTokenClaims claims, out DateTime expiresAt)
+        {
+            var jwtClaims = new List<Claim>
+            {
+                new Claim(JwtRegisteredClaimNames.Sub, claims.AdminId.ToString()),
+                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+                new Claim("id",    claims.AdminPublicId.ToString()),
+                new Claim("email", claims.Email),
+                new Claim("name",  claims.Name),
+                new Claim("role",  "super_admin"),
+                new Claim(ClaimTypes.Role, "super_admin"),
+            };
+
+            var key   = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_settings.Key));
+            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+            // Admin tokens are intentionally shorter-lived (60 min) for security.
+            expiresAt = DateTime.UtcNow.AddMinutes(60);
+            var token = new JwtSecurityToken(
+                issuer:            _settings.Issuer,
+                audience:          _settings.Audience,
+                claims:            jwtClaims,
+                expires:           expiresAt,
+                signingCredentials: creds
+            );
+            return new JwtSecurityTokenHandler().WriteToken(token);
+        }
 
         /// <summary>
         /// Generates a secure random refresh token pair.
