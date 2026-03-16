@@ -17,6 +17,10 @@ namespace SocietyLedger.Infrastructure.Services
         {
             _db = db;
         }
+
+        /// <summary>
+        /// Returns opening balance summary for a society, including member dues and advances.
+        /// </summary>
         public async Task<OpeningBalanceSummaryResponse?> GetSummaryAsync(long societyId)
         {
             // Check if opening balance is applied
@@ -51,6 +55,9 @@ namespace SocietyLedger.Infrastructure.Services
         // Carries the minimum status metadata needed from each opening-balance source.
         private sealed record OpeningMeta(DateOnly TransactionDate, DateTime AuditCreatedAt, long CreatedBy);
 
+        /// <summary>
+        /// Returns opening balance status for a society, including transaction date and applied by.
+        /// </summary>
         public async Task<OpeningBalanceStatusResponse> GetStatusAsync(long societyId)
         {
             // member-side opening (adjustments table)
@@ -118,10 +125,10 @@ namespace SocietyLedger.Infrastructure.Services
             };
         }
 
-        public async Task ApplyOpeningBalanceAsync(
-            OpeningBalanceRequest request,
-            long societyId,
-            long userId)
+        /// <summary>
+        /// Applies opening balance for a society, validates transaction date and prevents duplicates.
+        /// </summary>
+        public async Task ApplyOpeningBalanceAsync(OpeningBalanceRequest request, long societyId, long userId)
         {
             if (request == null)
                 throw new ArgumentNullException(nameof(request));

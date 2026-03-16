@@ -1,5 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using SocietyLedger.Application.DTOs;
 using SocietyLedger.Application.DTOs.Auth;
 using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Application.Interfaces.Services;
@@ -44,9 +45,11 @@ namespace SocietyLedger.Infrastructure.Services
             _db = db;
         }
 
-        // ===============================
-        // LOGIN
-        // ===============================
+        /// <summary>
+        /// Validates credentials, rotates tokens, and returns a fully populated <see cref="LoginResponse"/>.
+        /// Uses <c>ExecuteUpdateAsync</c> to update <c>last_login</c> without a tracked SELECT, which
+        /// avoids a round-trip inside a transaction and prevents pgBouncer connection timeouts.
+        /// </summary>
         public async Task<LoginResponse> LoginAsync(LoginRequest request, string ipAddress)
         {
             if (request == null)
@@ -62,16 +65,23 @@ namespace SocietyLedger.Infrastructure.Services
             if (!user.IsActive)
                 throw new AuthenticationException("User account is inactive.");
 
-            var roles = new[] { user.Role?.DisplayName ?? "user" };
-            var accessToken = _tokenService.GenerateAccessToken(user.Id, roles, out var accessExpires);
+            var userRole = user.Role ?? throw new AuthenticationException("User role not configured.");
+            var tokenClaims = new TokenClaims(
+                UserId: user.Id,
+                UserPublicId: user.PublicId,
+                Email: user.Email ?? string.Empty,
+                Name: user.Name,
+                SocietyPublicId: user.SocietyPublicId,
+                RoleId: userRole.Id,
+                RoleCode: userRole.Code,
+                RoleDisplayName: userRole.DisplayName);
+            var accessToken = _tokenService.GenerateAccessToken(tokenClaims, out var accessExpires);
             var refreshPair = _tokenService.GenerateRefreshToken();
-
-            var hashed = _hasher.Hash(refreshPair.Token);
 
             var refreshEntity = new refresh_token
             {
                 user_id = user.Id,
-                token_hash = hashed,
+                token_hash = _tokenService.HashToken(refreshPair.Token),
                 jwt_id = Guid.NewGuid().ToString(),
                 expires_at = refreshPair.ExpiresAt,
                 created_at = DateTime.UtcNow,
@@ -81,8 +91,7 @@ namespace SocietyLedger.Infrastructure.Services
 
             var now = DateTime.UtcNow;
 
-            // Direct UPDATE — avoids a SELECT inside a transaction that can time out on pgBouncer.
-            // SaveChangesAsync below is already implicitly atomic.
+            // Direct UPDATE avoids a SELECT inside a transaction that can time out on pgBouncer.
             await _db.users
                 .Where(u => u.id == user.Id)
                 .ExecuteUpdateAsync(s => s.SetProperty(u => u.last_login, now));
@@ -98,10 +107,11 @@ namespace SocietyLedger.Infrastructure.Services
                 AccessTokenExpiresAt = accessExpires,
                 RefreshToken = refreshPair.Token,
                 RefreshTokenExpiresAt = refreshPair.ExpiresAt,
-                Roles = roles,
+                Roles = new[] { new RoleDto { Id = userRole.Id, Code = userRole.Code, DisplayName = userRole.DisplayName } },
                 UserPublicId = user.PublicId,
                 UserName = user.Name,
-                Role = user.Role?.DisplayName,
+                Role = userRole.Code,
+                RoleDisplayName = userRole.DisplayName,
                 SocietyPublicId = user.SocietyPublicId,
                 SocietyName = user.SocietyName,
                 ForcePasswordChange = user.ForcePasswordChange
@@ -109,9 +119,10 @@ namespace SocietyLedger.Infrastructure.Services
         }
 
 
-        // ===============================
-        // REGISTER
-        // ===============================
+        /// <summary>
+        /// Creates a new Society + SocietyAdmin user inside a single transaction, then issues tokens.
+        /// Trial subscription creation is best-effort — a failure here does not roll back registration.
+        /// </summary>
         public async Task<RegisterResponse> RegisterAsync(RegisterRequest request, string ipAddress)
         {
             if (request == null)
@@ -123,10 +134,6 @@ namespace SocietyLedger.Infrastructure.Services
             if (existingUser != null)
                 throw new DuplicateException("User", "email");
 
-            var existingName = await _userRepo.GetByUsernameAsync(request.Name);
-            if (existingName != null)
-                throw new DuplicateException("User", "name");
-
             var society = Society.Create(
                 request.SocietyName ?? "Default Society",
                 request.SocietyAddress
@@ -137,6 +144,7 @@ namespace SocietyLedger.Infrastructure.Services
             var role = await _roleRepo.GetByCodeAsync(RoleCodes.SocietyAdmin)
                 ?? throw new NotFoundException("Role", RoleCodes.SocietyAdmin);
 
+            // PublicId, CreatedAt, UpdatedAt are set by PostgreSQL database defaults.
             var user = new User
             {
                 SocietyId = society.Id,
@@ -145,19 +153,26 @@ namespace SocietyLedger.Infrastructure.Services
                 PasswordHash = _hasher.Hash(request.Password),
                 RoleId = role.Id,
                 IsActive = true
-                // PublicId, CreatedAt, UpdatedAt generated by database defaults
             };
 
             await _userRepo.AddAsync(user);
 
-            var roles = new[] { role.Code ?? RoleCodes.SocietyAdmin };
-            var accessToken = _tokenService.GenerateAccessToken(user.Id, roles, out var accessExpires);
+            var tokenClaimsReg = new TokenClaims(
+                UserId: user.Id,
+                UserPublicId: user.PublicId,
+                Email: user.Email ?? string.Empty,
+                Name: user.Name,
+                SocietyPublicId: society.PublicId,
+                RoleId: role.Id,
+                RoleCode: role.Code,
+                RoleDisplayName: role.DisplayName);
+            var accessToken = _tokenService.GenerateAccessToken(tokenClaimsReg, out var accessExpires);
             var refreshPair = _tokenService.GenerateRefreshToken();
 
             var refreshEntity = new refresh_token
             {
                 user_id = user.Id,
-                token_hash = _hasher.Hash(refreshPair.Token),
+                token_hash = _tokenService.HashToken(refreshPair.Token),
                 jwt_id = Guid.NewGuid().ToString(),
                 expires_at = refreshPair.ExpiresAt,
                 created_at = DateTime.UtcNow,
@@ -168,7 +183,7 @@ namespace SocietyLedger.Infrastructure.Services
             _db.refresh_tokens.Add(refreshEntity);
             await _db.SaveChangesAsync();
 
-            // Create trial subscription
+            // Trial subscription is best-effort — registration succeeds even if this fails.
             try
             {
                 await _subscriptionService.CreateTrialSubscriptionAsync(user.Id);
@@ -176,7 +191,6 @@ namespace SocietyLedger.Infrastructure.Services
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Failed to create trial subscription for user {UserId}", user.Id);
-                // Don't fail registration if trial creation fails
             }
 
             await tx.CommitAsync();
@@ -191,21 +205,26 @@ namespace SocietyLedger.Infrastructure.Services
                 AccessTokenExpiresAt = accessExpires,
                 RefreshToken = refreshPair.Token,
                 RefreshTokenExpiresAt = refreshPair.ExpiresAt,
-                Roles = roles,
+                Roles = new[] { new RoleDto { Id = role.Id, Code = role.Code, DisplayName = role.DisplayName } },
                 UserPublicId = user.PublicId,
+                UserName = user.Name,
+                Role = role.Code,
+                RoleDisplayName = role.DisplayName,
                 SocietyPublicId = society.PublicId,
+                SocietyName = society.Name,
+                ForcePasswordChange = false,
                 SocietyId = society.Id,
                 UserId = user.Id
             };
         }
 
 
-        // ===============================
-        // REFRESH TOKEN
-        // ===============================
+        /// <summary>
+        /// Rotates the refresh token: revokes the old one and issues a new pair inside a transaction.
+        /// </summary>
         public async Task<LoginResponse> RefreshTokenAsync(string token, string ipAddress)
         {
-            var hashed = _hasher.Hash(token);
+            var hashed = _tokenService.HashToken(token);
 
             var rt = await _db.refresh_tokens
                 .Include(r => r.user)
@@ -218,12 +237,11 @@ namespace SocietyLedger.Infrastructure.Services
                 throw new AuthenticationException("Invalid or expired refresh token");
 
             var newPair = _tokenService.GenerateRefreshToken();
-            var newHashed = _hasher.Hash(newPair.Token);
 
             var newRt = new refresh_token
             {
                 user_id = rt.user_id,
-                token_hash = newHashed,
+                token_hash = _tokenService.HashToken(newPair.Token),
                 jwt_id = Guid.NewGuid().ToString(),
                 expires_at = newPair.ExpiresAt,
                 created_at = DateTime.UtcNow,
@@ -232,7 +250,7 @@ namespace SocietyLedger.Infrastructure.Services
                 replaced_by_token_hash = rt.token_hash
             };
 
-            // Use transaction to ensure atomicity of token revocation and creation
+            // Atomically revoke the old token and persist the new one.
             await using var transaction = await _db.Database.BeginTransactionAsync();
 
             try
@@ -251,8 +269,17 @@ namespace SocietyLedger.Infrastructure.Services
                 throw;
             }
 
-            var roles = new[] { rt.user?.role?.display_name ?? "User" };
-            var accessToken = _tokenService.GenerateAccessToken(rt.user_id, roles, out var accessExpires);
+            var refreshRole = rt.user?.role;
+            var tokenClaimsRefresh = new TokenClaims(
+                UserId: rt.user_id,
+                UserPublicId: rt.user?.public_id ?? Guid.Empty,
+                Email: rt.user?.email ?? string.Empty,
+                Name: rt.user?.name ?? string.Empty,
+                SocietyPublicId: rt.user?.society?.public_id ?? Guid.Empty,
+                RoleId: (short)(refreshRole?.id ?? 0),
+                RoleCode: refreshRole?.code ?? string.Empty,
+                RoleDisplayName: refreshRole?.display_name ?? string.Empty);
+            var accessToken = _tokenService.GenerateAccessToken(tokenClaimsRefresh, out var accessExpires);
 
             _logger.LogInformation("Refresh token rotated for user {UserId} from {Ip}", rt.user_id, ipAddress);
 
@@ -262,22 +289,25 @@ namespace SocietyLedger.Infrastructure.Services
                 AccessTokenExpiresAt = accessExpires,
                 RefreshToken = newPair.Token,
                 RefreshTokenExpiresAt = newPair.ExpiresAt,
-                Roles = roles,
+                Roles = refreshRole != null
+                    ? new[] { new RoleDto { Id = refreshRole.id, Code = refreshRole.code, DisplayName = refreshRole.display_name } }
+                    : Enumerable.Empty<RoleDto>(),
                 UserPublicId = rt.user?.public_id ?? Guid.Empty,
                 UserName = rt.user?.name ?? string.Empty,
-                Role = rt.user?.role?.display_name,
+                Role = refreshRole?.code,
+                RoleDisplayName = refreshRole?.display_name,
                 SocietyPublicId = rt.user?.society?.public_id ?? Guid.Empty,
                 SocietyName = rt.user?.society?.name ?? string.Empty,
                 ForcePasswordChange = rt.user?.force_password_change ?? false
             };
         }
 
-        // ===============================
-        // REVOKE TOKEN
-        // ===============================
+        /// <summary>
+        /// Revokes a refresh token by its hashed value. Silently no-ops if the token is not found.
+        /// </summary>
         public async Task RevokeRefreshTokenAsync(string token, string ipAddress)
         {
-            var hashed = _hasher.Hash(token);
+            var hashed = _tokenService.HashToken(token);
             var rt = await _db.refresh_tokens.FirstOrDefaultAsync(r => r.token_hash == hashed);
             if (rt == null)
                 return;
@@ -290,9 +320,9 @@ namespace SocietyLedger.Infrastructure.Services
             _logger.LogInformation("Refresh token revoked for user {UserId} from {Ip}", rt.user_id, ipAddress);
         }
 
-        // ===============================
-        // CHANGE PASSWORD
-        // ===============================
+        /// <summary>
+        /// Verifies the current password, hashes the new one, and clears the force-password-change flag.
+        /// </summary>
         public async Task<ChangePasswordResponse> ChangePasswordAsync(long userId, ChangePasswordRequest request)
         {
             if (request == null)
@@ -305,7 +335,6 @@ namespace SocietyLedger.Infrastructure.Services
             if (!user.IsActive)
                 throw new ConflictException("User account is inactive.");
 
-            // Verify current password
             if (!_hasher.Verify(user.PasswordHash, request.CurrentPassword))
                 throw new ValidationException(
                     ErrorMessages.VALIDATION_FAILED,
@@ -314,7 +343,6 @@ namespace SocietyLedger.Infrastructure.Services
                         ["currentPassword"] = ["Current password is incorrect."]
                     });
 
-            // Hash and update new password
             var newPasswordHash = _hasher.Hash(request.NewPassword);
             user.PasswordHash = newPasswordHash;
             user.ForcePasswordChange = false;

@@ -15,6 +15,9 @@ namespace SocietyLedger.Api.Endpoints
 {
     public static class InvoiceEndpoints
     {
+        /// <summary>
+        /// Maps invoice routes: list user invoices and process invoice payments.
+        /// </summary>
         public static void MapInvoiceRoutes(this RouteGroupBuilder app, string groupName, ApiVersionSet versionSet)
         {
             var version_1_0 = new ApiVersion(ApiConstants.API_VERSION_1_0);
@@ -52,7 +55,7 @@ namespace SocietyLedger.Api.Endpoints
             async (Guid invoiceId, [FromBody] PayInvoiceRequest request, IInvoiceService invoiceService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
-                    var result = await invoiceService.PayInvoiceAsync(invoiceId, request);
+                    var result = await invoiceService.PayInvoiceAsync(invoiceId, userId, request);
                     return Results.Ok(ApiResponse<InvoiceResponse>.Success(result, "Invoice paid successfully"));
                 })
             .AddEndpointFilter<FluentValidationFilter<PayInvoiceRequest>>()

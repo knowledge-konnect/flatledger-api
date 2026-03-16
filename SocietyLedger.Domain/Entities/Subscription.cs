@@ -1,5 +1,9 @@
 namespace SocietyLedger.Domain.Entities
 {
+    /// <summary>
+    /// Represents a user's SaaS subscription. A user may be on a free trial or a paid plan.
+    /// Status transitions are recorded in <see cref="SubscriptionEvent"/>.
+    /// </summary>
     public class Subscription
     {
         public Guid Id { get; set; }
@@ -21,6 +25,7 @@ namespace SocietyLedger.Domain.Entities
         public ICollection<Invoice> Invoices { get; set; } = new List<Invoice>();
     }
 
+    /// <summary>Available SaaS subscription plans (e.g., Monthly, Annual).</summary>
     public class Plan
     {
         public Guid Id { get; set; }
@@ -31,6 +36,10 @@ namespace SocietyLedger.Domain.Entities
         public DateTime? CreatedAt { get; set; }
     }
 
+    /// <summary>
+    /// Billing invoice generated for a subscription period.
+    /// Tracks payment status and links back to the parent subscription.
+    /// </summary>
     public class Invoice
     {
         public Guid Id { get; set; }
@@ -57,6 +66,9 @@ namespace SocietyLedger.Domain.Entities
         public Subscription? Subscription { get; set; }
     }
 
+    /// <summary>
+    /// Audit log of subscription lifecycle events (trial started, upgraded, cancelled, expired, etc.).
+    /// </summary>
     public class SubscriptionEvent
     {
         public Guid Id { get; set; }

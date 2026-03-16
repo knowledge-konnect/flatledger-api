@@ -31,6 +31,9 @@ namespace SocietyLedger.Infrastructure.Services
             _logger = logger;
         }
 
+        /// <summary>
+        /// Returns the subscription status for a user, including trial days remaining and access allowed.
+        /// </summary>
         public async Task<SubscriptionStatusResponse> GetSubscriptionStatusAsync(long userId)
         {
             var subscription = await _subscriptionRepo.GetByUserIdAsync(userId);
@@ -82,6 +85,9 @@ namespace SocietyLedger.Infrastructure.Services
             };
         }
 
+        /// <summary>
+        /// Subscribes a user to a plan, blocks re-subscribe if paid period is still active, creates invoice atomically.
+        /// </summary>
         public async Task<SubscribeResponse> SubscribeAsync(long userId, SubscribeRequest request)
         {
             var plan = await _planRepo.GetByIdAsync(request.PlanId);
@@ -90,7 +96,17 @@ namespace SocietyLedger.Infrastructure.Services
 
             var existingSubscription = await _subscriptionRepo.GetByUserIdAsync(userId);
             if (existingSubscription != null && existingSubscription.Status == SubscriptionStatusCodes.Active)
-                throw new ConflictException("User already has an active subscription");
+                throw new ConflictException("User already has an active subscription.");
+
+            // #9 — Block re-subscribing when the current paid period hasn't ended yet.
+            //       Applies to Cancelled subscriptions that still have time remaining.
+            if (existingSubscription != null
+                && existingSubscription.Status != SubscriptionStatusCodes.Active
+                && existingSubscription.CurrentPeriodEnd.HasValue
+                && existingSubscription.CurrentPeriodEnd.Value > DateTime.UtcNow)
+                throw new ConflictException(
+                    $"Your current subscription period is still active until {existingSubscription.CurrentPeriodEnd.Value:yyyy-MM-dd}. " +
+                    $"You can re-subscribe after that date.");
 
             var amount = request.Amount ?? plan.MonthlyAmount;
             var now = DateTime.UtcNow;
@@ -127,14 +143,13 @@ namespace SocietyLedger.Infrastructure.Services
                 await _subscriptionRepo.CreateAsync(subscription);
             }
 
-            // Create invoice
-            var invoiceNumber = await _invoiceRepo.GenerateInvoiceNumberAsync();
+            // Create invoice — the repository generates the invoice number atomically
+            // inside a pg_advisory_xact_lock, so concurrent subscriptions never clash.
             var invoice = new Invoice
             {
                 Id = Guid.NewGuid(),
                 UserId = userId,
                 SubscriptionId = subscription.Id,
-                InvoiceNumber = invoiceNumber,
                 InvoiceType = PaymentTypeCodes.Subscription,
                 Amount = amount,
                 TotalAmount = amount,
@@ -146,6 +161,7 @@ namespace SocietyLedger.Infrastructure.Services
                 Description = $"Subscription to {plan.Name} plan"
             };
             await _invoiceRepo.CreateAsync(invoice);
+            // invoice.InvoiceNumber is set by the repository after CreateAsync.
 
             // Create subscription event
             await _eventRepo.CreateAsync(new SubscriptionEvent
@@ -167,21 +183,27 @@ namespace SocietyLedger.Infrastructure.Services
                 InvoiceId = invoice.Id,
                 Status = invoice.Status,
                 Amount = amount,
-                InvoiceNumber = invoiceNumber,
+                InvoiceNumber = invoice.InvoiceNumber,
                 PaymentUrl = request.PaymentMethod.ToLower() == PaymentModeCodes.Razorpay ? "https://api.razorpay.com/v1/payment_links" : null // Placeholder
             };
         }
 
+        /// <summary>
+        /// Cancels a subscription, allows cancellation of both Active and Trial subscriptions.
+        /// </summary>
         public async Task CancelSubscriptionAsync(long userId, CancelSubscriptionRequest request)
         {
             var subscription = await _subscriptionRepo.GetByUserIdAsync(userId);
             if (subscription == null)
                 throw new NotFoundException("Subscription", userId.ToString());
 
-            if (subscription.Status != SubscriptionStatusCodes.Active)
-                throw new ConflictException("Subscription is not active");
+            // #8 — Allow cancellation of both Active and Trial subscriptions.
+            if (subscription.Status != SubscriptionStatusCodes.Active
+                && subscription.Status != SubscriptionStatusCodes.Trial)
+                throw new ConflictException("Only active or trial subscriptions can be cancelled.");
 
             var now = DateTime.UtcNow;
+            var oldStatus = subscription.Status;
             subscription.Status = SubscriptionStatusCodes.Cancelled;
             subscription.CancelledAt = now;
             subscription.UpdatedAt = now;
@@ -195,7 +217,7 @@ namespace SocietyLedger.Infrastructure.Services
                 UserId = userId,
                 SubscriptionId = subscription.Id,
                 EventType = "cancelled",
-                OldStatus = SubscriptionStatusCodes.Active,
+                OldStatus = oldStatus,
                 NewStatus = SubscriptionStatusCodes.Cancelled,
                 Metadata = $"{{\"reason\":\"{request.Reason}\",\"cancel_immediately\":{request.CancelImmediately.ToString().ToLower()}}}"
             });
@@ -203,6 +225,9 @@ namespace SocietyLedger.Infrastructure.Services
             _logger.LogInformation("User {UserId} cancelled subscription", userId);
         }
 
+        /// <summary>
+        /// Creates a 30-day trial subscription for a user, idempotent.
+        /// </summary>
         public async Task CreateTrialSubscriptionAsync(long userId)
         {
             var existingSubscription = await _subscriptionRepo.GetByUserIdAsync(userId);

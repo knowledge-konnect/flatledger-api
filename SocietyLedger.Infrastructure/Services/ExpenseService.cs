@@ -38,6 +38,22 @@ namespace SocietyLedger.Infrastructure.Services
                     $"Expense date ({request.Date:yyyy-MM-dd}) cannot be earlier than " +
                     $"the society onboarding date ({onboardingDate:yyyy-MM-dd}).");
 
+            // #7 — Near-duplicate detection: same date, amount, category, and vendor within 5 minutes.
+            var fiveMinutesAgo = DateTime.UtcNow.AddMinutes(-5);
+            var isDuplicate = await _db.expenses
+                .AnyAsync(e => e.society_id    == societyId
+                            && !e.is_deleted
+                            && e.date_incurred == request.Date
+                            && e.amount        == request.Amount
+                            && e.category_code == request.CategoryCode
+                            && (e.vendor ?? string.Empty) == (request.Vendor ?? string.Empty)
+                            && e.created_at    >= fiveMinutesAgo);
+
+            if (isDuplicate)
+                throw new ConflictException(
+                    "A similar expense (same date, amount, category, and vendor) was recorded in the last 5 minutes. " +
+                    "If this is intentional, please wait a moment and try again.");
+
             // Create expense with public_id and created_by
             var expenseEntity = new expense
             {

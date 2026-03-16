@@ -13,9 +13,11 @@ obj/
 *.vspx
 
 ## ASP.NET Core ##
+# Only the base (non-secret) appsettings is tracked.
+# Environment-specific files (Development, Production, etc.) are excluded
+# because they may contain connection strings, JWT keys, and API secrets.
 appsettings.*.json
 !appsettings.json
-!appsettings.Development.json
 
 ## Logs ##
 Logs/

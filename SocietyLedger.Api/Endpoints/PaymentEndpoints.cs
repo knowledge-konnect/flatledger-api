@@ -17,6 +17,9 @@ namespace SocietyLedger.Api.Endpoints
 {
     public static class PaymentEndpoints
     {
+        /// <summary>
+        /// Maps Razorpay payment routes: create order, verify payment, and handle webhooks.
+        /// </summary>
         public static void MapPaymentRoutes(this RouteGroupBuilder app, string groupName, ApiVersionSet versionSet)
         {
             var version_1_0 = new ApiVersion(ApiConstants.API_VERSION_1_0);

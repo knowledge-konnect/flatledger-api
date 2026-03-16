@@ -3,6 +3,10 @@ using System.Security.Claims;
 
 namespace SocietyLedger.Api.Middlewares
 {
+    /// <summary>
+    /// Middleware that logs each HTTP request's method, path, user ID, response status,
+    /// and elapsed time using Serilog structured logging.
+    /// </summary>
     public class RequestLoggingMiddleware
     {
         private readonly RequestDelegate _next;
@@ -12,6 +16,10 @@ namespace SocietyLedger.Api.Middlewares
             _next = next;
         }
 
+        /// <summary>
+        /// Logs the start of the request, invokes the next middleware,
+        /// then logs the response status and elapsed duration.
+        /// </summary>
         public async Task InvokeAsync(HttpContext context)
         {
             var startTime = DateTime.UtcNow;

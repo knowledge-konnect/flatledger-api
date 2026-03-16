@@ -7,6 +7,7 @@ using SocietyLedger.Api.Extensions;
 using SocietyLedger.Api.Filters;
 using SocietyLedger.Application.DTOs.Expense;
 using SocietyLedger.Application.Interfaces.Services;
+using SocietyLedger.Domain.Constants;
 using SocietyLedger.Domain.Exceptions;
 using SocietyLedger.Shared;
 using Swashbuckle.AspNetCore.Annotations;
@@ -15,11 +16,13 @@ namespace SocietyLedger.Api.Endpoints
 {
     public static class ExpenseEndpoints
     {
+        /// <summary>
+        /// Maps expense routes: create, retrieve, update, and delete society expenses.
+        /// </summary>
         public static void MapExpenseRoutes(this RouteGroupBuilder app, string groupName, ApiVersionSet versionSet)
         {
             var version_1_0 = new ApiVersion(ApiConstants.API_VERSION_1_0);
 
-            // Create expense
             app.MapPost("/",
                 [Authorize]
             [SwaggerOperation(
@@ -36,6 +39,9 @@ namespace SocietyLedger.Api.Endpoints
                         var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid or missing authentication token", ctx.TraceIdentifier);
                         return Results.Json(errorResponse, statusCode: 401);
                     }
+
+                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
+                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
 
                     var result = await expenseService.CreateExpenseAsync(userId, request);
                     Log.Information("Expense created successfully by user {UserId}", userId);
@@ -172,6 +178,8 @@ namespace SocietyLedger.Api.Endpoints
             async (Guid publicId, [FromBody] UpdateExpenseRequest request, IExpenseService expenseService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
+                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
+                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
                     var result = await expenseService.UpdateExpenseAsync(publicId, userId, request);
                     return Results.Ok(ApiResponse<ExpenseResponse>.Success(result, "Expense updated successfully"));
                 })
@@ -194,6 +202,8 @@ namespace SocietyLedger.Api.Endpoints
             async (Guid publicId, IExpenseService expenseService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
+                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
+                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
                     await expenseService.DeleteExpenseAsync(publicId, userId);
                     return Results.Ok(ApiResponse<EmptyResponse>.Success(new EmptyResponse(), "Expense deleted successfully"));
                 })

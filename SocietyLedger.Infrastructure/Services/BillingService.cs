@@ -29,6 +29,9 @@ namespace SocietyLedger.Infrastructure.Services
         //  Generate bills manually for a given period                          //
         // ------------------------------------------------------------------ //
 
+        /// <summary>
+        /// Generates bills manually for a given period. Throws if bills already exist or period is too far in the future.
+        /// </summary>
         public async Task<GenerateBillsResponse> GenerateBillsAsync(long userId, string period)
         {
             var (user, societyId) = await _userContext.GetUserContextAsync(userId);
@@ -42,6 +45,12 @@ namespace SocietyLedger.Infrastructure.Services
             if (alreadyExists)
                 throw new ConflictException(
                     $"Bills for period '{period}' have already been generated for this society.");
+
+            // #5 — Reject periods more than 1 month in the future to catch typos like '2036-03'.
+            var maxAllowedPeriod = DateTime.UtcNow.AddMonths(1).ToString("yyyy-MM");
+            if (string.Compare(period, maxAllowedPeriod, StringComparison.Ordinal) > 0)
+                throw new ValidationException(
+                    $"Period '{period}' is too far in the future. Bills can only be generated up to 1 month ahead (max allowed: '{maxAllowedPeriod}').");
 
             // Fetch the society's maintenance config for the default monthly charge fallback.
             var maintConfig = await _db.maintenance_configs
@@ -98,13 +107,22 @@ namespace SocietyLedger.Infrastructure.Services
                 "Bills generated: societyId={SocietyId}, period={Period}, count={Count}, by={UserId}",
                 societyId, period, bills.Count, userId);
 
-            return new GenerateBillsResponse(period, bills.Count);
+            // #6 — Warn when any bills were generated with ₹0 (no maintenance amount configured).
+            var zeroBillCount = bills.Count(b => b.amount == 0m);
+            var warnings = zeroBillCount > 0
+                ? new List<string> { $"{zeroBillCount} flat(s) will be billed \u20b90 — no maintenance amount configured. Update flat or society maintenance config." }
+                : null;
+
+            return new GenerateBillsResponse(period, bills.Count, warnings);
         }
 
         // ------------------------------------------------------------------ //
         //  Billing status check for the current calendar month                //
         // ------------------------------------------------------------------ //
 
+        /// <summary>
+        /// Checks billing status for the current calendar month.
+        /// </summary>
         public async Task<BillingStatusResponse> GetBillingStatusAsync(long userId)
         {
             var societyId = await _userContext.GetSocietyIdAsync(userId);
@@ -129,6 +147,9 @@ namespace SocietyLedger.Infrastructure.Services
         //  All business logic lives here; callers only orchestrate.           //
         // ------------------------------------------------------------------ //
 
+        /// <summary>
+        /// Generates monthly bills for all societies with active flats. Called by Hangfire job and manual admin trigger.
+        /// </summary>
         public async Task<BillingResult> GenerateMonthlyBillsAsync(DateTime billingMonth)
         {
             var stopwatch = Stopwatch.StartNew();

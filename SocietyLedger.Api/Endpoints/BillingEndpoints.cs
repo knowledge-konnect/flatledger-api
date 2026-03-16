@@ -7,6 +7,7 @@ using SocietyLedger.Api.Extensions;
 using SocietyLedger.Api.Filters;
 using SocietyLedger.Application.DTOs.Billing;
 using SocietyLedger.Application.Interfaces.Services;
+using SocietyLedger.Domain.Constants;
 using SocietyLedger.Shared;
 using Swashbuckle.AspNetCore.Annotations;
 
@@ -14,6 +15,9 @@ namespace SocietyLedger.Api.Endpoints
 {
     public static class BillingEndpoints
     {
+        /// <summary>
+        /// Maps billing routes: get billing status and manually trigger monthly bill generation.
+        /// </summary>
         public static void MapBillingRoutes(this RouteGroupBuilder app, string groupName, ApiVersionSet versionSet)
         {
             var version_1_0 = new ApiVersion(ApiConstants.API_VERSION_1_0);
@@ -71,6 +75,9 @@ namespace SocietyLedger.Api.Endpoints
                             ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid or missing authentication token", ctx.TraceIdentifier),
                             statusCode: 401);
                     }
+
+                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
+                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
 
                     var billingMonthDate = request.GetBillingMonthDate();
                     var period           = billingMonthDate.ToString("yyyy-MM");

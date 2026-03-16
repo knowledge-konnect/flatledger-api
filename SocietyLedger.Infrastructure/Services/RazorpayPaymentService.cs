@@ -44,7 +44,9 @@ namespace SocietyLedger.Infrastructure.Services
             _webhookSecret = config["Razorpay:WebhookSecret"] ?? throw new InvalidOperationException("Razorpay WebhookSecret not configured");
         }
 
-        // Fix #2: Amount is derived from the plan record, never from the client request.
+        /// <summary>
+        /// Creates a Razorpay order for subscription payment. Amount is derived from the plan record, never from the client request.
+        /// </summary>
         public async Task<CreateOrderResponse> CreateOrderAsync(long userId, Guid planId)
         {
             // Resolve authoritative price from the plan — never trust a client-supplied amount
@@ -113,6 +115,9 @@ namespace SocietyLedger.Infrastructure.Services
             };
         }
 
+        /// <summary>
+        /// Verifies payment signature and activates subscription. Uses constant-time comparison for security.
+        /// </summary>
         public async Task<VerifyPaymentResponse> VerifyPaymentAsync(VerifyPaymentRequest request)
         {
             var payment = await _paymentRepo.GetByRazorpayOrderIdAsync(request.OrderId);
@@ -163,6 +168,9 @@ namespace SocietyLedger.Infrastructure.Services
         }
 
         // Fix #3 & #4: Accept raw body + signature; verify before processing; idempotency guard
+        /// <summary>
+        /// Handles Razorpay payment events. Signature is verified server-side using X-Razorpay-Signature header.
+        /// </summary>
         public async Task ProcessWebhookAsync(string rawBody, string signature, WebhookPayload payload)
         {
             // Fix #3: Verify Razorpay webhook signature before touching any data
