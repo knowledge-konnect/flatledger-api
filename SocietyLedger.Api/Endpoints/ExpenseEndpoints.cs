@@ -8,7 +8,6 @@ using SocietyLedger.Api.Filters;
 using SocietyLedger.Application.DTOs.Expense;
 using SocietyLedger.Application.Interfaces.Services;
 using SocietyLedger.Domain.Constants;
-using SocietyLedger.Domain.Exceptions;
 using SocietyLedger.Shared;
 using Swashbuckle.AspNetCore.Annotations;
 

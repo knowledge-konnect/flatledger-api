@@ -1,22 +1,18 @@
 ﻿using Asp.Versioning;
-using Hangfire;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Serilog;
 using Serilog.Events;
 using SocietyLedger.Api.Authorization;
+using SocietyLedger.Api.BackgroundServices;
 using SocietyLedger.Api.Endpoints;
 using SocietyLedger.Api.Endpoints.Admin;
 using SocietyLedger.Api.Extensions;
 using SocietyLedger.Api.Middlewares;
-using SocietyLedger.Domain.Exceptions;
-using SocietyLedger.Infrastructure.Jobs;
 using SocietyLedger.Infrastructure.Persistence.Contexts;
-using SocietyLedger.Infrastructure.Services;
 using SocietyLedger.Shared;
 using System.Security.Claims;
 using System.Text;
@@ -212,8 +208,7 @@ builder.Services.AddApplicationServices(builder.Configuration);
 builder.Services.AddInfrastructureServices(builder.Configuration);
 builder.Services.AddSharedServices();
 
-// Hangfire background processing is currently disabled.
-// builder.Services.AddHangfireServices(builder.Configuration);
+// BackgroundService is used for monthly billing. Hangfire removed for MVP.
 
 // ----------------------------
 // Background services
@@ -230,15 +225,13 @@ var app = builder.Build();
 // ----------------------------
 // Swagger is only served in non-production environments.
 // In production the schema is private — exposed Swagger reveals the full attack surface.
-if (!app.Environment.IsProduction())
+
+app.UseSwagger();
+app.UseSwaggerUI(c =>
 {
-    app.UseSwagger();
-    app.UseSwaggerUI(c =>
-    {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "SocietyLedger API V1");
-        c.RoutePrefix = "";
-    });
-}
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "SocietyLedger API V1");
+    c.RoutePrefix = "";
+});
 
 // Skip HTTPS redirect on Render — SSL is terminated at the load balancer
 if (!app.Environment.IsProduction())

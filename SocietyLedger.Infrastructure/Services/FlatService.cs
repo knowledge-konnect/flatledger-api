@@ -52,6 +52,22 @@ namespace SocietyLedger.Infrastructure.Services
             if (existingFlat != null)
                 throw new DuplicateException("flat", "flat number");
 
+            // Check for duplicate email in the same society
+            if (!string.IsNullOrWhiteSpace(dto.ContactEmail))
+            {
+                var existingEmail = await _repo.GetByEmailAndSocietyAsync(dto.ContactEmail, societyId);
+                if (existingEmail != null)
+                    throw new DuplicateException("flat", "email");
+            }
+
+            // Check for duplicate mobile in the same society
+            if (!string.IsNullOrWhiteSpace(dto.ContactMobile))
+            {
+                var existingMobile = await _repo.GetByMobileAndSocietyAsync(dto.ContactMobile, societyId);
+                if (existingMobile != null)
+                    throw new DuplicateException("flat", "mobile number");
+            }
+
             // Get status by code if provided, otherwise use default
             short? statusId = null;
             if (!string.IsNullOrEmpty(dto.StatusCode))
@@ -116,8 +132,24 @@ namespace SocietyLedger.Infrastructure.Services
             if (dto.FlatNo != null && dto.FlatNo != existing.FlatNo)
             {
                 var conflictingFlat = await _repo.GetByFlatNoAndSocietyAsync(dto.FlatNo, existing.SocietyId);
-                if (conflictingFlat != null)
+                if (conflictingFlat != null && conflictingFlat.PublicId != existing.PublicId)
                     throw new DuplicateException("flat", "flat number");
+            }
+
+            // Check for duplicate email if changing
+            if (!string.IsNullOrWhiteSpace(dto.ContactEmail) && dto.ContactEmail != existing.ContactEmail)
+            {
+                var conflictingEmail = await _repo.GetByEmailAndSocietyAsync(dto.ContactEmail, existing.SocietyId);
+                if (conflictingEmail != null && conflictingEmail.PublicId != existing.PublicId)
+                    throw new DuplicateException("flat", "email");
+            }
+
+            // Check for duplicate mobile if changing
+            if (!string.IsNullOrWhiteSpace(dto.ContactMobile) && dto.ContactMobile != existing.ContactMobile)
+            {
+                var conflictingMobile = await _repo.GetByMobileAndSocietyAsync(dto.ContactMobile, existing.SocietyId);
+                if (conflictingMobile != null && conflictingMobile.PublicId != existing.PublicId)
+                    throw new DuplicateException("flat", "mobile number");
             }
 
             // Get status by code if provided

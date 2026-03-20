@@ -10,5 +10,6 @@ namespace SocietyLedger.Application.DTOs.Admin
         public string Currency { get; set; } = null!;
         public string DefaultMaintenanceCycle { get; set; } = null!;
         public bool? IsDeleted { get; set; }
+
     }
 }

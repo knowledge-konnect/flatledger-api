@@ -13,8 +13,8 @@ namespace SocietyLedger.Application.Validators.Admin
                 .MaximumLength(255);
 
             RuleFor(x => x.Password)
-                .NotEmpty().WithMessage("Password is required.")
-                .MinimumLength(8).WithMessage("Password must be at least 8 characters.");
+                .NotEmpty().WithMessage("Password is required.");
+                //.MinimumLength(8).WithMessage("Password must be at least 8 characters.");
         }
     }
 }

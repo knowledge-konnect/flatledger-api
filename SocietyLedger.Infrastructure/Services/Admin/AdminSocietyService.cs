@@ -13,13 +13,11 @@ namespace SocietyLedger.Infrastructure.Services.Admin
         private readonly AppDbContext _db;
         public AdminSocietyService(AppDbContext db) { _db = db; }
 
-        public async Task<PagedResult<AdminSocietyDto>> GetSocietiesAsync(int page, int pageSize, string? search = null, bool? isDeleted = null)
+        public async Task<PagedResult<AdminSocietyDto>> GetSocietiesAsync(int page, int pageSize, string? search = null)
         {
             var query = _db.societies.AsNoTracking();
             if (!string.IsNullOrWhiteSpace(search))
                 query = query.Where(s => s.name.ToLower().Contains(search.ToLower()));
-            if (isDeleted.HasValue)
-                query = query.Where(s => s.is_deleted == isDeleted);
             var total = await query.CountAsync();
             var items = await query.OrderByDescending(s => s.created_at)
                 .Skip((page - 1) * pageSize)
