@@ -1,6 +1,4 @@
 ﻿using FluentValidation;
-using Hangfire;
-using Hangfire.PostgreSql;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using SocietyLedger.Api.Filters;
@@ -8,8 +6,6 @@ using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Application.Interfaces.Services;
 using SocietyLedger.Application.Interfaces.Services.Admin;
 using SocietyLedger.Application.Validators.Auth;
-using SocietyLedger.Infrastructure.Data;
-using SocietyLedger.Infrastructure.Jobs;
 using SocietyLedger.Infrastructure.Persistence.Contexts;
 using SocietyLedger.Infrastructure.Persistence.Repositories;
 using SocietyLedger.Infrastructure.Services;
@@ -125,50 +121,6 @@ namespace SocietyLedger.Api.Extensions
             return services;
         }
 
-        /// <summary>
-        /// Configures Hangfire using PostgreSQL storage and registers the
-        /// <see cref="MonthlyBillingJob"/> into the DI container so that
-        /// Hangfire's job activator can resolve it with its dependencies.
-        ///
-        /// Call <c>UseHangfireServer()</c> and <c>UseHangfireDashboard()</c>
-        /// in the middleware pipeline after calling this method.
-        /// </summary>
-        public static IServiceCollection AddHangfireServices(
-            this IServiceCollection services,
-            IConfiguration configuration)
-        {
-            var connectionString = configuration.GetConnectionString("HangfireConnection")
-                ?? configuration.GetConnectionString("DefaultConnection")
-                ?? throw new InvalidOperationException(
-                    "Neither 'HangfireConnection' nor 'DefaultConnection' is configured.");
-
-            services.AddHangfire(config => config
-                .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
-                .UseSimpleAssemblyNameTypeSerializer()
-                .UseRecommendedSerializerSettings()
-                .UsePostgreSqlStorage(c =>
-                    c.UseNpgsqlConnection(connectionString),
-                    new PostgreSqlStorageOptions
-                    {
-                        // Keep job history for 30 days.
-                        JobExpirationCheckInterval = TimeSpan.FromHours(1),
-                        // Poll interval for background Hangfire server.
-                        QueuePollInterval          = TimeSpan.FromSeconds(15)
-                    }));
-
-            // Add the Hangfire server that processes background jobs.
-            services.AddHangfireServer(options =>
-            {
-                options.ServerName = $"SocietyLedger:{Environment.MachineName}";
-                // Only one worker needed for this app; increase if queue depth grows.
-                options.WorkerCount = Math.Max(1, Environment.ProcessorCount / 2);
-                options.Queues      = ["default", "billing"];
-            });
-
-            // Register the job class so it can be resolved by Hangfire's DI activator.
-            services.AddScoped<MonthlyBillingJob>();
-
-            return services;
-        }
+        // ...existing code...
     }
 }

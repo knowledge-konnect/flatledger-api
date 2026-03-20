@@ -19,9 +19,9 @@ namespace SocietyLedger.Api.Endpoints.Admin
             // GET /api/admin/societies
             app.MapGet("/", [Authorize(Policy = "SuperAdmin")]
                 [SwaggerOperation(Summary = "List societies", Description = "Paginated, filterable list of all societies.")]
-                async ([FromQuery] int page, [FromQuery] int pageSize, [FromQuery] string? search, [FromQuery] bool? isDeleted, IAdminSocietyService service) =>
+                async ([FromQuery] int page, [FromQuery] int pageSize, [FromQuery] string? search, IAdminSocietyService service) =>
                 {
-                    var result = await service.GetSocietiesAsync(page < 1 ? 1 : page, pageSize < 1 ? 20 : pageSize, search, isDeleted);
+                    var result = await service.GetSocietiesAsync(page < 1 ? 1 : page, pageSize < 1 ? 20 : pageSize, search);
                     return Results.Ok(ApiResponse<PagedResult<AdminSocietyDto>>.Success(result));
                 })
             .WithTags(groupName)

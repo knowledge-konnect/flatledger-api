@@ -138,5 +138,31 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
 
             return e == null ? null : e.ToDomain();
         }
+
+        public async Task<Flat?> GetByEmailAndSocietyAsync(string email, long societyId)
+        {
+            if (string.IsNullOrWhiteSpace(email))
+                return null;
+
+            var efFlat = await _db.flats
+                .ForSociety(societyId)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(f => f.contact_email == email && !f.is_deleted);
+
+            return efFlat?.ToDomain();
+        }
+
+        public async Task<Flat?> GetByMobileAndSocietyAsync(string mobile, long societyId)
+        {
+            if (string.IsNullOrWhiteSpace(mobile))
+                return null;
+
+            var efFlat = await _db.flats
+                .ForSociety(societyId)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(f => f.contact_mobile == mobile && !f.is_deleted);
+
+            return efFlat?.ToDomain();
+        }
     }
 }

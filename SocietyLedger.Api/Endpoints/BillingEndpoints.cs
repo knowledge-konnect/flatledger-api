@@ -104,6 +104,29 @@ namespace SocietyLedger.Api.Endpoints
             .Produces<ErrorResponse>(401)
             .Produces<ErrorResponse>(409)
             .Produces<ErrorResponse>(500);
+
+            // POST /billing/generate-for-flat
+            // Generates a bill for a specific flat for the current month (idempotent).
+            app.MapPost("/generate-for-flat",
+                [Authorize]
+                [SwaggerOperation(
+                    Summary     = "Generate bill for a flat",
+                    Description = "Generates a bill for a specific flat for the current month. Idempotent: does nothing if bill already exists."
+                )]
+                async ([FromBody] long flatId, IBillingService billingService) =>
+                {
+                    var billingMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+                    await billingService.GenerateBillForFlatAsync(flatId, billingMonth);
+                    return Results.Ok(ApiResponse<string>.Success(null, $"Bill generated for flat {flatId} for {billingMonth:yyyy-MM} (if not already present)."));
+                })
+            .WithTags(groupName)
+            .WithApiVersionSet(versionSet)
+            .HasApiVersion(version_1_0)
+            .WithName("GenerateBillForFlat")
+            .Produces<ApiResponse<string>>(200)
+            .Produces<ErrorResponse>(400)
+            .Produces<ErrorResponse>(401)
+            .Produces<ErrorResponse>(500);
         }
     }
 }

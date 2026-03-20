@@ -324,5 +324,52 @@ namespace SocietyLedger.Infrastructure.Services
             };
         }
 
+        /// <summary>
+        /// Generates a bill for a single flat for the given month if it does not already exist.
+        /// </summary>
+        public async Task GenerateBillForFlatAsync(long flatId, DateTime billingMonth)
+        {
+            var period = billingMonth.ToString("yyyy-MM");
+            var flat = await _db.flats
+                .AsNoTracking()
+                .FirstOrDefaultAsync(f => f.id == flatId && !f.is_deleted);
+
+            if (flat == null)
+                throw new NotFoundException("Flat", $"Flat with id {flatId} not found or deleted.");
+
+            // Check if bill already exists for this flat and period
+            var exists = await _db.bills.AnyAsync(b => b.flat_id == flatId && b.period == period && !b.is_deleted);
+            if (exists)
+                return; // Idempotent: do nothing if bill already exists
+
+            // Get society maintenance config
+            var maintConfig = await _db.maintenance_configs
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.society_id == flat.society_id);
+
+            var amount = flat.maintenance_amount > 0
+                ? flat.maintenance_amount
+                : (maintConfig?.default_monthly_charge ?? 0m);
+
+            var now = DateTime.UtcNow;
+            var bill = new bill
+            {
+                society_id   = flat.society_id,
+                flat_id      = flat.id,
+                period       = period,
+                amount       = amount,
+                status_code  = BillStatusCodes.Unpaid,
+                generated_by = null, // system-generated
+                generated_at = now,
+                created_at   = now,
+                is_deleted   = false,
+                source       = "flat-create"
+            };
+
+            await _db.bills.AddAsync(bill);
+            await _db.SaveChangesAsync();
+
+            _logger.LogInformation("Generated bill for flat {FlatId}, period {Period}", flatId, period);
+        }
     }
 }
