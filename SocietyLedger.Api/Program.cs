@@ -32,7 +32,7 @@ if (!string.IsNullOrEmpty(renderPort))
 
 
 // ----------------------------
-LogEventLevel level = LogEventLevel.Information;
+LogEventLevel level = builder.Environment.IsProduction() ? LogEventLevel.Warning : LogEventLevel.Information;
 var logTemplate = "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] {Message}{NewLine}{Exception}";
 
 Log.Logger = new LoggerConfiguration()
@@ -213,6 +213,7 @@ builder.Services.AddSharedServices();
 // ----------------------------
 // Background services
 // ----------------------------
+builder.Services.AddHostedService<MonthlyBillGenerationService>();
 builder.Services.AddHostedService<TrialExpirationService>();
 
 // ----------------------------
