@@ -35,8 +35,9 @@ namespace SocietyLedger.Api.Endpoints
             ctx.Response.Cookies.Append(RefreshTokenCookieName, refreshToken, new CookieOptions
             {
                 HttpOnly = true,
-                Secure   = !env.IsDevelopment(),   // true in staging/production, false in local dev
-                SameSite = SameSiteMode.Strict,
+                // For cross-origin support, SameSite=None and Secure must be true
+                Secure   = true,
+                SameSite = SameSiteMode.None,
                 Path     = RefreshTokenCookiePath,
                 Expires  = new DateTimeOffset(DateTime.SpecifyKind(expiresAt, DateTimeKind.Utc))
             });

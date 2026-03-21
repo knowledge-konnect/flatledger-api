@@ -327,18 +327,22 @@ namespace SocietyLedger.Infrastructure.Services
         /// <summary>
         /// Generates a bill for a single flat for the given month if it does not already exist.
         /// </summary>
-        public async Task GenerateBillForFlatAsync(long flatId, DateTime billingMonth)
+        public async Task GenerateBillForFlatAsync(Guid flatPublicId, long userId, DateTime billingMonth)
         {
-            var period = billingMonth.ToString("yyyy-MM");
+            var period    = billingMonth.ToString("yyyy-MM");
+            var societyId = await _userContext.GetSocietyIdAsync(userId);
+
             var flat = await _db.flats
                 .AsNoTracking()
-                .FirstOrDefaultAsync(f => f.id == flatId && !f.is_deleted);
+                .FirstOrDefaultAsync(f => f.public_id == flatPublicId
+                                       && f.society_id == societyId
+                                       && !f.is_deleted);
 
             if (flat == null)
-                throw new NotFoundException("Flat", $"Flat with id {flatId} not found or deleted.");
+                throw new NotFoundException("Flat", $"Flat with public id {flatPublicId} not found or does not belong to this society.");
 
             // Check if bill already exists for this flat and period
-            var exists = await _db.bills.AnyAsync(b => b.flat_id == flatId && b.period == period && !b.is_deleted);
+            var exists = await _db.bills.AnyAsync(b => b.flat_id == flat.id && b.period == period && !b.is_deleted);
             if (exists)
                 return; // Idempotent: do nothing if bill already exists
 
@@ -359,7 +363,7 @@ namespace SocietyLedger.Infrastructure.Services
                 period       = period,
                 amount       = amount,
                 status_code  = BillStatusCodes.Unpaid,
-                generated_by = null, // system-generated
+                generated_by = null,
                 generated_at = now,
                 created_at   = now,
                 is_deleted   = false,
@@ -369,7 +373,7 @@ namespace SocietyLedger.Infrastructure.Services
             await _db.bills.AddAsync(bill);
             await _db.SaveChangesAsync();
 
-            _logger.LogInformation("Generated bill for flat {FlatId}, period {Period}", flatId, period);
+            _logger.LogInformation("Generated bill for flat {FlatId}, period {Period}", flat.id, period);
         }
     }
 }
