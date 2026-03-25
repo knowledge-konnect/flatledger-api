@@ -328,14 +328,20 @@ app.MapGroup(ApiRoutes.ADMIN_PLANS)
 app.MapGroup(ApiRoutes.ADMIN_SOCIETIES)
     .MapAdminSocietyRoutes(RouteGroupNames.ADMIN_SOCIETIES, versionSet);
 
+app.MapGroup(ApiRoutes.ADMIN_USERS)
+    .MapAdminUserRoutes(RouteGroupNames.ADMIN_USERS, versionSet);
+
 app.MapGroup(ApiRoutes.ADMIN_SUBSCRIPTIONS)
     .MapAdminSubscriptionRoutes(RouteGroupNames.ADMIN_SUBSCRIPTIONS, versionSet);
 
 app.MapGroup(ApiRoutes.ADMIN_PAYMENTS)
     .MapAdminPaymentRoutes(RouteGroupNames.ADMIN_PAYMENTS, versionSet);
 
-app.MapGroup(ApiRoutes.ADMIN_FEATURES)
-    .MapAdminFeatureFlagRoutes(RouteGroupNames.ADMIN_FEATURES, versionSet);
+app.MapGroup(ApiRoutes.ADMIN_BILLS)
+    .MapAdminBillRoutes(RouteGroupNames.ADMIN_BILLS, versionSet);
+
+app.MapGroup(ApiRoutes.ADMIN_INVOICES)
+    .MapAdminInvoiceRoutes(RouteGroupNames.ADMIN_INVOICES, versionSet);
 
 app.MapGroup(ApiRoutes.ADMIN_SETTINGS)
     .MapAdminPlatformSettingRoutes(RouteGroupNames.ADMIN_SETTINGS, versionSet);

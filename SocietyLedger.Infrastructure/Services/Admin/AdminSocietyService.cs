@@ -47,6 +47,29 @@ namespace SocietyLedger.Infrastructure.Services.Admin
         {
             var s = await _db.societies.AsNoTracking().FirstOrDefaultAsync(x => x.id == id);
             if (s == null) return null;
+
+            var flatCount       = await _db.flats.CountAsync(f => f.society_id == id && !f.is_deleted);
+            var activeFlatCount = await _db.flats.CountAsync(f => f.society_id == id && !f.is_deleted && f.status_id != null);
+            var userCount       = await _db.users.CountAsync(u => u.society_id == id && !u.is_deleted);
+            var activeUserCount = await _db.users.CountAsync(u => u.society_id == id && !u.is_deleted && u.is_active);
+
+            var activeSub = await _db.subscriptions
+                .AsNoTracking()
+                .Where(sub => _db.users.Any(u => u.society_id == id && u.id == sub.user_id)
+                           && (sub.status == "active" || sub.status == "trial"))
+                .OrderByDescending(sub => sub.created_at)
+                .Select(sub => new AdminSocietySubscriptionSummary
+                {
+                    Id = sub.id,
+                    PlanName = sub.plan.name,
+                    Status = sub.status,
+                    SubscribedAmount = sub.subscribed_amount,
+                    Currency = sub.currency,
+                    CurrentPeriodEnd = sub.current_period_end,
+                    TrialEnd = sub.trial_end
+                })
+                .FirstOrDefaultAsync();
+
             return new AdminSocietyDto
             {
                 Id = s.id,
@@ -62,29 +85,14 @@ namespace SocietyLedger.Infrastructure.Services.Admin
                 UpdatedAt = s.updated_at,
                 IsDeleted = s.is_deleted,
                 DeletedAt = s.deleted_at,
-                OnboardingDate = s.onboarding_date
+                OnboardingDate = s.onboarding_date,
+                FlatCount = flatCount,
+                ActiveFlatCount = activeFlatCount,
+                UserCount = userCount,
+                ActiveUserCount = activeUserCount,
+                ActiveSubscription = activeSub
             };
         }
 
-        public async Task<AdminSocietyDto> UpdateSocietyAsync(long id, AdminSocietyUpdateRequest request)
-        {
-            var s = await _db.societies.FirstOrDefaultAsync(x => x.id == id);
-            if (s == null) throw new NotFoundException("Society", id.ToString());
-            s.name = request.Name;
-            s.address = request.Address;
-            s.city = request.City;
-            s.state = request.State;
-            s.pincode = request.Pincode;
-            s.currency = request.Currency;
-            s.default_maintenance_cycle = request.DefaultMaintenanceCycle;
-            if (request.IsDeleted.HasValue)
-            {
-                s.is_deleted = request.IsDeleted.Value;
-                s.deleted_at = request.IsDeleted.Value ? DateTime.UtcNow : null;
-            }
-            s.updated_at = DateTime.UtcNow;
-            await _db.SaveChangesAsync();
-            return await GetSocietyByIdAsync(s.id) ?? throw new Exception("Failed to update society");
-        }
     }
 }

@@ -42,9 +42,11 @@ namespace SocietyLedger.Api.Extensions
             services.AddScoped<IAdminAuthService, AdminAuthService>();
             services.AddScoped<IAdminPlanService, AdminPlanService>();
             services.AddScoped<IAdminSocietyService, AdminSocietyService>();
+            services.AddScoped<IAdminUserService, AdminUserService>();
             services.AddScoped<IAdminSubscriptionService, AdminSubscriptionService>();
             services.AddScoped<IAdminPaymentService, AdminPaymentService>();
-            services.AddScoped<IAdminFeatureFlagService, AdminFeatureFlagService>();
+            services.AddScoped<IAdminBillService, AdminBillService>();
+            services.AddScoped<IAdminInvoiceService, AdminInvoiceService>();
             services.AddScoped<IAdminPlatformSettingService, AdminPlatformSettingService>();
 
             return services;

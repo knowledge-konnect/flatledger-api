@@ -19,7 +19,6 @@ public partial class AppDbContext : DbContext
 
     public virtual DbSet<admin_user> admin_users { get; set; }
 
-    public virtual DbSet<feature_flag> feature_flags { get; set; }
 
     public virtual DbSet<platform_setting> platform_settings { get; set; }
 
@@ -123,20 +122,6 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.is_active).HasDefaultValue(true);
             entity.Property(e => e.created_at).HasDefaultValueSql("now()");
             entity.Property(e => e.updated_at).HasDefaultValueSql("now()");
-        });
-
-        modelBuilder.Entity<feature_flag>(entity =>
-        {
-            entity.HasKey(e => e.id).HasName("feature_flags_pkey");
-            entity.Property(e => e.id).UseIdentityAlwaysColumn();
-            entity.Property(e => e.is_enabled).HasDefaultValue(false);
-            entity.Property(e => e.created_at).HasDefaultValueSql("now()");
-            entity.Property(e => e.updated_at).HasDefaultValueSql("now()");
-            entity.HasOne(e => e.society)
-                  .WithMany(s => s.feature_flags)
-                  .HasForeignKey(e => e.society_id)
-                  .OnDelete(DeleteBehavior.Cascade)
-                  .HasConstraintName("feature_flags_society_id_fkey");
         });
 
         modelBuilder.Entity<platform_setting>(entity =>

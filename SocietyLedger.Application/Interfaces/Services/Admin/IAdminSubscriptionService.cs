@@ -7,6 +7,5 @@ namespace SocietyLedger.Application.Interfaces.Services.Admin
     {
         Task<PagedResult<AdminSubscriptionDto>> GetSubscriptionsAsync(int page, int pageSize, string? status = null, long? userId = null);
         Task<AdminSubscriptionDto?> GetSubscriptionByIdAsync(Guid id);
-        Task<AdminSubscriptionDto> UpdateSubscriptionAsync(Guid id, AdminSubscriptionUpdateRequest request);
     }
 }

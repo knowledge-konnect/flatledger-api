@@ -83,21 +83,5 @@ namespace SocietyLedger.Infrastructure.Services.Admin
                 .FirstOrDefaultAsync();
         }
 
-        public async Task<AdminSubscriptionDto> UpdateSubscriptionAsync(Guid id, AdminSubscriptionUpdateRequest request)
-        {
-            var sub = await _db.subscriptions.FirstOrDefaultAsync(x => x.id == id);
-            if (sub == null) throw new NotFoundException("Subscription", id.ToString());
-
-            sub.plan_id = request.PlanId;
-            sub.status = request.Status;
-            sub.current_period_start = request.CurrentPeriodStart;
-            sub.current_period_end = request.CurrentPeriodEnd;
-            sub.updated_at = DateTime.UtcNow;
-            if (request.Status == "cancelled")
-                sub.cancelled_at = DateTime.UtcNow;
-
-            await _db.SaveChangesAsync();
-            return await GetSubscriptionByIdAsync(sub.id) ?? throw new Exception("Failed to update subscription");
-        }
     }
 }

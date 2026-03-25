@@ -43,19 +43,6 @@ namespace SocietyLedger.Api.Endpoints.Admin
             .HasApiVersion(version_1_0)
             .WithName("AdminGetSociety");
 
-            // PUT /api/admin/societies/{id}
-            app.MapPut("/{id:long}", [Authorize(Policy = "SuperAdmin")]
-                [SwaggerOperation(Summary = "Update society", Description = "Update an existing society.")]
-                async (long id, [FromBody] AdminSocietyUpdateRequest req, IAdminSocietyService service) =>
-                {
-                    var society = await service.UpdateSocietyAsync(id, req);
-                    return Results.Ok(ApiResponse<AdminSocietyDto>.Success(society, "Society updated successfully"));
-                })
-            .AddEndpointFilter<FluentValidationFilter<AdminSocietyUpdateRequest>>()
-            .WithTags(groupName)
-            .WithApiVersionSet(versionSet)
-            .HasApiVersion(version_1_0)
-            .WithName("AdminUpdateSociety");
         }
     }
 }
