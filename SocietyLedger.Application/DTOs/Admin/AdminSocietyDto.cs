@@ -16,5 +16,22 @@ namespace SocietyLedger.Application.DTOs.Admin
         public bool IsDeleted { get; set; }
         public DateTime? DeletedAt { get; set; }
         public DateOnly OnboardingDate { get; set; }
+        // Aggregate counts — populated by detail endpoint
+        public int FlatCount { get; set; }
+        public int ActiveFlatCount { get; set; }
+        public int UserCount { get; set; }
+        public int ActiveUserCount { get; set; }
+        public AdminSocietySubscriptionSummary? ActiveSubscription { get; set; }
+    }
+
+    public class AdminSocietySubscriptionSummary
+    {
+        public Guid Id { get; set; }
+        public string PlanName { get; set; } = null!;
+        public string Status { get; set; } = null!;
+        public decimal SubscribedAmount { get; set; }
+        public string? Currency { get; set; }
+        public DateTime? CurrentPeriodEnd { get; set; }
+        public DateTime? TrialEnd { get; set; }
     }
 }

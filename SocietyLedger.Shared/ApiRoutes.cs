@@ -29,9 +29,11 @@ namespace SocietyLedger.Shared
         public const string ADMIN_AUTH = "/api/admin/auth";
         public const string ADMIN_PLANS = "/api/admin/plans";
         public const string ADMIN_SOCIETIES = "/api/admin/societies";
+        public const string ADMIN_USERS = "/api/admin/users";
         public const string ADMIN_SUBSCRIPTIONS = "/api/admin/subscriptions";
         public const string ADMIN_PAYMENTS = "/api/admin/payments";
-        public const string ADMIN_FEATURES = "/api/admin/features";
+        public const string ADMIN_BILLS = "/api/admin/bills";
+        public const string ADMIN_INVOICES = "/api/admin/invoices";
         public const string ADMIN_SETTINGS = "/api/admin/settings";
     }
 }

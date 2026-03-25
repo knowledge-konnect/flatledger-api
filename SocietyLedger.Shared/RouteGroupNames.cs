@@ -29,9 +29,11 @@ namespace SocietyLedger.Shared
         public const string ADMIN_AUTH = "Admin - Authentication";
         public const string ADMIN_PLANS = "Admin - Plans";
         public const string ADMIN_SOCIETIES = "Admin - Societies";
+        public const string ADMIN_USERS = "Admin - Users";
         public const string ADMIN_SUBSCRIPTIONS = "Admin - Subscriptions";
         public const string ADMIN_PAYMENTS = "Admin - Payments";
-        public const string ADMIN_FEATURES = "Admin - Feature Flags";
+        public const string ADMIN_BILLS = "Admin - Bills";
+        public const string ADMIN_INVOICES = "Admin - Invoices";
         public const string ADMIN_SETTINGS = "Admin - Platform Settings";
     }
 }

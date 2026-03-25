@@ -37,17 +37,6 @@ namespace SocietyLedger.Api.Endpoints.Admin
                                       : Results.Ok(ApiResponse<AdminSubscriptionDto>.Success(sub));
                 })
             .WithTags(groupName).WithApiVersionSet(versionSet).HasApiVersion(v1).WithName("AdminGetSubscription");
-
-            // PUT /api/admin/subscriptions/{id}
-            app.MapPut("/{id:guid}", [Authorize(Policy = "SuperAdmin")]
-                [SwaggerOperation(Summary = "Update subscription", Description = "Change plan, status or period dates.")]
-                async (Guid id, [FromBody] AdminSubscriptionUpdateRequest req, IAdminSubscriptionService service) =>
-                {
-                    var sub = await service.UpdateSubscriptionAsync(id, req);
-                    return Results.Ok(ApiResponse<AdminSubscriptionDto>.Success(sub, "Subscription updated successfully"));
-                })
-            .AddEndpointFilter<FluentValidationFilter<AdminSubscriptionUpdateRequest>>()
-            .WithTags(groupName).WithApiVersionSet(versionSet).HasApiVersion(v1).WithName("AdminUpdateSubscription");
         }
     }
 }

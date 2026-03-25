@@ -7,6 +7,5 @@ namespace SocietyLedger.Application.Interfaces.Services.Admin
     {
         Task<PagedResult<AdminSocietyDto>> GetSocietiesAsync(int page, int pageSize, string? search = null);
         Task<AdminSocietyDto?> GetSocietyByIdAsync(long id);
-        Task<AdminSocietyDto> UpdateSocietyAsync(long id, AdminSocietyUpdateRequest request);
     }
 }

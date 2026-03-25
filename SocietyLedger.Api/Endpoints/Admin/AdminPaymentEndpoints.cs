@@ -27,16 +27,6 @@ namespace SocietyLedger.Api.Endpoints.Admin
                 })
             .WithTags(groupName).WithApiVersionSet(versionSet).HasApiVersion(v1).WithName("AdminListPayments");
 
-            // GET /api/admin/payments/{id}
-            app.MapGet("/{id:long}", [Authorize(Policy = "SuperAdmin")]
-                [SwaggerOperation(Summary = "Get payment details")]
-                async (long id, IAdminPaymentService service) =>
-                {
-                    var p = await service.GetPaymentByIdAsync(id);
-                    return p == null ? Results.NotFound(ErrorResponse.Create("NOT_FOUND", "Payment not found"))
-                                    : Results.Ok(ApiResponse<AdminPaymentDto>.Success(p));
-                })
-            .WithTags(groupName).WithApiVersionSet(versionSet).HasApiVersion(v1).WithName("AdminGetPayment");
         }
     }
 }
