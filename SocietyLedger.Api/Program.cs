@@ -301,6 +301,9 @@ var versionSet = app.NewApiVersionSet()
     .ReportApiVersions()
     .Build();
 
+app.MapGroup(ApiRoutes.IMPORT)
+   .MapImportRoutes(RouteGroupNames.IMPORT, versionSet);
+
 app.MapGroup(ApiRoutes.AUTH)
    .MapAuthRoutes(RouteGroupNames.AUTHENTICATION, versionSet);
 

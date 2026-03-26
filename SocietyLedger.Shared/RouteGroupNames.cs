@@ -8,6 +8,7 @@ namespace SocietyLedger.Shared
 {
     public static class RouteGroupNames
     {
+        public const string IMPORT = "Import";
         public const string AUTHENTICATION = "Authentication";
         public const string USER = "User";
         public const string SOCIETY = "Society";

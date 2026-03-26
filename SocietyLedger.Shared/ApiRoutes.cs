@@ -8,6 +8,7 @@ namespace SocietyLedger.Shared
 {
     public static class ApiRoutes
     {
+        public const string IMPORT = "/api/import";
         public const string AUTH = "/api/auth";
         public const string USERS = "/api/users";
         public const string SOCIETIES = "/api/societies";
