@@ -1,24 +1,24 @@
 ﻿using FluentValidation;
-using Hangfire;
-using Hangfire.PostgreSql;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using SocietyLedger.Api.Filters;
 using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Application.Interfaces.Services;
+using SocietyLedger.Application.Interfaces.Services.Admin;
 using SocietyLedger.Application.Validators.Auth;
-using SocietyLedger.Infrastructure.Data;
-using SocietyLedger.Infrastructure.Jobs;
 using SocietyLedger.Infrastructure.Persistence.Contexts;
 using SocietyLedger.Infrastructure.Persistence.Repositories;
 using SocietyLedger.Infrastructure.Services;
+using SocietyLedger.Infrastructure.Services.Admin;
 using SocietyLedger.Infrastructure.Services.Common;
 using SocietyLedger.Shared.Jwt;
 namespace SocietyLedger.Api.Extensions
 {
     public static class ServiceCollectionExtensions
     {
-
+        /// <summary>
+        /// Registers application-level use-case services and FluentValidation validators.
+        /// </summary>
         public static IServiceCollection AddApplicationServices(this IServiceCollection services, IConfiguration configuration)
         {
             services.AddValidatorsFromAssemblyContaining<RegisterRequestValidator>();
@@ -39,12 +39,27 @@ namespace SocietyLedger.Api.Extensions
             services.AddScoped<INotificationPreferenceService, NotificationPreferenceService>();
             services.AddScoped<IFileImportService, FileImportService>();
 
+            // SaaS Admin module
+            services.AddScoped<IAdminAuthService, AdminAuthService>();
+            services.AddScoped<IAdminPlanService, AdminPlanService>();
+            services.AddScoped<IAdminSocietyService, AdminSocietyService>();
+            services.AddScoped<IAdminUserService, AdminUserService>();
+            services.AddScoped<IAdminSubscriptionService, AdminSubscriptionService>();
+            services.AddScoped<IAdminPaymentService, AdminPaymentService>();
+            services.AddScoped<IAdminBillService, AdminBillService>();
+            services.AddScoped<IAdminInvoiceService, AdminInvoiceService>();
+            services.AddScoped<IAdminPlatformSettingService, AdminPlatformSettingService>();
+
             return services;
         }
 
+        /// <summary>
+        /// Registers infrastructure services: EF Core (Npgsql), Dapper, all repositories,
+        /// security helpers (PasswordHasher, TokenService), and Hangfire job classes.
+        /// Uses pgBouncer-compatible settings with a 120-second command timeout for Supabase cold starts.
+        /// </summary>
         public static IServiceCollection AddInfrastructureServices(this IServiceCollection services, IConfiguration configuration)
         {
-
             services.AddHttpContextAccessor();
 
             var connectionString = configuration.GetConnectionString("DefaultConnection");
@@ -89,10 +104,6 @@ namespace SocietyLedger.Api.Extensions
             services.AddScoped<IReportRepository, ReportRepository>();
             services.AddScoped<IReportService, ReportService>();
 
-            // OPTIONAL: prefer repository for refresh tokens instead of direct DbContext access.
-            // Uncomment & implement IRefreshTokenRepository + RefreshTokenRepository if you add it.
-            // services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
-
             services.AddSingleton<PasswordHasher>();
             services.AddScoped<ITokenService, TokenService>();
 
@@ -103,6 +114,9 @@ namespace SocietyLedger.Api.Extensions
             return services;
         }
 
+        /// <summary>
+        /// Registers shared cross-cutting services: logging and in-memory cache.
+        /// </summary>
         public static IServiceCollection AddSharedServices(this IServiceCollection services)
         {
             services.AddLogging();
@@ -110,50 +124,6 @@ namespace SocietyLedger.Api.Extensions
             return services;
         }
 
-        /// <summary>
-        /// Configures Hangfire using PostgreSQL storage and registers the
-        /// <see cref="MonthlyBillingJob"/> into the DI container so that
-        /// Hangfire's job activator can resolve it with its dependencies.
-        ///
-        /// Call <c>UseHangfireServer()</c> and <c>UseHangfireDashboard()</c>
-        /// in the middleware pipeline after calling this method.
-        /// </summary>
-        public static IServiceCollection AddHangfireServices(
-            this IServiceCollection services,
-            IConfiguration configuration)
-        {
-            var connectionString = configuration.GetConnectionString("HangfireConnection")
-                ?? configuration.GetConnectionString("DefaultConnection")
-                ?? throw new InvalidOperationException(
-                    "Neither 'HangfireConnection' nor 'DefaultConnection' is configured.");
-
-            services.AddHangfire(config => config
-                .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
-                .UseSimpleAssemblyNameTypeSerializer()
-                .UseRecommendedSerializerSettings()
-                .UsePostgreSqlStorage(c =>
-                    c.UseNpgsqlConnection(connectionString),
-                    new PostgreSqlStorageOptions
-                    {
-                        // Keep job history for 30 days.
-                        JobExpirationCheckInterval = TimeSpan.FromHours(1),
-                        // Poll interval for background Hangfire server.
-                        QueuePollInterval          = TimeSpan.FromSeconds(15)
-                    }));
-
-            // Add the Hangfire server that processes background jobs.
-            services.AddHangfireServer(options =>
-            {
-                options.ServerName = $"SocietyLedger:{Environment.MachineName}";
-                // Only one worker needed for this app; increase if queue depth grows.
-                options.WorkerCount = Math.Max(1, Environment.ProcessorCount / 2);
-                options.Queues      = ["default", "billing"];
-            });
-
-            // Register the job class so it can be resolved by Hangfire's DI activator.
-            services.AddScoped<MonthlyBillingJob>();
-
-            return services;
-        }
+        // ...existing code...
     }
 }

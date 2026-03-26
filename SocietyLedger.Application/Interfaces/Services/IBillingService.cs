@@ -5,6 +5,10 @@ namespace SocietyLedger.Application.Interfaces.Services
     public interface IBillingService
     {
         /// <summary>
+        /// Generates a bill for a single flat for the given month if it does not already exist.
+        /// </summary>
+        Task GenerateBillForFlatAsync(Guid flatPublicId, long userId, DateTime billingMonth);
+        /// <summary>
         /// Generates one bill per active flat for the given period.
         /// Throws ConflictException if bills already exist for that society + period.
         /// Throws NotFoundException if society has no active flats.

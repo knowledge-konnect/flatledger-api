@@ -14,11 +14,13 @@ namespace SocietyLedger.Api.Endpoints
 {
     public static class PlanEndpoints
     {
+        /// <summary>
+        /// Maps subscription plan routes: list active plans and retrieve a plan by ID.
+        /// </summary>
         public static void MapPlanRoutes(this RouteGroupBuilder app, string groupName, ApiVersionSet versionSet)
         {
             var version_1_0 = new ApiVersion(ApiConstants.API_VERSION_1_0);
 
-            // Get all active plans
             app.MapGet("/",
             [SwaggerOperation(
                     Summary = "Get active plans",
@@ -35,7 +37,6 @@ namespace SocietyLedger.Api.Endpoints
                 .MapToApiVersion(version_1_0)
                 .WithTags(groupName);
 
-            // Get plan by ID
             app.MapGet("/{id}",
             
             [SwaggerOperation(

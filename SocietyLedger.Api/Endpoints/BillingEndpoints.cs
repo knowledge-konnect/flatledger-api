@@ -7,6 +7,7 @@ using SocietyLedger.Api.Extensions;
 using SocietyLedger.Api.Filters;
 using SocietyLedger.Application.DTOs.Billing;
 using SocietyLedger.Application.Interfaces.Services;
+using SocietyLedger.Domain.Constants;
 using SocietyLedger.Shared;
 using Swashbuckle.AspNetCore.Annotations;
 
@@ -14,6 +15,9 @@ namespace SocietyLedger.Api.Endpoints
 {
     public static class BillingEndpoints
     {
+        /// <summary>
+        /// Maps billing routes: get billing status and manually trigger monthly bill generation.
+        /// </summary>
         public static void MapBillingRoutes(this RouteGroupBuilder app, string groupName, ApiVersionSet versionSet)
         {
             var version_1_0 = new ApiVersion(ApiConstants.API_VERSION_1_0);
@@ -72,6 +76,9 @@ namespace SocietyLedger.Api.Endpoints
                             statusCode: 401);
                     }
 
+                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
+                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
+
                     var billingMonthDate = request.GetBillingMonthDate();
                     var period           = billingMonthDate.ToString("yyyy-MM");
 
@@ -96,6 +103,70 @@ namespace SocietyLedger.Api.Endpoints
             .Produces<ErrorResponse>(400)
             .Produces<ErrorResponse>(401)
             .Produces<ErrorResponse>(409)
+            .Produces<ErrorResponse>(500);
+
+            // POST /billing/trigger-monthly-job-now
+            // Admin-only endpoint: manually triggers the same all-societies monthly billing logic used by the background service.
+            app.MapPost("/trigger-monthly-job-now",
+                [Authorize("SuperAdmin")]
+                [SwaggerOperation(
+                    Summary     = "Trigger monthly billing job now (SuperAdmin only)",
+                    Description = "Runs the monthly billing background logic immediately for the current UTC month across societies. " +
+                                  "Intended for verification/recovery; safe to re-run because existing bills are skipped. SuperAdmin access required."
+                )]
+                async (IBillingService billingService, HttpContext ctx) =>
+                {
+                    var userId = ctx.GetUserId();
+                    if (userId == 0)
+                        return Results.Json(
+                            ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid or missing authentication token", ctx.TraceIdentifier),
+                            statusCode: 401);
+
+                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
+                        return Results.Json(
+                            new { error = "Forbidden", message = "You do not have permission to perform this action." },
+                            statusCode: 403);
+
+                    var billingMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+                    var result = await billingService.GenerateMonthlyBillsAsync(billingMonth);
+
+                    return Results.Ok(ApiResponse<BillingResult>.Success(
+                        result,
+                        $"Monthly billing job triggered for {billingMonth:yyyy-MM}. Created={result.BillsCreated}, Skipped={result.BillsSkipped}."));
+                })
+            .WithTags(groupName)
+            .WithApiVersionSet(versionSet)
+            .HasApiVersion(version_1_0)
+            .WithName("TriggerMonthlyBillingJobNow")
+            .Produces<ApiResponse<BillingResult>>(200)
+            .Produces<ErrorResponse>(401)
+            .Produces<ErrorResponse>(500);
+
+            // POST /billing/generate-for-flat
+            // Generates a bill for a specific flat for the current month (idempotent).
+            app.MapPost("/generate-for-flat",
+                [Authorize]
+                [SwaggerOperation(
+                    Summary     = "Generate bill for a flat",
+                    Description = "Generates a bill for a specific flat in a society for the current month. Idempotent: does nothing if bill already exists."
+                )]
+                async ([FromBody] GenerateBillForFlatRequest request, IBillingService billingService, HttpContext ctx) =>
+                {
+                    var userId = ctx.GetUserId();
+                    if (userId == 0)
+                        return Results.Json(ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid or missing authentication token", ctx.TraceIdentifier), statusCode: 401);
+
+                    var billingMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+                    await billingService.GenerateBillForFlatAsync(request.FlatPublicId, userId, billingMonth);
+                    return Results.Ok(ApiResponse<string>.Success(null, $"Bill generated for flat {request.FlatPublicId} for {billingMonth:yyyy-MM} (if not already present)."));
+                })
+            .WithTags(groupName)
+            .WithApiVersionSet(versionSet)
+            .HasApiVersion(version_1_0)
+            .WithName("GenerateBillForFlat")
+            .Produces<ApiResponse<string>>(200)
+            .Produces<ErrorResponse>(400)
+            .Produces<ErrorResponse>(401)
             .Produces<ErrorResponse>(500);
         }
     }

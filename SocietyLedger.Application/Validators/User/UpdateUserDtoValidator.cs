@@ -1,5 +1,6 @@
 using FluentValidation;
 using SocietyLedger.Application.DTOs.User;
+using SocietyLedger.Domain.Constants;
 
 namespace SocietyLedger.Application.Validators.User
 {
@@ -33,8 +34,8 @@ namespace SocietyLedger.Application.Validators.User
             RuleFor(x => x.RoleCode)
                 .NotEmpty()
                 .WithMessage("Role code is required.")
-                .MaximumLength(50)
-                .WithMessage("Role code cannot exceed 50 characters.");
+                .Must(code => code == RoleCodes.SocietyAdmin || code == RoleCodes.Viewer)
+                .WithMessage($"Role code must be '{RoleCodes.SocietyAdmin}' or '{RoleCodes.Viewer}'.");
         }
     }
 }

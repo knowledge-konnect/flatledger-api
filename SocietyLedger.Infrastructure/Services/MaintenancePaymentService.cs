@@ -45,12 +45,9 @@ namespace SocietyLedger.Infrastructure.Services
         // ------------------------------------------------------------------ //
 
         /// <summary>
-        /// Records a maintenance payment and allocates it FIFO:
-        /// opening-balance adjustments first, then monthly bills, then advance.
+        /// Records a maintenance payment and allocates it FIFO: opening-balance adjustments first, then monthly bills, then advance.
         /// </summary>
-        public async Task<MaintenancePaymentResponse> ProcessPaymentAsync(
-            MaintenancePaymentRequest request,
-            long userId)
+        public async Task<MaintenancePaymentResponse> ProcessPaymentAsync(MaintenancePaymentRequest request, long userId)
         {
             var societyId = await _userContext.GetSocietyIdAsync(userId);
             if (request.Amount <= 0)
@@ -251,6 +248,12 @@ namespace SocietyLedger.Infrastructure.Services
                     // ── Step 8: Commit ────────────────────────────────────────────────────
                     await tx.CommitAsync();
 
+                    // #1 — Inform the caller when all bills are already paid and
+                    //        the full amount was recorded as advance credit.
+                    var paymentMessage = allocations.Count == 0 && remaining > 0
+                        ? $"No outstanding bills found. \u20b9{remaining:N2} has been recorded as advance credit."
+                        : null;
+
                     return new MaintenancePaymentResponse
                     {
                         FlatPublicId     = flat.public_id,
@@ -260,7 +263,8 @@ namespace SocietyLedger.Infrastructure.Services
                         Notes            = request.Notes,
                         TotalPaid        = allocations.Sum(a => a.AllocatedAmount),
                         Allocations      = allocations,
-                        RemainingAdvance = remaining
+                        RemainingAdvance = remaining,
+                        Message          = paymentMessage
                     };
                 }
                 catch (Exception ex)
@@ -276,8 +280,10 @@ namespace SocietyLedger.Infrastructure.Services
         //  Remaining interface methods                                         //
         // ------------------------------------------------------------------ //
 
-        public async Task<MaintenancePaymentResponse> AllocateMaintenancePaymentAsync(
-            long userId, CreateMaintenancePaymentRequest request, string idempotencyKey)
+        /// <summary>
+        /// Allocates a maintenance payment using an idempotency key.
+        /// </summary>
+        public async Task<MaintenancePaymentResponse> AllocateMaintenancePaymentAsync(long userId, CreateMaintenancePaymentRequest request, string idempotencyKey)
         {
             var req = new MaintenancePaymentRequest(
                 request.FlatPublicId,
@@ -291,14 +297,18 @@ namespace SocietyLedger.Infrastructure.Services
             return await ProcessPaymentAsync(req, userId);
         }
 
-        public async Task<MaintenancePaymentResponse> CreateMaintenancePaymentAsync(
-            long userId, CreateMaintenancePaymentRequest request)
+        /// <summary>
+        /// Creates a maintenance payment with a new idempotency key.
+        /// </summary>
+        public async Task<MaintenancePaymentResponse> CreateMaintenancePaymentAsync(long userId, CreateMaintenancePaymentRequest request)
         {
             return await AllocateMaintenancePaymentAsync(userId, request, Guid.NewGuid().ToString());
         }
 
-        public async Task<MaintenancePaymentResponse> GetMaintenancePaymentAsync(
-            Guid publicId, long userId)
+        /// <summary>
+        /// Retrieves a maintenance payment by public ID.
+        /// </summary>
+        public async Task<MaintenancePaymentResponse> GetMaintenancePaymentAsync(Guid publicId, long userId)
         {
             var societyId = await _userContext.GetSocietyIdAsync(userId);
             var payment   = await _maintenancePaymentRepo.GetByPublicIdAsync(publicId, societyId)
@@ -307,24 +317,30 @@ namespace SocietyLedger.Infrastructure.Services
             return MapToResponse(payment);
         }
 
-        public async Task<IEnumerable<MaintenancePaymentResponse>> GetMaintenancePaymentsBySocietyAsync(
-            long userId)
+        /// <summary>
+        /// Retrieves all maintenance payments for a society.
+        /// </summary>
+        public async Task<IEnumerable<MaintenancePaymentResponse>> GetMaintenancePaymentsBySocietyAsync(long userId)
         {
             var societyId = await _userContext.GetSocietyIdAsync(userId);
             var payments  = await _maintenancePaymentRepo.GetBySocietyIdAsync(societyId);
             return payments.Select(MapToResponse);
         }
 
-        public async Task<IEnumerable<MaintenancePaymentResponse>> GetMaintenancePaymentsByFlatAsync(
-            Guid flatPublicId, long userId)
+        /// <summary>
+        /// Retrieves all maintenance payments for a flat.
+        /// </summary>
+        public async Task<IEnumerable<MaintenancePaymentResponse>> GetMaintenancePaymentsByFlatAsync(Guid flatPublicId, long userId)
         {
             var societyId = await _userContext.GetSocietyIdAsync(userId);
             var payments  = await _maintenancePaymentRepo.GetByFlatPublicIdAsync(flatPublicId);
             return payments.Where(p => p.SocietyId == societyId).Select(MapToResponse);
         }
 
-        public async Task<MaintenancePaymentResponse> UpdateMaintenancePaymentAsync(
-            Guid publicId, long userId, UpdateMaintenancePaymentRequest request)
+        /// <summary>
+        /// Updates a maintenance payment, blocking edits on fully-settled bills.
+        /// </summary>
+        public async Task<MaintenancePaymentResponse> UpdateMaintenancePaymentAsync(Guid publicId, long userId, UpdateMaintenancePaymentRequest request)
         {
             var societyId = await _userContext.GetSocietyIdAsync(userId);
 
@@ -333,6 +349,19 @@ namespace SocietyLedger.Infrastructure.Services
                                        && p.society_id == societyId
                                        && !p.is_deleted)
                 ?? throw new NotFoundException("Maintenance payment", publicId.ToString());
+
+            // #10 — Block amount edits on payments that have fully settled a bill.
+            //        Editing the amount would corrupt the bill's paid_amount and status.
+            if (request.Amount.HasValue && request.Amount.Value != payment.amount && payment.bill_id.HasValue)
+            {
+                var linkedBill = await _db.bills
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(b => b.id == payment.bill_id.Value && !b.is_deleted);
+
+                if (linkedBill != null && linkedBill.status_code == BillStatusCodes.Paid)
+                    throw new ConflictException(
+                        "Amount cannot be edited — this payment has fully settled a bill. Delete and re-record instead.");
+            }
 
             if (request.Amount.HasValue)         payment.amount           = request.Amount.Value;
 
@@ -367,24 +396,64 @@ namespace SocietyLedger.Infrastructure.Services
             return MapToResponse(updated);
         }
 
+        /// <summary>
+        /// Deletes a maintenance payment and recalculates linked bill's paid amount and status.
+        /// </summary>
         public async Task DeleteMaintenancePaymentAsync(Guid publicId, long userId)
         {
             var societyId = await _userContext.GetSocietyIdAsync(userId);
-            var payment = await _maintenancePaymentRepo.GetByPublicIdAsync(publicId, societyId)
+
+            // Load the raw EF entity first to capture bill_id before soft-delete.
+            var paymentEntity = await _db.maintenance_payments
+                .FirstOrDefaultAsync(p => p.public_id  == publicId
+                                       && p.society_id == societyId
+                                       && !p.is_deleted)
                 ?? throw new NotFoundException("Maintenance payment", publicId.ToString());
 
+            var billId = paymentEntity.bill_id;
+
+            // Soft-delete the payment.
             await _maintenancePaymentRepo.DeleteByPublicIdAsync(publicId, societyId);
+
+            // #2 — Reverse the bill's paid_amount and status now that this payment is removed.
+            if (billId.HasValue)
+            {
+                var bill = await _db.bills
+                    .FirstOrDefaultAsync(b => b.id == billId.Value && !b.is_deleted);
+
+                if (bill != null)
+                {
+                    var newPaidAmount = await _db.maintenance_payments
+                        .AsNoTracking()
+                        .Where(p => p.bill_id == billId.Value && !p.is_deleted)
+                        .SumAsync(p => (decimal?)p.amount) ?? 0m;
+
+                    bill.paid_amount = newPaidAmount;
+                    bill.status_code = newPaidAmount <= 0m
+                        ? BillStatusCodes.Unpaid
+                        : newPaidAmount >= bill.amount
+                            ? BillStatusCodes.Paid
+                            : BillStatusCodes.Partial;
+                    bill.updated_at = DateTime.UtcNow;
+
+                    await _db.SaveChangesAsync();
+                }
+            }
         }
 
+        /// <summary>
+        /// Returns all payment modes.
+        /// </summary>
         public async Task<IEnumerable<PaymentModeResponse>> GetPaymentModesAsync()
         {
             var modes = await _paymentModeRepo.GetAllAsync();
             return modes.Select(m => new PaymentModeResponse(m.Code, m.DisplayName));
         }
 
-        public async Task<MaintenanceSummaryResponse> GetMaintenanceSummaryAsync(
-            long societyId,
-            string period)
+        /// <summary>
+        /// Returns maintenance summary for a given period.
+        /// </summary>
+        public async Task<MaintenanceSummaryResponse> GetMaintenanceSummaryAsync(long societyId, string period)
         {
             if (string.IsNullOrEmpty(period) ||
                 !Regex.IsMatch(period, @"^\d{4}-\d{2}$"))

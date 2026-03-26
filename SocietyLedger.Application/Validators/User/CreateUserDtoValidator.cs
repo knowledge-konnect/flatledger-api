@@ -1,5 +1,6 @@
 using FluentValidation;
 using SocietyLedger.Application.DTOs.User;
+using SocietyLedger.Domain.Constants;
 
 namespace SocietyLedger.Application.Validators.User
 {
@@ -36,11 +37,12 @@ namespace SocietyLedger.Application.Validators.User
                 .Must(x => !string.IsNullOrWhiteSpace(x.Email) || !string.IsNullOrWhiteSpace(x.Username))
                 .WithMessage("Either email or username is required.");
 
+            // RoleCode is optional; when provided it must be one of the two supported roles.
             RuleFor(x => x.RoleCode)
-                .NotEmpty()
-                .WithMessage("Role code is required.")
-                .MaximumLength(50)
-                .WithMessage("Role code cannot exceed 50 characters.");
+                .Must(code => string.IsNullOrWhiteSpace(code)
+                              || code == RoleCodes.SocietyAdmin
+                              || code == RoleCodes.Viewer)
+                .WithMessage($"Role code must be '{RoleCodes.SocietyAdmin}' or '{RoleCodes.Viewer}'.");
 
             RuleFor(x => x.Password)
                 .NotEmpty()

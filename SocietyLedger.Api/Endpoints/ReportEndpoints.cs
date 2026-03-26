@@ -13,13 +13,15 @@ namespace SocietyLedger.Api.Endpoints
 {
     public static class ReportEndpoints
     {
+        /// <summary>
+        /// Maps report routes: collection summary, defaulters, income vs expense,
+        /// fund ledger, payment register, and expense by category.
+        /// </summary>
         public static void MapReportRoutes(this RouteGroupBuilder app, string groupName, ApiVersionSet versionSet)
         {
             var v1 = new ApiVersion(ApiConstants.API_VERSION_1_0);
 
-            // ------------------------------------------------------------------ //
-            // 1. Collection Summary                                                //
-            // ------------------------------------------------------------------ //
+            // Collection Summary
             app.MapGet("/collection-summary",
                 [Authorize]
                 [SwaggerOperation(
@@ -47,9 +49,7 @@ namespace SocietyLedger.Api.Endpoints
             .Produces<ErrorResponse>(401)
             .Produces<ErrorResponse>(500);
 
-            // ------------------------------------------------------------------ //
-            // 2. Defaulters Report                                                 //
-            // ------------------------------------------------------------------ //
+            // Defaulters Report
             app.MapGet("/defaulters",
                 [Authorize]
                 [SwaggerOperation(
@@ -76,9 +76,7 @@ namespace SocietyLedger.Api.Endpoints
             .Produces<ErrorResponse>(401)
             .Produces<ErrorResponse>(500);
 
-            // ------------------------------------------------------------------ //
-            // 3. Income vs Expense                                                 //
-            // ------------------------------------------------------------------ //
+            // Income vs Expense
             app.MapGet("/income-vs-expense",
                 [Authorize]
                 [SwaggerOperation(
@@ -106,9 +104,7 @@ namespace SocietyLedger.Api.Endpoints
             .Produces<ErrorResponse>(401)
             .Produces<ErrorResponse>(500);
 
-            // ------------------------------------------------------------------ //
-            // 4. Fund Ledger                                                       //
-            // ------------------------------------------------------------------ //
+            // Fund Ledger
             app.MapGet("/fund-ledger",
                 [Authorize]
                 [SwaggerOperation(
@@ -136,9 +132,7 @@ namespace SocietyLedger.Api.Endpoints
             .Produces<ErrorResponse>(401)
             .Produces<ErrorResponse>(500);
 
-            // ------------------------------------------------------------------ //
-            // 5. Payment Collection Register                                       //
-            // ------------------------------------------------------------------ //
+            // Payment Collection Register
             app.MapGet("/payment-register",
                 [Authorize]
                 [SwaggerOperation(
@@ -169,9 +163,7 @@ namespace SocietyLedger.Api.Endpoints
             .Produces<ErrorResponse>(401)
             .Produces<ErrorResponse>(500);
 
-            // ------------------------------------------------------------------ //
-            // 6. Expense by Category                                               //
-            // ------------------------------------------------------------------ //
+            // Expense by Category
             app.MapGet("/expense-by-category",
                 [Authorize]
                 [SwaggerOperation(

@@ -2,17 +2,13 @@ namespace SocietyLedger.Domain.Constants
 {
     /// <summary>
     /// Centralized master data codes for role-based access control.
-    /// Maps to roles.code in database.
+    /// Only two roles are supported: SocietyAdmin and Viewer.
+    /// Maps to roles.code in database (id=1 and id=6 respectively).
     /// </summary>
     public static class RoleCodes
     {
-        public const string SuperAdmin = "super_admin";
-        public const string Admin = "admin";
-        public const string Treasurer = "treasurer";
-        public const string Secretary = "secretary";
-        public const string Manager = "manager";
-        public const string Viewer = "viewer";
         public const string SocietyAdmin = "society_admin";
+        public const string Viewer = "viewer";
     }
 
     /// <summary>

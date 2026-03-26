@@ -7,6 +7,7 @@ using SocietyLedger.Api.Extensions;
 using SocietyLedger.Api.Filters;
 using SocietyLedger.Application.DTOs.Subscription;
 using SocietyLedger.Application.Interfaces.Services;
+using SocietyLedger.Domain.Constants;
 using SocietyLedger.Domain.Exceptions;
 using SocietyLedger.Shared;
 using Swashbuckle.AspNetCore.Annotations;
@@ -15,6 +16,9 @@ namespace SocietyLedger.Api.Endpoints
 {
     public static class SubscriptionEndpoints
     {
+        /// <summary>
+        /// Maps subscription routes: create trial, get status, and upgrade to a paid plan.
+        /// </summary>
         public static void MapSubscriptionRoutes(this RouteGroupBuilder app, string groupName, ApiVersionSet versionSet)
         {
             var version_1_0 = new ApiVersion(ApiConstants.API_VERSION_1_0);
@@ -73,6 +77,8 @@ namespace SocietyLedger.Api.Endpoints
             async ([FromBody] SubscribeRequest request, ISubscriptionService subscriptionService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
+                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
+                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
                     var result = await subscriptionService.SubscribeAsync(userId, request);
                     return Results.Ok(ApiResponse<SubscribeResponse>.Success(result, "Subscription created successfully"));
                 })
@@ -95,6 +101,8 @@ namespace SocietyLedger.Api.Endpoints
             async ([FromBody] CancelSubscriptionRequest request, ISubscriptionService subscriptionService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
+                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
+                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
                     await subscriptionService.CancelSubscriptionAsync(userId, request);
                     return Results.Ok(ApiResponse<EmptyResponse>.Success(null, "Subscription cancelled successfully"));
                 })

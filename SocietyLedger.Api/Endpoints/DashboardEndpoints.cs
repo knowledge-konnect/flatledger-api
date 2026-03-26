@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Serilog;
 using SocietyLedger.Api.Extensions;
@@ -12,6 +11,9 @@ namespace SocietyLedger.Api.Endpoints
 {
     public static class DashboardEndpoints
     {
+        /// <summary>
+        /// Maps dashboard routes: aggregated society financial summary for the authenticated user.
+        /// </summary>
         public static void MapDashboardEndpoints(this WebApplication app)
         {
             var group = app.MapGroup("/api/dashboard")

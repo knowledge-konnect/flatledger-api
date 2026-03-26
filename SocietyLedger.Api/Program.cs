@@ -1,21 +1,18 @@
 ﻿using Asp.Versioning;
-using Hangfire;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Serilog;
 using Serilog.Events;
 using SocietyLedger.Api.Authorization;
+using SocietyLedger.Api.BackgroundServices;
 using SocietyLedger.Api.Endpoints;
+using SocietyLedger.Api.Endpoints.Admin;
 using SocietyLedger.Api.Extensions;
 using SocietyLedger.Api.Middlewares;
-using SocietyLedger.Domain.Exceptions;
-using SocietyLedger.Infrastructure.Jobs;
 using SocietyLedger.Infrastructure.Persistence.Contexts;
-using SocietyLedger.Infrastructure.Services;
 using SocietyLedger.Shared;
 using System.Security.Claims;
 using System.Text;
@@ -35,7 +32,7 @@ if (!string.IsNullOrEmpty(renderPort))
 
 
 // ----------------------------
-LogEventLevel level = LogEventLevel.Information;
+LogEventLevel level = builder.Environment.IsProduction() ? LogEventLevel.Warning : LogEventLevel.Information;
 var logTemplate = "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] {Message}{NewLine}{Exception}";
 
 Log.Logger = new LoggerConfiguration()
@@ -161,8 +158,6 @@ builder.Services.AddRateLimiter(options =>
     };
 });
 
-//builder.Services.ConfigureOptions<ConfigureSwaggerOptions>();
-
 // ----------------------------
 // JWT Authentication
 // ----------------------------
@@ -198,9 +193,13 @@ builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("ActiveSubscription", policy =>
         policy.Requirements.Add(new SubscriptionRequirement()));
+
+    // SuperAdmin policy: grants access to all /api/admin/* endpoints.
+    // Only JWTs issued by AdminAuthService carry the role:super_admin claim.
+    options.AddPolicy("SuperAdmin", policy =>
+        policy.RequireClaim(System.Security.Claims.ClaimTypes.Role, "super_admin"));
 });
 
-// Register the authorization handler
 builder.Services.AddScoped<IAuthorizationHandler, SubscriptionAuthorizationHandler>();
 // ----------------------------
 // Application services
@@ -209,14 +208,12 @@ builder.Services.AddApplicationServices(builder.Configuration);
 builder.Services.AddInfrastructureServices(builder.Configuration);
 builder.Services.AddSharedServices();
 
-// ----------------------------
-// Hangfire — background job processing (disabled for now)
-// ----------------------------
-// builder.Services.AddHangfireServices(builder.Configuration);
+// BackgroundService is used for monthly billing. Hangfire removed for MVP.
 
 // ----------------------------
 // Background services
 // ----------------------------
+builder.Services.AddHostedService<MonthlyBillGenerationService>();
 builder.Services.AddHostedService<TrialExpirationService>();
 
 // ----------------------------
@@ -227,11 +224,14 @@ var app = builder.Build();
 // ----------------------------
 // Middleware pipeline
 // ----------------------------
+// Swagger is only served in non-production environments.
+// In production the schema is private — exposed Swagger reveals the full attack surface.
+
 app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
     c.SwaggerEndpoint("/swagger/v1/swagger.json", "SocietyLedger API V1");
-    c.RoutePrefix = string.Empty; 
+    c.RoutePrefix = "";
 });
 
 // Skip HTTPS redirect on Render — SSL is terminated at the load balancer
@@ -259,36 +259,6 @@ app.UseMiddleware<ExceptionMiddleware>();
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
-
-// ----------------------------
-// Hangfire Dashboard
-// Secured: accessible only to authenticated admin/super-admin users.
-// Path: /hangfire
-// ----------------------------
-//app.UseHangfireDashboard("/hangfire", new DashboardOptions
-//{
-//    DashboardTitle = "SocietyLedger Jobs",
-//    // Resolve the filter through DI so it can use IWebHostEnvironment / IConfiguration.
-//    Authorization =
-//    [
-//        new HangfireAuthorizationFilter(
-//            app.Services.GetRequiredService<IWebHostEnvironment>(),
-//            app.Services.GetRequiredService<IConfiguration>())
-//    ]
-//});
-
-//// ----------------------------
-//// Recurring Jobs
-//// 1st of every month at 00:05 server time (UTC) — Cron: "5 0 1 * *"
-//// ----------------------------
-//RecurringJob.AddOrUpdate<MonthlyBillingJob>(
-//    recurringJobId: "monthly-billing",
-//    methodCall:    job => job.ExecuteAsync(),
-//    cronExpression: "5 0 1 * *",
-//    new RecurringJobOptions
-//    {
-//        TimeZone = TimeZoneInfo.Utc
-//    });
 
 // Health check endpoint
 app.MapHealthChecks("/health");
@@ -349,14 +319,42 @@ app.MapGroup(ApiRoutes.NOTIFICATIONS)
 // Dashboard endpoints
 app.MapDashboardEndpoints();
 
+// -----------------------------------------------
+// SaaS Admin module routes
+// -----------------------------------------------
+app.MapGroup(ApiRoutes.ADMIN_AUTH)
+   .MapAdminAuthRoutes(RouteGroupNames.ADMIN_AUTH, versionSet);
+
+app.MapGroup(ApiRoutes.ADMIN_PLANS)
+    .MapAdminPlanRoutes(RouteGroupNames.ADMIN_PLANS, versionSet);
+
+app.MapGroup(ApiRoutes.ADMIN_SOCIETIES)
+    .MapAdminSocietyRoutes(RouteGroupNames.ADMIN_SOCIETIES, versionSet);
+
+app.MapGroup(ApiRoutes.ADMIN_USERS)
+    .MapAdminUserRoutes(RouteGroupNames.ADMIN_USERS, versionSet);
+
+app.MapGroup(ApiRoutes.ADMIN_SUBSCRIPTIONS)
+    .MapAdminSubscriptionRoutes(RouteGroupNames.ADMIN_SUBSCRIPTIONS, versionSet);
+
+app.MapGroup(ApiRoutes.ADMIN_PAYMENTS)
+    .MapAdminPaymentRoutes(RouteGroupNames.ADMIN_PAYMENTS, versionSet);
+
+app.MapGroup(ApiRoutes.ADMIN_BILLS)
+    .MapAdminBillRoutes(RouteGroupNames.ADMIN_BILLS, versionSet);
+
+app.MapGroup(ApiRoutes.ADMIN_INVOICES)
+    .MapAdminInvoiceRoutes(RouteGroupNames.ADMIN_INVOICES, versionSet);
+
+app.MapGroup(ApiRoutes.ADMIN_SETTINGS)
+    .MapAdminPlatformSettingRoutes(RouteGroupNames.ADMIN_SETTINGS, versionSet);
+
 app.MapGroup(ApiRoutes.REPORTS)
    .MapReportRoutes(RouteGroupNames.REPORTS, versionSet);
 
-// ----------------------------
-// DB warmup — wake Supabase before accepting requests.
-// Free-tier Supabase can take 60-90s to resume from idle.
-// ----------------------------
-// Warmup: retry until Supabase wakes (free tier can take 60-90s after inactivity)
+// Proactively warm up the Supabase connection pool on startup.
+// Free-tier Supabase instances can take 60-90s to resume from idle; retrying here
+// prevents the first real request from timing out.
 const int maxWarmupAttempts = 5;
 for (int attempt = 1; attempt <= maxWarmupAttempts; attempt++)
 {

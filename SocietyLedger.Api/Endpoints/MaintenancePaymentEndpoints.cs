@@ -8,6 +8,7 @@ using SocietyLedger.Api.Filters;
 using SocietyLedger.Application.DTOs.MaintenancePayment;
 using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Application.Interfaces.Services;
+using SocietyLedger.Domain.Constants;
 using SocietyLedger.Domain.Exceptions;
 using SocietyLedger.Shared;
 using Swashbuckle.AspNetCore.Annotations;
@@ -16,11 +17,14 @@ namespace SocietyLedger.Api.Endpoints
 {
     public static class MaintenancePaymentEndpoints
     {
+        /// <summary>
+        /// Maps maintenance payment routes: idempotent FIFO payment processing, CRUD operations,
+        /// flat-level payment history, and per-period collection summary.
+        /// </summary>
         public static void MapMaintenancePaymentRoutes(this RouteGroupBuilder app, string groupName, ApiVersionSet versionSet)
         {
             var version_1_0 = new ApiVersion(ApiConstants.API_VERSION_1_0);
 
-            // Create maintenance payment (idempotent, FIFO, transaction-safe)
             app.MapPost("/",
                 [Authorize]
             [SwaggerOperation(
@@ -38,6 +42,9 @@ namespace SocietyLedger.Api.Endpoints
                         var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid or missing authentication token", ctx.TraceIdentifier);
                         return Results.Json(errorResponse, statusCode: 401);
                     }
+
+                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
+                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
 
                     if (request == null)
                     {
@@ -171,6 +178,8 @@ namespace SocietyLedger.Api.Endpoints
             async (Guid publicId, [FromBody] UpdateMaintenancePaymentRequest request, IMaintenancePaymentService paymentService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
+                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
+                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
                     var result = await paymentService.UpdateMaintenancePaymentAsync(publicId, userId, request);
                     return Results.Ok(ApiResponse<MaintenancePaymentResponse>.Success(result, "Maintenance payment updated successfully"));
                 })
@@ -193,6 +202,8 @@ namespace SocietyLedger.Api.Endpoints
             async (Guid publicId, IMaintenancePaymentService paymentService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
+                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
+                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
                     await paymentService.DeleteMaintenancePaymentAsync(publicId, userId);
                     return Results.Ok(ApiResponse<EmptyResponse>.Success(null, "Maintenance payment deleted successfully"));
                 })

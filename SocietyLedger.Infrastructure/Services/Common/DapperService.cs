@@ -24,6 +24,9 @@ namespace SocietyLedger.Infrastructure.Services.Common
 
         // ── Connection-less helpers ──────────────────────────────────────
 
+        /// <summary>
+        /// Executes a query and returns results.
+        /// </summary>
         public async Task<IEnumerable<T>> QueryAsync<T>(string sql, object? param = null)
         {
             try
@@ -39,6 +42,9 @@ namespace SocietyLedger.Infrastructure.Services.Common
             }
         }
 
+        /// <summary>
+        /// Executes a query and returns the first or default result.
+        /// </summary>
         public async Task<T?> QueryFirstOrDefaultAsync<T>(string sql, object? param = null)
         {
             try
@@ -54,6 +60,9 @@ namespace SocietyLedger.Infrastructure.Services.Common
             }
         }
 
+        /// <summary>
+        /// Executes a command and returns affected rows.
+        /// </summary>
         public async Task<int> ExecuteAsync(string sql, object? param = null)
         {
             try
@@ -69,6 +78,9 @@ namespace SocietyLedger.Infrastructure.Services.Common
             }
         }
 
+        /// <summary>
+        /// Executes a scalar command and returns the result.
+        /// </summary>
         public async Task<T?> ExecuteScalarAsync<T>(string sql, object? param = null)
         {
             try
@@ -86,6 +98,9 @@ namespace SocietyLedger.Infrastructure.Services.Common
 
         // ── Transactional helpers ────────────────────────────────────────
 
+        /// <summary>
+        /// Begins a transaction with specified isolation level.
+        /// </summary>
         public async Task<(NpgsqlConnection Connection, NpgsqlTransaction Transaction)> BeginTransactionAsync(
             IsolationLevel isolationLevel = IsolationLevel.RepeatableRead)
         {
@@ -95,6 +110,9 @@ namespace SocietyLedger.Infrastructure.Services.Common
             return (conn, tx);
         }
 
+        /// <summary>
+        /// Executes a query within a transaction.
+        /// </summary>
         public async Task<IEnumerable<T>> QueryAsync<T>(
             NpgsqlConnection conn, NpgsqlTransaction tx, string sql, object? param = null)
         {
@@ -109,6 +127,9 @@ namespace SocietyLedger.Infrastructure.Services.Common
             }
         }
 
+        /// <summary>
+        /// Executes a query within a transaction and returns the first or default result.
+        /// </summary>
         public async Task<T?> QueryFirstOrDefaultAsync<T>(
             NpgsqlConnection conn, NpgsqlTransaction tx, string sql, object? param = null)
         {
@@ -123,6 +144,9 @@ namespace SocietyLedger.Infrastructure.Services.Common
             }
         }
 
+        /// <summary>
+        /// Executes a command within a transaction and returns affected rows.
+        /// </summary>
         public async Task<int> ExecuteAsync(
             NpgsqlConnection conn, NpgsqlTransaction tx, string sql, object? param = null)
         {
@@ -137,6 +161,9 @@ namespace SocietyLedger.Infrastructure.Services.Common
             }
         }
 
+        /// <summary>
+        /// Executes a scalar command within a transaction and returns the result.
+        /// </summary>
         public async Task<T?> ExecuteScalarAsync<T>(
             NpgsqlConnection conn, NpgsqlTransaction tx, string sql, object? param = null)
         {

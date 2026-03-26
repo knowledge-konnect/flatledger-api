@@ -17,6 +17,11 @@ public partial class AppDbContext : DbContext
     {
     }
 
+    public virtual DbSet<admin_user> admin_users { get; set; }
+
+
+    public virtual DbSet<platform_setting> platform_settings { get; set; }
+
     public virtual DbSet<_lock> locks { get; set; }
 
     public virtual DbSet<adjustment> adjustments { get; set; }
@@ -108,6 +113,24 @@ public partial class AppDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasPostgresExtension("pgcrypto");
+
+        modelBuilder.Entity<admin_user>(entity =>
+        {
+            entity.HasKey(e => e.id).HasName("admin_users_pkey");
+            entity.Property(e => e.id).UseIdentityAlwaysColumn();
+            entity.Property(e => e.public_id).HasDefaultValueSql("gen_random_uuid()");
+            entity.Property(e => e.is_active).HasDefaultValue(true);
+            entity.Property(e => e.created_at).HasDefaultValueSql("now()");
+            entity.Property(e => e.updated_at).HasDefaultValueSql("now()");
+        });
+
+        modelBuilder.Entity<platform_setting>(entity =>
+        {
+            entity.HasKey(e => e.id).HasName("platform_settings_pkey");
+            entity.Property(e => e.id).UseIdentityAlwaysColumn();
+            entity.Property(e => e.created_at).HasDefaultValueSql("now()");
+            entity.Property(e => e.updated_at).HasDefaultValueSql("now()");
+        });
 
         modelBuilder.Entity<_lock>(entity =>
         {
