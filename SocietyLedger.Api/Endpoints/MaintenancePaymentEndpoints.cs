@@ -222,34 +222,23 @@ namespace SocietyLedger.Api.Endpoints
                     Summary = "Get maintenance summary",
                     Description = "Retrieves maintenance charges and collection summary for a given period."
                 )]
-            async ([FromQuery] string period, IMaintenancePaymentService paymentService, IUserRepository userRepository, HttpContext ctx) =>
+            async ([FromQuery] string period, IMaintenancePaymentService paymentService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
-                    
+
                     if (userId == 0)
                     {
-                        Log.Warning("Unauthorized maintenance summary request - invalid user ID");
                         var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid or missing authentication token", ctx.TraceIdentifier);
                         return Results.Json(errorResponse, statusCode: 401);
                     }
 
                     if (string.IsNullOrEmpty(period))
                     {
-                        Log.Warning("Maintenance summary request with missing period parameter");
                         var errorResponse = ErrorResponse.Create(ErrorCodes.VALIDATION_FAILED, "Period parameter is required (format: yyyy-MM)", ctx.TraceIdentifier);
                         return Results.Json(errorResponse, statusCode: 400);
                     }
 
-                    var user = await userRepository.GetByIdAsync(userId);
-                    if (user == null)
-                    {
-                        Log.Warning("Maintenance summary request by non-existent user {UserId}", userId);
-                        var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "User not found", ctx.TraceIdentifier);
-                        return Results.Json(errorResponse, statusCode: 401);
-                    }
-
-                    var summary = await paymentService.GetMaintenanceSummaryAsync(user.SocietyId, period);
-                    Log.Information("Maintenance summary retrieved for society {SocietyId}, period {Period}", user.SocietyId, period);
+                    var summary = await paymentService.GetMaintenanceSummaryAsync(userId, period);
                     return Results.Ok(ApiResponse<MaintenanceSummaryResponse>.Success(summary, "Maintenance summary retrieved successfully"));
                 })
             .WithTags(groupName)

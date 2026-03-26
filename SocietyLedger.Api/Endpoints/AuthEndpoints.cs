@@ -79,10 +79,10 @@ namespace SocietyLedger.Api.Endpoints
                     var res = await authService.RegisterAsync(request, ip);
                     // Deliver refresh token as httpOnly cookie; [JsonIgnore] keeps it out of the body.
                     SetRefreshTokenCookie(ctx, res.RefreshToken, res.RefreshTokenExpiresAt, env);
-                    Log.Information("User registration successful for {Email}", request.Email);
                     return Results.Ok(ApiResponse<RegisterResponse>.Success(res, "Account created successfully"));
                 })
             .AddEndpointFilter<FluentValidationFilter<RegisterRequest>>()
+            .RequireRateLimiting("AuthPolicy")
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)
             .HasApiVersion(version_1_0)
@@ -105,10 +105,10 @@ namespace SocietyLedger.Api.Endpoints
                     var ip = ctx.GetClientIp();
                     var res = await authService.LoginAsync(request, ip);
                     SetRefreshTokenCookie(ctx, res.RefreshToken, res.RefreshTokenExpiresAt, env);
-                    Log.Information("Login successful for {User}", request.UsernameOrEmail);
                     return Results.Ok(ApiResponse<LoginResponse>.Success(res, "Logged in successfully"));
                 })
             .AddEndpointFilter<FluentValidationFilter<LoginRequest>>()
+            .RequireRateLimiting("AuthPolicy")
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)
             .HasApiVersion(version_1_0)
@@ -141,7 +141,6 @@ namespace SocietyLedger.Api.Endpoints
                     var res = await authService.RefreshTokenAsync(refreshToken, ip);
                     // Rotate: overwrite the cookie with the newly issued refresh token.
                     SetRefreshTokenCookie(ctx, res.RefreshToken, res.RefreshTokenExpiresAt, env);
-                    Log.Information("Refresh token successful for IP {Ip}", ip);
                     return Results.Ok(ApiResponse<LoginResponse>.Success(res, "Token refreshed successfully"));
                 })
             .WithTags(groupName)
@@ -173,7 +172,6 @@ namespace SocietyLedger.Api.Endpoints
 
                     await authService.RevokeRefreshTokenAsync(refreshToken, ip);
                     ClearRefreshTokenCookie(ctx, env);
-                    Log.Information("Refresh token revoked for IP {Ip}", ip);
                     return Results.Ok(ApiResponse<EmptyResponse>.Success(null, "Token revoked successfully"));
                 })
             .WithTags(groupName)

@@ -453,8 +453,9 @@ namespace SocietyLedger.Infrastructure.Services
         /// <summary>
         /// Returns maintenance summary for a given period.
         /// </summary>
-        public async Task<MaintenanceSummaryResponse> GetMaintenanceSummaryAsync(long societyId, string period)
+        public async Task<MaintenanceSummaryResponse> GetMaintenanceSummaryAsync(long userId, string period)
         {
+            var societyId = await _userContext.GetSocietyIdAsync(userId);
             if (string.IsNullOrEmpty(period) ||
                 !Regex.IsMatch(period, @"^\d{4}-\d{2}$"))
                 throw new ValidationException("Period format must be yyyy-MM (e.g., 2026-02)");

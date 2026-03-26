@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Serilog;
 using SocietyLedger.Application.DTOs.Billing;
 using SocietyLedger.Application.Interfaces.Services;
 using SocietyLedger.Domain.Constants;
@@ -103,7 +102,7 @@ namespace SocietyLedger.Infrastructure.Services
                 throw;
             }
 
-            Log.Information(
+            _logger.LogInformation(
                 "Bills generated: societyId={SocietyId}, period={Period}, count={Count}, by={UserId}",
                 societyId, period, bills.Count, userId);
 

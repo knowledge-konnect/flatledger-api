@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Polly;
+using Polly.Retry;
 using Razorpay.Api;
 using SocietyLedger.Application.DTOs.Razorpay;
 using SocietyLedger.Application.Interfaces.Repositories;
@@ -22,6 +24,7 @@ namespace SocietyLedger.Infrastructure.Services
         private readonly string _keyId;
         private readonly string _keySecret;
         private readonly string _webhookSecret;
+        private readonly ResiliencePipeline _razorpayRetry;
 
         // Razorpay orders expire after 15 minutes by default
         private static readonly TimeSpan OrderExpiry = TimeSpan.FromMinutes(15);
@@ -42,6 +45,25 @@ namespace SocietyLedger.Infrastructure.Services
             _keyId = config["Razorpay:KeyId"] ?? throw new InvalidOperationException("Razorpay KeyId not configured");
             _keySecret = config["Razorpay:KeySecret"] ?? throw new InvalidOperationException("Razorpay KeySecret not configured");
             _webhookSecret = config["Razorpay:WebhookSecret"] ?? throw new InvalidOperationException("Razorpay WebhookSecret not configured");
+
+            // Retry up to 3× with exponential back-off (1s → 2s → 4s) per attempt, each capped at 15 s.
+            _razorpayRetry = new ResiliencePipelineBuilder()
+                .AddRetry(new RetryStrategyOptions
+                {
+                    MaxRetryAttempts = 3,
+                    Delay = TimeSpan.FromSeconds(1),
+                    BackoffType = DelayBackoffType.Exponential,
+                    ShouldHandle = new PredicateBuilder().Handle<Exception>(),
+                    OnRetry = args =>
+                    {
+                        logger.LogWarning(
+                            "Razorpay SDK transient failure (attempt {Attempt}/{Max}): {Error}",
+                            args.AttemptNumber + 1, 3, args.Outcome.Exception?.Message);
+                        return ValueTask.CompletedTask;
+                    }
+                })
+                .AddTimeout(TimeSpan.FromSeconds(15))
+                .Build();
         }
 
         /// <summary>
@@ -82,10 +104,14 @@ namespace SocietyLedger.Infrastructure.Services
                 { "receipt", $"receipt_{userId}_{DateTime.UtcNow.Ticks}" }
             };
 
-            // SDK call is synchronous — offload to avoid blocking a thread-pool thread
-            var order = await Task.Run(() => client.Order.Create(options));
+            // SDK call is synchronous — offload to avoid blocking a thread-pool thread; retried up to 3× on transient failures
+            dynamic? order = null;
+            await _razorpayRetry.ExecuteAsync(async ct =>
+            {
+                order = await Task.Run(() => client.Order.Create(options), ct);
+            });
             // Explicit cast from dynamic to string — prevents dynamic dispatch errors on logger extension methods
-            var razorpayOrderId = (string)order["id"];
+            var razorpayOrderId = (string)order!["id"];
 
             var payment = new Domain.Entities.Payment
             {

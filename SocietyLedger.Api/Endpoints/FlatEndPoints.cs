@@ -1,5 +1,6 @@
 ﻿using Asp.Versioning;
 using Asp.Versioning.Builder;
+using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Serilog;
@@ -8,6 +9,7 @@ using SocietyLedger.Api.Filters;
 using SocietyLedger.Application.DTOs.Flat;
 using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Application.Interfaces.Services;
+using SocietyLedger.Infrastructure.Services.Common;
 using SocietyLedger.Domain.Constants;
 using SocietyLedger.Shared;
 using Swashbuckle.AspNetCore.Annotations;
@@ -287,6 +289,97 @@ namespace SocietyLedger.Api.Endpoints
                 .Produces<ErrorResponse>(400)
                 .Produces<ErrorResponse>(404)
                 .Produces<ErrorResponse>(500);
+
+            // POST /flats/bulk
+            app.MapPost("/bulk", [Authorize("ActiveSubscription")]
+            [SwaggerOperation(
+                Summary = "Bulk Create Flats",
+                Description = "Creates multiple flats in a single call. Each flat is processed independently — failures do not abort the batch. Returns succeeded and failed arrays."
+            )]
+            async ([FromBody] BulkCreateFlatsRequest request,
+                   [FromServices] IFlatService service,
+                   [FromServices] IBillingService billingService,
+                   [FromServices] IValidator<BulkCreateFlatItemDto> validator,
+                   [FromServices] IMaintenanceConfigRepository maintenanceConfigRepo,
+                   [FromServices] IUserContext userContext,
+                   HttpContext ctx) =>
+            {
+                var userId = ctx.GetUserId();
+                if (userId == 0)
+                {
+                    Log.Warning("Unauthorized bulk flat create request - invalid user ID");
+                    var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid or missing authentication token", ctx.TraceIdentifier);
+                    return Results.Json(errorResponse, statusCode: 401);
+                }
+
+                if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
+                    return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
+
+                if (request.Flats == null || request.Flats.Count == 0)
+                    return Results.BadRequest(ErrorResponse.Create(ErrorCodes.VALIDATION_FAILED, "Flats list cannot be empty.", ctx.TraceIdentifier));
+
+                // Fetch society's maintenance config once — use DefaultMonthlyCharge for all bulk flats
+                var (_, societyId) = await userContext.GetUserContextAsync(userId);
+                var maintenanceConfig = await maintenanceConfigRepo.GetBySocietyIdAsync(societyId);
+                var defaultMaintenanceAmount = maintenanceConfig?.DefaultMonthlyCharge ?? 0m;
+                Log.Information("Bulk create: using maintenance amount {Amount} from config for societyId {SocietyId}", defaultMaintenanceAmount, societyId);
+
+                var succeeded = new List<FlatResponseDto>();
+                var failed = new List<BulkFlatFailure>();
+
+                for (int i = 0; i < request.Flats.Count; i++)
+                {
+                    var item = request.Flats[i];
+                    var flatNo = item?.FlatNo ?? $"(index {i})";
+
+                    try
+                    {
+                        // Validate each item using the bulk-specific validator (no maintenanceAmount)
+                        var validationResult = await validator.ValidateAsync(item!);
+                        if (!validationResult.IsValid)
+                        {
+                            var errorMsg = string.Join("; ", validationResult.Errors.Select(e => e.ErrorMessage));
+                            failed.Add(new BulkFlatFailure(i, flatNo, errorMsg));
+                            Log.Warning("Bulk flat create validation failed at index {Index} FlatNo {FlatNo}: {Error}", i, flatNo, errorMsg);
+                            continue;
+                        }
+
+                        // Map to CreateFlatDto — maintenanceAmount sourced from society maintenance config
+                        var flatDto = new CreateFlatDto(item!.FlatNo, item.OwnerName, item.ContactMobile, item.ContactEmail, defaultMaintenanceAmount, item.StatusCode);
+                        var createdFlat = await service.CreateAsync(flatDto, userId);
+                        succeeded.Add(createdFlat);
+
+                        // Auto-generate current-month bill for the newly created flat
+                        try
+                        {
+                            var billingMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+                            await billingService.GenerateBillForFlatAsync(createdFlat.PublicId, userId, billingMonth);
+                        }
+                        catch (Exception billingEx)
+                        {
+                            // Billing failure is non-fatal — flat was already created successfully
+                            Log.Warning(billingEx, "Billing generation failed for flat {PublicId} (FlatNo {FlatNo}) during bulk create", createdFlat.PublicId, flatNo);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        failed.Add(new BulkFlatFailure(i, flatNo, ex.Message));
+                        Log.Warning(ex, "Bulk flat create failed at index {Index} FlatNo {FlatNo}", i, flatNo);
+                    }
+                }
+
+                Log.Information("Bulk flat create completed: {SucceededCount} succeeded, {FailedCount} failed", succeeded.Count, failed.Count);
+                return Results.Ok(new BulkCreateFlatsResponse(succeeded, failed));
+            })
+            .WithTags(groupName)
+            .WithApiVersionSet(versionSet)
+            .HasApiVersion(version_1_0)
+            .WithName("BulkCreateFlats")
+            .Produces<BulkCreateFlatsResponse>(200)
+            .Produces<ErrorResponse>(400)
+            .Produces<ErrorResponse>(401)
+            .Produces<ErrorResponse>(403)
+            .Produces<ErrorResponse>(500);
 
         }
     }
