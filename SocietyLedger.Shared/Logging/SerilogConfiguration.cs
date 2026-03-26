@@ -1,18 +1,4 @@
-﻿using Serilog;
-using Serilog.Events;
+﻿// This file previously contained a manual Serilog bootstrap (SerilogConfiguration.ConfigureSerilog).
+// It was never called and has been removed.
+// Serilog is now wired via builder.Host.UseSerilog(...) in Program.cs.
 
-namespace SocietyLedger.Shared.Logging
-{
-    public static class SerilogConfiguration
-    {
-        public static void ConfigureSerilog()
-        {
-            Log.Logger = new LoggerConfiguration()
-                .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
-                .Enrich.FromLogContext()
-                .WriteTo.Console()
-                .WriteTo.File("Logs/Society_ledger-.txt", rollingInterval: RollingInterval.Day)
-                .CreateLogger();
-        }
-    }
-}

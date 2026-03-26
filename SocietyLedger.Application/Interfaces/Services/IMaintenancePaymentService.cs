@@ -12,7 +12,7 @@ namespace SocietyLedger.Application.Interfaces.Services
         Task<MaintenancePaymentResponse> UpdateMaintenancePaymentAsync(Guid publicId, long userId, UpdateMaintenancePaymentRequest request);
         Task DeleteMaintenancePaymentAsync(Guid publicId, long userId);
         Task<IEnumerable<PaymentModeResponse>> GetPaymentModesAsync();
-        Task<MaintenanceSummaryResponse> GetMaintenanceSummaryAsync(long societyId, string period);
+        Task<MaintenanceSummaryResponse> GetMaintenanceSummaryAsync(long userId, string period);
         Task<MaintenancePaymentResponse> ProcessPaymentAsync(MaintenancePaymentRequest request, long userId);
     }
 }

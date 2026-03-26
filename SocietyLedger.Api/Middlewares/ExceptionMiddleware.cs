@@ -1,4 +1,5 @@
-﻿using SocietyLedger.Domain.Exceptions;
+﻿using Microsoft.Extensions.Logging;
+using SocietyLedger.Domain.Exceptions;
 using SocietyLedger.Shared;
 using System.Net;
 using System.Text.Json;
@@ -32,12 +33,25 @@ namespace SocietyLedger.Api.Middlewares
             }
             catch (Exception ex)
             {
-                var correlationId = context.TraceIdentifier;
-                if (context.Request.Headers.TryGetValue("X-Correlation-ID", out var headerCorrelationId))
-                {
-                    correlationId = headerCorrelationId!;
-                }
-                _logger.LogError(ex, "Exception: {Message}. CorrelationId: {CorrelationId}", ex.Message, correlationId);
+                var correlationId = context.Request.Headers.TryGetValue("X-Correlation-ID", out var headerCorrelationId)
+                    ? (string)headerCorrelationId!
+                    : context.TraceIdentifier;
+
+                // Business / client errors are expected — log at Warning to avoid false-positive alerts.
+                // True infrastructure failures remain at Error.
+                var logLevel = ex is ValidationException
+                    or AuthenticationException
+                    or AuthorizationException
+                    or NotFoundException
+                    or ConflictException
+                    or DuplicateException
+                    or AppException
+                    ? LogLevel.Warning
+                    : LogLevel.Error;
+
+                _logger.Log(logLevel, ex, "Unhandled exception {ExceptionType}. CorrelationId: {CorrelationId}",
+                    ex.GetType().Name, correlationId);
+
                 await HandleExceptionAsync(context, ex, correlationId);
             }
         }
