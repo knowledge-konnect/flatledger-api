@@ -82,4 +82,5 @@ public partial class society
 
     [InverseProperty("society")]
     public virtual ICollection<user> users { get; set; } = new List<user>();
+
 }

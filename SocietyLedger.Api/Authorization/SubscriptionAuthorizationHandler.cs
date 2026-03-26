@@ -9,6 +9,10 @@ using System.Security.Claims;
 
 namespace SocietyLedger.Api.Authorization
 {
+    /// <summary>
+    /// Authorization handler that enforces the <see cref="SubscriptionRequirement"/>.
+    /// Grants access only when the user has an active paid subscription or an unexpired trial.
+    /// </summary>
     public class SubscriptionAuthorizationHandler : AuthorizationHandler<SubscriptionRequirement>
     {
         private readonly ISubscriptionService _subscriptionService;

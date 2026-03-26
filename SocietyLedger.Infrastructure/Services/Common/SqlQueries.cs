@@ -8,8 +8,8 @@ namespace SocietyLedger.Infrastructure.Services.Common
         // ── FIFO maintenance-payment allocation ───────────────────────────
 
         /// <summary>
-        /// Checks whether a maintenance payment with the given idempotency key already exists
-        /// for this society.  Returns fast on duplicate submissions.
+        /// Checks whether a maintenance payment with the given idempotency key already exists for this society.
+        /// Returns fast on duplicate submissions.
         /// </summary>
         public const string CheckMaintenancePaymentIdempotency = @"
             SELECT id
@@ -19,8 +19,7 @@ namespace SocietyLedger.Infrastructure.Services.Common
             LIMIT  1";
 
         /// <summary>
-        /// Resolves a flat by its public UUID within the caller's society.
-        /// FOR UPDATE acquires a row lock to serialise concurrent payment submissions.
+        /// Resolves a flat by its public UUID within the caller's society. FOR UPDATE acquires a row lock to serialise concurrent payment submissions.
         /// </summary>
         public const string LockFlatByPublicId = @"
             SELECT id, public_id, flat_no, society_id
@@ -31,8 +30,7 @@ namespace SocietyLedger.Infrastructure.Services.Common
             FOR UPDATE";
 
         /// <summary>
-        /// Returns all OpeningBalance adjustment rows that still have an outstanding
-        /// remaining_amount for the given flat, ordered oldest-first (FIFO).
+        /// Returns all OpeningBalance adjustment rows that still have an outstanding remaining_amount for the given flat, ordered oldest-first (FIFO).
         /// FOR UPDATE prevents concurrent payments from double-allocating the same row.
         /// </summary>
         public const string LockOpeningBalanceAdjustments = @"
@@ -49,8 +47,7 @@ namespace SocietyLedger.Infrastructure.Services.Common
             FOR UPDATE";
 
         /// <summary>
-        /// Deducts the allocated amount from an adjustment's remaining_amount.
-        /// Runs under the same FOR UPDATE lock acquired by LockOpeningBalanceAdjustments.
+        /// Deducts the allocated amount from an adjustment's remaining_amount. Runs under the same FOR UPDATE lock acquired by LockOpeningBalanceAdjustments.
         /// </summary>
         public const string DeductAdjustmentRemainingAmount = @"
             UPDATE adjustments
@@ -59,9 +56,7 @@ namespace SocietyLedger.Infrastructure.Services.Common
               AND  society_id = @SocietyId";
 
         /// <summary>
-        /// Returns all bills with an outstanding balance for the given flat,
-        /// ordered oldest-period-first (FIFO). FOR UPDATE locks each row to prevent
-        /// concurrent allocations.
+        /// Returns all bills with an outstanding balance for the given flat, ordered oldest-period-first (FIFO). FOR UPDATE locks each row to prevent concurrent allocations.
         /// </summary>
         public const string LockUnpaidBillsByFlat = @"
             SELECT b.id,
@@ -79,14 +74,7 @@ namespace SocietyLedger.Infrastructure.Services.Common
             FOR UPDATE";
 
         /// <summary>
-        /// Inserts one allocation row into <c>maintenance_payments</c>.
-        /// Each allocation step (opening balance, bill, or advance) is a separate row
-        /// sharing the same <c>idempotency_key</c>.
-        /// <list type="bullet">
-        ///   <item>Opening balance clearance: <c>adjustment_id</c> set, <c>bill_id</c> NULL.</item>
-        ///   <item>Bill allocation:           <c>bill_id</c> set, <c>adjustment_id</c> NULL.</item>
-        ///   <item>Advance (excess):          both <c>bill_id</c> and <c>adjustment_id</c> NULL.</item>
-        /// </list>
+        /// Inserts one allocation row into maintenance_payments. Each allocation step (opening balance, bill, or advance) is a separate row sharing the same idempotency_key.
         /// </summary>
         public const string InsertMaintenancePayment = @"
             INSERT INTO maintenance_payments
@@ -98,8 +86,7 @@ namespace SocietyLedger.Infrastructure.Services.Common
             RETURNING id";
 
         /// <summary>
-        /// Updates the accumulated paid amount and derived status on a bill after
-        /// each FIFO allocation step.
+        /// Updates the accumulated paid amount and derived status on a bill after each FIFO allocation step.
         /// </summary>
         public const string UpdateBillPayment = @"
             UPDATE bills
@@ -109,9 +96,7 @@ namespace SocietyLedger.Infrastructure.Services.Common
             WHERE  id = @BillId";
 
         /// <summary>
-        /// Loads all allocation rows associated with a given idempotency key.
-        /// Used to reconstruct the response on duplicate (idempotent) submissions
-        /// without re-running any write operations.
+        /// Loads all allocation rows associated with a given idempotency key. Used to reconstruct the response on duplicate (idempotent) submissions without re-running any write operations.
         /// </summary>
         public const string GetAllocationsByIdempotencyKey = @"
             SELECT mp.bill_id,
@@ -131,8 +116,7 @@ namespace SocietyLedger.Infrastructure.Services.Common
         // ── Maintenance Summary (4 focused, index-friendly queries) ──────────
 
         /// <summary>
-        /// Total billed amount for a given period and society.
-        /// Hits the (society_id, period) index on <c>bills</c>.
+        /// Total billed amount for a given period and society. Hits the (society_id, period) index on bills.
         /// </summary>
         public const string SummaryTotalCharges = @"
             SELECT COALESCE(SUM(amount), 0)
@@ -142,9 +126,7 @@ namespace SocietyLedger.Infrastructure.Services.Common
               AND  is_deleted = FALSE";
 
         /// <summary>
-        /// Total payments already allocated to bills for a specific period.
-        /// Only rows where <c>bill_id IS NOT NULL</c> are counted, which excludes
-        /// OpeningBalance clearances and advance rows.
+        /// Total payments already allocated to bills for a specific period. Only rows where bill_id IS NOT NULL are counted, which excludes OpeningBalance clearances and advance rows.
         /// </summary>
         public const string SummaryTotalCollected = @"
             SELECT COALESCE(SUM(mp.amount), 0)
@@ -155,8 +137,7 @@ namespace SocietyLedger.Infrastructure.Services.Common
               AND  mp.is_deleted = FALSE";
 
         /// <summary>
-        /// Remaining unpaid balance on bills for the period.
-        /// Uses (amount − paid_amount) &gt; 0 rather than status_code for accuracy.
+        /// Remaining unpaid balance on bills for the period. Uses (amount − paid_amount) > 0 rather than status_code for accuracy.
         /// </summary>
         public const string SummaryBillOutstanding = @"
             SELECT COALESCE(SUM(amount - COALESCE(paid_amount, 0)), 0)
@@ -167,9 +148,7 @@ namespace SocietyLedger.Infrastructure.Services.Common
               AND  (amount - COALESCE(paid_amount, 0)) > 0";
 
         /// <summary>
-        /// Sum of all pre-system opening-balance dues still owed across the society.
-        /// Not period-specific: these dues exist until each flat's adjustment is
-        /// fully cleared by FIFO payments.
+        /// Sum of all pre-system opening-balance dues still owed across the society. Not period-specific: these dues exist until each flat's adjustment is fully cleared by FIFO payments.
         /// </summary>
         public const string SummaryOpeningBalanceRemaining = @"
             SELECT COALESCE(SUM(remaining_amount), 0)

@@ -29,6 +29,9 @@ namespace SocietyLedger.Infrastructure.Services
         //  Generate bills manually for a given period                          //
         // ------------------------------------------------------------------ //
 
+        /// <summary>
+        /// Generates bills manually for a given period. Throws if bills already exist or period is too far in the future.
+        /// </summary>
         public async Task<GenerateBillsResponse> GenerateBillsAsync(long userId, string period)
         {
             var (user, societyId) = await _userContext.GetUserContextAsync(userId);
@@ -42,6 +45,12 @@ namespace SocietyLedger.Infrastructure.Services
             if (alreadyExists)
                 throw new ConflictException(
                     $"Bills for period '{period}' have already been generated for this society.");
+
+            // #5 — Reject periods more than 1 month in the future to catch typos like '2036-03'.
+            var maxAllowedPeriod = DateTime.UtcNow.AddMonths(1).ToString("yyyy-MM");
+            if (string.Compare(period, maxAllowedPeriod, StringComparison.Ordinal) > 0)
+                throw new ValidationException(
+                    $"Period '{period}' is too far in the future. Bills can only be generated up to 1 month ahead (max allowed: '{maxAllowedPeriod}').");
 
             // Fetch the society's maintenance config for the default monthly charge fallback.
             var maintConfig = await _db.maintenance_configs
@@ -98,13 +107,22 @@ namespace SocietyLedger.Infrastructure.Services
                 "Bills generated: societyId={SocietyId}, period={Period}, count={Count}, by={UserId}",
                 societyId, period, bills.Count, userId);
 
-            return new GenerateBillsResponse(period, bills.Count);
+            // #6 — Warn when any bills were generated with ₹0 (no maintenance amount configured).
+            var zeroBillCount = bills.Count(b => b.amount == 0m);
+            var warnings = zeroBillCount > 0
+                ? new List<string> { $"{zeroBillCount} flat(s) will be billed \u20b90 — no maintenance amount configured. Update flat or society maintenance config." }
+                : null;
+
+            return new GenerateBillsResponse(period, bills.Count, warnings);
         }
 
         // ------------------------------------------------------------------ //
         //  Billing status check for the current calendar month                //
         // ------------------------------------------------------------------ //
 
+        /// <summary>
+        /// Checks billing status for the current calendar month.
+        /// </summary>
         public async Task<BillingStatusResponse> GetBillingStatusAsync(long userId)
         {
             var societyId = await _userContext.GetSocietyIdAsync(userId);
@@ -129,6 +147,9 @@ namespace SocietyLedger.Infrastructure.Services
         //  All business logic lives here; callers only orchestrate.           //
         // ------------------------------------------------------------------ //
 
+        /// <summary>
+        /// Generates monthly bills for all societies with active flats. Called by Hangfire job and manual admin trigger.
+        /// </summary>
         public async Task<BillingResult> GenerateMonthlyBillsAsync(DateTime billingMonth)
         {
             var stopwatch = Stopwatch.StartNew();
@@ -303,5 +324,56 @@ namespace SocietyLedger.Infrastructure.Services
             };
         }
 
+        /// <summary>
+        /// Generates a bill for a single flat for the given month if it does not already exist.
+        /// </summary>
+        public async Task GenerateBillForFlatAsync(Guid flatPublicId, long userId, DateTime billingMonth)
+        {
+            var period    = billingMonth.ToString("yyyy-MM");
+            var societyId = await _userContext.GetSocietyIdAsync(userId);
+
+            var flat = await _db.flats
+                .AsNoTracking()
+                .FirstOrDefaultAsync(f => f.public_id == flatPublicId
+                                       && f.society_id == societyId
+                                       && !f.is_deleted);
+
+            if (flat == null)
+                throw new NotFoundException("Flat", $"Flat with public id {flatPublicId} not found or does not belong to this society.");
+
+            // Check if bill already exists for this flat and period
+            var exists = await _db.bills.AnyAsync(b => b.flat_id == flat.id && b.period == period && !b.is_deleted);
+            if (exists)
+                return; // Idempotent: do nothing if bill already exists
+
+            // Get society maintenance config
+            var maintConfig = await _db.maintenance_configs
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.society_id == flat.society_id);
+
+            var amount = flat.maintenance_amount > 0
+                ? flat.maintenance_amount
+                : (maintConfig?.default_monthly_charge ?? 0m);
+
+            var now = DateTime.UtcNow;
+            var bill = new bill
+            {
+                society_id   = flat.society_id,
+                flat_id      = flat.id,
+                period       = period,
+                amount       = amount,
+                status_code  = BillStatusCodes.Unpaid,
+                generated_by = null,
+                generated_at = now,
+                created_at   = now,
+                is_deleted   = false,
+                source       = "flat-create"
+            };
+
+            await _db.bills.AddAsync(bill);
+            await _db.SaveChangesAsync();
+
+            _logger.LogInformation("Generated bill for flat {FlatId}, period {Period}", flat.id, period);
+        }
     }
 }

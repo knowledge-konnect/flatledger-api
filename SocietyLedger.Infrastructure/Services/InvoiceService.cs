@@ -49,14 +49,22 @@ namespace SocietyLedger.Infrastructure.Services
             });
         }
 
-        public async Task<InvoiceResponse> PayInvoiceAsync(Guid invoiceId, PayInvoiceRequest request)
+        public async Task<InvoiceResponse> PayInvoiceAsync(Guid invoiceId, long userId, PayInvoiceRequest request)
         {
             var invoice = await _invoiceRepo.GetByIdAsync(invoiceId);
             if (invoice == null)
                 throw new NotFoundException("Invoice", invoiceId.ToString());
 
+            // IDOR guard: ensure the caller owns this invoice.
+            if (invoice.UserId != userId)
+                throw new AuthorizationException("You do not have permission to pay this invoice.");
+
             if (invoice.Status == InvoiceStatusCodes.Paid)
                 throw new ConflictException("Invoice is already paid");
+
+            if (request.Amount.HasValue && request.Amount.Value < invoice.TotalAmount)
+                throw new ValidationException(
+                    $"Payment amount ({request.Amount.Value:F2}) does not cover the invoice total ({invoice.TotalAmount:F2}).");
 
             var now = DateTime.UtcNow;
             var amount = request.Amount ?? invoice.TotalAmount;

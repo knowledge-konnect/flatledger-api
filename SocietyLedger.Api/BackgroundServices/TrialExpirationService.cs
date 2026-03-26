@@ -5,20 +5,29 @@ using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Domain.Constants;
 using SocietyLedger.Domain.Entities;
 
-namespace SocietyLedger.Infrastructure.Services
+namespace SocietyLedger.Api.BackgroundServices
 {
+    /// <summary>
+    /// Background service that checks and expires trial subscriptions daily.
+    /// </summary>
     public class TrialExpirationService : BackgroundService
     {
         private readonly ILogger<TrialExpirationService> _logger;
         private readonly IServiceProvider _serviceProvider;
-        private readonly TimeSpan _checkInterval = TimeSpan.FromHours(24); // Check daily
+        private readonly IConfiguration _configuration;
+        private readonly TimeSpan _checkInterval;
+        private readonly TimeSpan _retryDelay;
 
         public TrialExpirationService(
             ILogger<TrialExpirationService> logger,
-            IServiceProvider serviceProvider)
+            IServiceProvider serviceProvider,
+            IConfiguration configuration)
         {
             _logger = logger;
             _serviceProvider = serviceProvider;
+            _configuration = configuration;
+            _checkInterval = TimeSpan.FromHours(_configuration.GetValue<int>("BackgroundServices:TrialExpirationIntervalHours", 24));
+            _retryDelay = TimeSpan.FromMinutes(_configuration.GetValue<int>("BackgroundServices:TrialExpirationRetryMinutes", 5));
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -40,7 +49,7 @@ namespace SocietyLedger.Infrastructure.Services
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Error in trial expiration check");
-                    try { await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken); }
+                    try { await Task.Delay(_retryDelay, stoppingToken); }
                     catch (OperationCanceledException) { break; }
                 }
             }
@@ -51,7 +60,6 @@ namespace SocietyLedger.Infrastructure.Services
             using var scope = _serviceProvider.CreateScope();
             var subscriptionRepo = scope.ServiceProvider.GetRequiredService<ISubscriptionRepository>();
             var eventRepo = scope.ServiceProvider.GetRequiredService<ISubscriptionEventRepository>();
-
             var expiredTrials = (await subscriptionRepo.GetExpiredTrialsAsync()).ToList();
             var now = DateTime.UtcNow;
 

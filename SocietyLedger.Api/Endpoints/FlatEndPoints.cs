@@ -8,7 +8,7 @@ using SocietyLedger.Api.Filters;
 using SocietyLedger.Application.DTOs.Flat;
 using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Application.Interfaces.Services;
-using SocietyLedger.Domain.Exceptions;
+using SocietyLedger.Domain.Constants;
 using SocietyLedger.Shared;
 using Swashbuckle.AspNetCore.Annotations;
 
@@ -16,12 +16,14 @@ namespace SocietyLedger.Api.Endpoints
 {
     public static class FlatRoutes
     {
+        /// <summary>
+        /// Maps flat routes: create, list, retrieve, update, and delete flats within a society.
+        /// Requires an active subscription for all operations.
+        /// </summary>
         public static void MapFlatRoutes(this RouteGroupBuilder app, string groupName, ApiVersionSet versionSet)
         {
             var version_1_0 = new ApiVersion(ApiConstants.API_VERSION_1_0);
 
-
-            //Create Flat
             app.MapPost("/", [Authorize("ActiveSubscription")]
             [SwaggerOperation(
                 Summary = "Create Flat",
@@ -37,6 +39,9 @@ namespace SocietyLedger.Api.Endpoints
                     return Results.Json(errorResponse, statusCode: 401);
                 }
 
+                if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
+                    return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
+
                 var result = await service.CreateAsync(request, userId);
                 Log.Information("Flat created successfully for FlatNo {FlatNo}", request.FlatNo);
                 return Results.Ok(ApiResponse<FlatResponseDto>.Success(result, "Flat created successfully"));
@@ -50,8 +55,7 @@ namespace SocietyLedger.Api.Endpoints
             .Produces<ErrorResponse>(409)
             .Produces<ErrorResponse>(500);
 
-            app.MapGet("/",
-    [Authorize("ActiveSubscription")]
+            app.MapGet("/",[Authorize("ActiveSubscription")]
             [SwaggerOperation(
         Summary = "Get all Flats for Current Society",
         Description = "Fetches the list of all flats that belong to the authenticated user's society."
@@ -140,6 +144,8 @@ namespace SocietyLedger.Api.Endpoints
             async ([FromBody] UpdateFlatDto request, [FromServices] IFlatService service, HttpContext ctx) =>
             {
                 var userId = ctx.GetUserId();
+                if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
+                    return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
                 var result = await service.UpdateAsync(request, userId);
                 if (result == null)
                 {
@@ -170,6 +176,8 @@ namespace SocietyLedger.Api.Endpoints
             async (Guid publicId, [FromServices] IFlatService service, HttpContext ctx) =>
             {
                 var userId = ctx.GetUserId();
+                if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
+                    return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
                 var deleted = await service.DeleteByPublicIdAsync(publicId, userId);
                 if (!deleted)
                 {

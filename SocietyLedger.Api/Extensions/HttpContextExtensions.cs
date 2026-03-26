@@ -80,5 +80,14 @@ namespace SocietyLedger.Api.Extensions
         {
             return ctx.GetAuthenticatedUserId();
         }
+
+        /// <summary>
+        /// Gets the role code (e.g. "society_admin" or "viewer") from the "role" JWT claim.
+        /// Returns an empty string when no claim is present.
+        /// </summary>
+        public static string GetUserRoleCode(this HttpContext ctx)
+        {
+            return ctx?.User?.FindFirst("role")?.Value ?? string.Empty;
+        }
     }
 }

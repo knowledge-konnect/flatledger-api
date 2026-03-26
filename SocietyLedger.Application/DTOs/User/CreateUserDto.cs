@@ -12,7 +12,7 @@ namespace SocietyLedger.Application.DTOs.User
         string? Email,
         string? Username,
         string? Mobile,
-        string RoleCode,
+        string? RoleCode,
         string Password
     );
 }

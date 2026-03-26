@@ -7,19 +7,13 @@ using SocietyLedger.Api.Extensions;
 using SocietyLedger.Api.Filters;
 using SocietyLedger.Application.DTOs.Auth;
 using SocietyLedger.Application.DTOs.User;
-using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Application.Interfaces.Services;
-using SocietyLedger.Domain.Exceptions;
 using SocietyLedger.Shared;
 using Swashbuckle.AspNetCore.Annotations;
 namespace SocietyLedger.Api.Endpoints
 {
     public static class AuthRoutes
     {
-        // ---------------------------------------------------------------------------
-        // Cookie helpers
-        // ---------------------------------------------------------------------------
-
         private const string RefreshTokenCookieName = "refreshToken";
 
         /// <summary>
@@ -28,6 +22,10 @@ namespace SocietyLedger.Api.Endpoints
         /// </summary>
         private const string RefreshTokenCookiePath = "/auth";
 
+        /// <summary>
+        /// Sets the refresh token as an httpOnly cookie scoped to the auth path.
+        /// Cookie is Secure in non-development environments.
+        /// </summary>
         private static void SetRefreshTokenCookie(
             HttpContext ctx,
             string refreshToken,
@@ -37,13 +35,17 @@ namespace SocietyLedger.Api.Endpoints
             ctx.Response.Cookies.Append(RefreshTokenCookieName, refreshToken, new CookieOptions
             {
                 HttpOnly = true,
-                Secure   = !env.IsDevelopment(),   // true in staging/production, false in local dev
-                SameSite = SameSiteMode.Strict,
+                // For cross-origin support, SameSite=None and Secure must be true
+                Secure   = true,
+                SameSite = SameSiteMode.None,
                 Path     = RefreshTokenCookiePath,
                 Expires  = new DateTimeOffset(DateTime.SpecifyKind(expiresAt, DateTimeKind.Utc))
             });
         }
 
+        /// <summary>
+        /// Clears the refresh token cookie by overwriting it with an expired, empty value.
+        /// </summary>
         private static void ClearRefreshTokenCookie(HttpContext ctx, IWebHostEnvironment env)
         {
             ctx.Response.Cookies.Append(RefreshTokenCookieName, string.Empty, new CookieOptions
@@ -57,10 +59,9 @@ namespace SocietyLedger.Api.Endpoints
             });
         }
 
-        // ---------------------------------------------------------------------------
-        // Routes
-        // ---------------------------------------------------------------------------
-
+        /// <summary>
+        /// Maps authentication routes: register, login, token refresh, revoke, change password, update profile, and get current user.
+        /// </summary>
         public static void MapAuthRoutes(this RouteGroupBuilder app, string groupName, ApiVersionSet versionSet)
         {
             var version_1_0 = new ApiVersion(ApiConstants.API_VERSION_1_0);

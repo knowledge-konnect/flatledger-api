@@ -8,6 +8,7 @@ using SocietyLedger.Api.Filters;
 using SocietyLedger.Application.DTOs.User;
 using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Application.Interfaces.Services;
+using SocietyLedger.Domain.Constants;
 using SocietyLedger.Domain.Exceptions;
 using SocietyLedger.Shared;
 using Swashbuckle.AspNetCore.Annotations;
@@ -16,6 +17,9 @@ namespace SocietyLedger.Api.Endpoints
 {
     public static class UserRoutes
     {
+        /// <summary>
+        /// Maps user management routes: list society users, get, update, delete, and admin-level user creation.
+        /// </summary>
         public static void MapUserRoutes(this RouteGroupBuilder app, string groupName, ApiVersionSet versionSet)
         {
             var version_1_0 = new ApiVersion(ApiConstants.API_VERSION_1_0);
@@ -105,6 +109,9 @@ namespace SocietyLedger.Api.Endpoints
                         return Results.Json(errorResponse, statusCode: 401);
                     }
 
+                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
+                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
+
                     var created = await userService.CreateUserForAdminAsync(request, authUserId);
                     Log.Information("User {Email} created by {UserId}", request.Email, authUserId);
                     return Results.Created(string.Empty, ApiResponse<CreateUserResponseDto>.Success(created, "User created successfully"));
@@ -140,6 +147,9 @@ namespace SocietyLedger.Api.Endpoints
                         var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, ErrorMessages.UNAUTHORIZED, ctx.TraceIdentifier);
                         return Results.Json(errorResponse, statusCode: 401);
                     }
+
+                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
+                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
 
                     if (publicId != request.PublicId)
                     {
@@ -183,6 +193,9 @@ namespace SocietyLedger.Api.Endpoints
                         var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, ErrorMessages.UNAUTHORIZED, ctx.TraceIdentifier);
                         return Results.Json(errorResponse, statusCode: 401);
                     }
+
+                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
+                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
 
                     var deleted = await userService.DeleteUserForAdminAsync(publicId, authUserId);
                     Log.Information("User {PublicId} soft deleted by {UserId}", publicId, authUserId);

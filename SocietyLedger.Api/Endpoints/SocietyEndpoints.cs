@@ -7,6 +7,7 @@ using SocietyLedger.Api.Extensions;
 using SocietyLedger.Api.Filters;
 using SocietyLedger.Application.DTOs.MaintenanceConfig;
 using SocietyLedger.Application.Interfaces.Services;
+using SocietyLedger.Domain.Constants;
 using SocietyLedger.Shared;
 using Swashbuckle.AspNetCore.Annotations;
 
@@ -14,6 +15,10 @@ namespace SocietyLedger.Api.Endpoints
 {
     public static class SocietyRoutes
     {
+        /// <summary>
+        /// Maps society routes: get and save the maintenance billing configuration.
+        /// Requires Admin or Treasurer role.
+        /// </summary>
         public static void MapSocietyRoutes(this RouteGroupBuilder app, string groupName, ApiVersionSet versionSet)
         {
             var version_1_0 = new ApiVersion(ApiConstants.API_VERSION_1_0);
@@ -72,6 +77,9 @@ namespace SocietyLedger.Api.Endpoints
                         var err = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, ErrorMessages.UNAUTHORIZED, ctx.TraceIdentifier);
                         return Results.Json(err, statusCode: 401);
                     }
+
+                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
+                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
 
                     var config = await configService.SaveAsync(societyPublicId, request, userId);
                     Log.Information("Maintenance config saved for society {SocietyPublicId} by user {UserId}", societyPublicId, userId);

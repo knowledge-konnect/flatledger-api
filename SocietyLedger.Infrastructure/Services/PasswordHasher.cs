@@ -16,6 +16,9 @@ namespace SocietyLedger.Infrastructure.Services
         private const int Iterations = 120_000; // strong
 
 
+        /// <summary>
+        /// Hashes a password using PBKDF2-HMACSHA512 with 120,000 iterations and 16-byte salt.
+        /// </summary>
         public string Hash(string password)
         {
             var salt = new byte[SaltSize];
@@ -34,6 +37,9 @@ namespace SocietyLedger.Infrastructure.Services
         }
 
 
+        /// <summary>
+        /// Verifies a password against a hash using fixed-time comparison.
+        /// </summary>
         public bool Verify(string hash, string password)
         {
             var bytes = Convert.FromBase64String(hash);
