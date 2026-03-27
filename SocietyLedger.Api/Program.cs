@@ -261,17 +261,13 @@ var app = builder.Build();
 // Middleware pipeline
 // ----------------------------
 // Swagger is only served in non-production environments.
-// In production the schema is private — exposed Swagger reveals the full attack surface.
-
-if (!app.Environment.IsProduction())
+// Swagger is now enabled in all environments (including production)
+app.UseSwagger();
+app.UseSwaggerUI(c =>
 {
-    app.UseSwagger();
-    app.UseSwaggerUI(c =>
-    {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "SocietyLedger API V1");
-        c.RoutePrefix = "";
-    });
-}
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "SocietyLedger API V1");
+    c.RoutePrefix = "";
+});
 
 // Skip HTTPS redirect on Render — SSL is terminated at the load balancer
 if (!app.Environment.IsProduction())

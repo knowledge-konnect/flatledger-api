@@ -59,9 +59,12 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                         $"No dashboard data found for society {societyId}.");
                 }
 
-                var data = JsonSerializer.Deserialize<DashboardResponseDto>(jsonResult, JsonOptions)
-                    ?? throw new InvalidOperationException(
-                        "Failed to deserialize dashboard response from database.");
+                var data = JsonSerializer.Deserialize<DashboardResponseDto>(jsonResult, JsonOptions);
+
+                if (data == null)
+                    throw new InvalidOperationException("Failed to deserialize dashboard response from database.");
+
+                data.Insights ??= new List<string>();
 
                 _logger.LogInformation(
                     "Dashboard data retrieved for societyId: {SocietyId}, startDate: {StartDate}, endDate: {EndDate}",

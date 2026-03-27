@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace SocietyLedger.Application.DTOs.OpeningBalance
 {
     public class OpeningBalanceRequest
@@ -7,10 +9,13 @@ namespace SocietyLedger.Application.DTOs.OpeningBalance
         /// Must be >= society.onboarding_date and <= today.
         /// Stored as transaction_date — never derived from created_at.
         /// </summary>
+        [JsonPropertyName("transactionDate")]
         public DateOnly TransactionDate { get; set; }
 
-        public decimal society_opening_amount { get; set; }
-        public List<OpeningBalanceItemDto> items { get; set; } = new List<OpeningBalanceItemDto>();
-        public List<OpeningBalanceItemDto> flat_items { get; set; } = new List<OpeningBalanceItemDto>();
+        [JsonPropertyName("society_opening_amount")]
+        public decimal SocietyOpeningAmount { get; set; }
+
+        [JsonPropertyName("items")]
+        public List<OpeningBalanceItemDto> Items { get; set; } = new List<OpeningBalanceItemDto>();
     }
 }

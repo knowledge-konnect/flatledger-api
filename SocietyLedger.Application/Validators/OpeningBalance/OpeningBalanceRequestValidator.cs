@@ -20,24 +20,24 @@ namespace SocietyLedger.Application.Validators.OpeningBalance
                 .LessThanOrEqualTo(_ => DateOnly.FromDateTime(DateTime.UtcNow))
                     .WithMessage("Transaction date cannot be in the future.");
 
-            RuleFor(x => x.society_opening_amount)
+            RuleFor(x => x.SocietyOpeningAmount)
                 .GreaterThanOrEqualTo(0)
                     .WithMessage("Society opening amount cannot be negative.");
 
-            RuleFor(x => x.flat_items)
+            RuleFor(x => x.Items)
                 .NotNull()
-                    .WithMessage("flat_items must be provided (use an empty list if none).");
+                    .WithMessage("items must be provided (use an empty list if none).");
 
-            RuleForEach(x => x.flat_items)
+            RuleForEach(x => x.Items)
                 .ChildRules(item =>
                 {
                     item.RuleFor(i => i.FlatPublicId)
                         .NotEmpty()
-                            .WithMessage("Each flat item must have a valid FlatPublicId.");
+                            .WithMessage("Each item must have a valid FlatPublicId.");
 
                     item.RuleFor(i => i.Amount)
                         .GreaterThanOrEqualTo(0)
-                            .WithMessage("Flat opening amount cannot be negative.");
+                            .WithMessage("Opening amount cannot be negative.");
                 });
         }
     }

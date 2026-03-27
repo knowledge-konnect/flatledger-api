@@ -170,10 +170,10 @@ namespace SocietyLedger.Infrastructure.Services
                     "It can only be set once.");
 
             // ── 4. Require at least one non-zero value ────────────────────────────
-            var hasFlatItems    = request.flat_items?.Any(i => i.Amount != 0) == true;
-            var hasSocietyAmount = request.society_opening_amount > 0;
+            var hasItems = request.Items?.Any(i => i.Amount != 0) == true;
+            var hasSocietyAmount = request.SocietyOpeningAmount > 0;
 
-            if (!hasFlatItems && !hasSocietyAmount)
+            if (!hasItems && !hasSocietyAmount)
                 throw new ValidationException(
                     "At least one opening value must be provided (society amount or a flat amount).");
 
@@ -184,9 +184,9 @@ namespace SocietyLedger.Infrastructure.Services
                 var now = DateTime.UtcNow;
 
                 // ── 5a. Member opening dues (adjustments table) ───────────────────
-                if (hasFlatItems)
+                if (hasItems)
                 {
-                    var flatPublicIds = request.flat_items!
+                    var flatPublicIds = request.Items!
                         .Where(i => i.Amount != 0)
                         .Select(i => i.FlatPublicId)
                         .ToList();
@@ -196,7 +196,7 @@ namespace SocietyLedger.Infrastructure.Services
                                  && f.society_id == societyId)
                         .ToDictionaryAsync(f => f.public_id);
 
-                    foreach (var item in request.flat_items!.Where(i => i.Amount != 0))
+                    foreach (var item in request.Items!.Where(i => i.Amount != 0))
                     {
                         if (!flats.TryGetValue(item.FlatPublicId, out var flat))
                             throw new ValidationException(
@@ -222,7 +222,7 @@ namespace SocietyLedger.Infrastructure.Services
                 {
                     _db.society_fund_ledgers.Add(BuildLedgerEntry(
                         societyId:       societyId,
-                        amount:          request.society_opening_amount,
+                        amount:          request.SocietyOpeningAmount,
                         entryType:       EntryTypeCodes.OpeningFund,
                         transactionDate: request.TransactionDate,
                         notes:           "Opening bank balance during migration",
@@ -236,11 +236,11 @@ namespace SocietyLedger.Infrastructure.Services
 
                 Log.Information(
                     "Opening balance applied for society {SocietyId}. " +
-                    "TransactionDate: {TxDate}, FlatItems: {FlatCount}, SocietyFund: {Amount}",
+                    "TransactionDate: {TxDate}, Items: {ItemCount}, SocietyFund: {Amount}",
                     societyId,
                     request.TransactionDate,
-                    request.flat_items?.Count(i => i.Amount != 0) ?? 0,
-                    request.society_opening_amount);
+                    request.Items?.Count(i => i.Amount != 0) ?? 0,
+                    request.SocietyOpeningAmount);
             }
             catch
             {
