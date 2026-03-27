@@ -24,5 +24,8 @@ namespace SocietyLedger.Application.DTOs.Dashboard
 
         [JsonPropertyName("expense_breakdown")]
         public List<ExpenseBreakdownItem> ExpenseBreakdown { get; set; } = new();
+
+        [JsonPropertyName("insights")]
+        public List<string> Insights { get; set; } = new();
     }
 }
