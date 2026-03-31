@@ -11,5 +11,7 @@ namespace SocietyLedger.Application.Interfaces.Repositories
         Task<FundLedgerReportDto> GetFundLedgerAsync(long societyId, DateOnly? startDate, DateOnly? endDate, CancellationToken ct = default);
         Task<PagedResult<PaymentRegisterDto>> GetPaymentRegisterAsync(long societyId, DateOnly? startDate, DateOnly? endDate, int page, int pageSize, CancellationToken ct = default);
         Task<ExpenseByCategoryDto> GetExpenseByCategoryAsync(long societyId, DateOnly? startDate, DateOnly? endDate, CancellationToken ct = default);
+        Task<MonthlyReportDto> GetMonthlyReportDataAsync(long societyId, int year, int month, CancellationToken ct = default);
+        Task<YearlyReportDto> GetYearlyReportDataAsync(long societyId, int year, string yearType, CancellationToken ct = default);
     }
 }

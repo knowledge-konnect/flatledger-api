@@ -7,6 +7,8 @@ using SocietyLedger.Infrastructure.Data;
 using SocietyLedger.Shared;
 using System.Data;
 using System.Text.Json;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace SocietyLedger.Infrastructure.Persistence.Repositories
 {
@@ -15,8 +17,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
         private readonly IDbConnectionFactory _connectionFactory;
         private readonly ILogger<ReportRepository> _logger;
 
-        private static readonly JsonSerializerOptions JsonOptions =
-            new() { PropertyNameCaseInsensitive = true };
+        // Using Newtonsoft.Json for deserialization to map snake_case JSON -> PascalCase DTOs
 
         public ReportRepository(IDbConnectionFactory connectionFactory, ILogger<ReportRepository> logger)
         {
@@ -121,6 +122,30 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             return Deserialize<ExpenseByCategoryDto>(json) ?? new ExpenseByCategoryDto();
         }
 
+        public async Task<MonthlyReportDto> GetMonthlyReportDataAsync(
+            long societyId, int year, int month, CancellationToken ct = default)
+        {
+            const string sql = "SELECT public.get_monthly_report(@SocietyId, @Year, @Month)";
+            var p = new DynamicParameters();
+            p.Add("SocietyId", societyId);
+            p.Add("Year", year);
+            p.Add("Month", month);
+            var json = await QueryJsonAsync(sql, p, ct);
+            return Deserialize<MonthlyReportDto>(json) ?? new MonthlyReportDto();
+        }
+
+        public async Task<YearlyReportDto> GetYearlyReportDataAsync(
+            long societyId, int year, string yearType, CancellationToken ct = default)
+        {
+            const string sql = "SELECT public.get_yearly_report(@SocietyId, @Year, @YearType)";
+            var p = new DynamicParameters();
+            p.Add("SocietyId", societyId);
+            p.Add("Year", year);
+            p.Add("YearType", yearType);
+            var json = await QueryJsonAsync(sql, p, ct);
+            return Deserialize<YearlyReportDto>(json) ?? new YearlyReportDto();
+        }
+
         // ------------------------------------------------------------------ //
         //  Helpers                                                             //
         // ------------------------------------------------------------------ //
@@ -133,8 +158,53 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             return result ?? "{}";
         }
 
-        private static T? Deserialize<T>(string json) =>
-            JsonSerializer.Deserialize<T>(json, JsonOptions);
+        private static T? Deserialize<T>(string json)
+        {
+            if (string.IsNullOrWhiteSpace(json) || json == "{}")
+                return default;
+
+            try
+            {
+                return JsonConvert.DeserializeObject<T>(json);
+            }
+            catch
+            {
+                // Some DB functions return wrapper JSON such as:
+                //  - an array: [ { "get_yearly_report": { ... } } ]
+                //  - an object: { "get_yearly_report": { ... } }
+                // Try to parse and unwrap the first meaningful value.
+                try
+                {
+                    var token = JToken.Parse(json);
+
+                    // If array, take first non-null element
+                    if (token.Type == JTokenType.Array)
+                    {
+                        var arr = (JArray)token;
+                        if (arr.Count > 0)
+                            token = arr[0];
+                    }
+
+                    if (token.Type == JTokenType.Object)
+                    {
+                        var obj = (JObject)token;
+                        var firstProp = obj.Properties().FirstOrDefault();
+                        if (firstProp != null)
+                            return firstProp.Value.ToObject<T>();
+                    }
+
+                    // If token is directly the desired object/array, try converting it.
+                    if (token.Type == JTokenType.Object || token.Type == JTokenType.Array)
+                        return token.ToObject<T>();
+                }
+                catch
+                {
+                    // fall through
+                }
+
+                return default;
+            }
+        }
 
         /// <summary>
         /// Date-only parameters (no pagination). Used by all non-paginated report queries.

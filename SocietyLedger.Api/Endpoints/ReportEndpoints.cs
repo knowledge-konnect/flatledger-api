@@ -190,6 +190,77 @@ namespace SocietyLedger.Api.Endpoints
             .Produces<ApiResponse<ExpenseByCategoryDto>>(200)
             .Produces<ErrorResponse>(401)
             .Produces<ErrorResponse>(500);
+
+            // Download Monthly Report
+            app.MapGet("/download/monthly",
+                [Authorize]
+                [SwaggerOperation(
+                    Summary = "Download Monthly Report",
+                    Description = "Downloads an Excel report for the given month with fund position, flat payment status, and expenses by category."
+                )]
+                async (
+                    IReportService reportService,
+                    HttpContext ctx,
+                    [FromQuery] int year,
+                    [FromQuery] int month,
+                    CancellationToken ct) =>
+                {
+                    var userId = ctx.GetUserId();
+                    if (userId == 0) return Results.Json(
+                        ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid token", ctx.TraceIdentifier), statusCode: 401);
+
+                    if (month < 1 || month > 12) return Results.Json(
+                        ErrorResponse.Create("INVALID_PARAM", "month must be between 1 and 12", ctx.TraceIdentifier), statusCode: 400);
+
+                    if (year < 2000 || year > 2100) return Results.Json(
+                        ErrorResponse.Create("INVALID_PARAM", "year must be between 2000 and 2100", ctx.TraceIdentifier), statusCode: 400);
+
+                    var (bytes, fileName) = await reportService.DownloadMonthlyReportAsync(userId, year, month, ct);
+                    return Results.File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+                })
+            .WithTags(groupName)
+            .WithApiVersionSet(versionSet).HasApiVersion(v1)
+            .WithName("DownloadMonthlyReport")
+            .Produces<FileResult>(200)
+            .Produces<ErrorResponse>(400)
+            .Produces<ErrorResponse>(401)
+            .Produces<ErrorResponse>(500);
+
+            // Download Yearly Report
+            app.MapGet("/download/yearly",
+                [Authorize]
+                [SwaggerOperation(
+                    Summary = "Download Yearly Report",
+                    Description = "Downloads an Excel report for the given year with fund position, month-by-month breakdown, and expenses by category. " +
+                                  "Use yearType=financial (Apr-Mar, default) or yearType=calendar (Jan-Dec)."
+                )]
+                async (
+                    IReportService reportService,
+                    HttpContext ctx,
+                    [FromQuery] int year,
+                    [FromQuery] string yearType = "financial",
+                    CancellationToken ct = default) =>
+                {
+                    var userId = ctx.GetUserId();
+                    if (userId == 0) return Results.Json(
+                        ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid token", ctx.TraceIdentifier), statusCode: 401);
+
+                    if (year < 2000 || year > 2100) return Results.Json(
+                        ErrorResponse.Create("INVALID_PARAM", "year must be between 2000 and 2100", ctx.TraceIdentifier), statusCode: 400);
+
+                    if (yearType != "calendar" && yearType != "financial") return Results.Json(
+                        ErrorResponse.Create("INVALID_PARAM", "yearType must be 'calendar' or 'financial'", ctx.TraceIdentifier), statusCode: 400);
+
+                    var (bytes, fileName) = await reportService.DownloadYearlyReportAsync(userId, year, yearType, ct);
+                    return Results.File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+                })
+            .WithTags(groupName)
+            .WithApiVersionSet(versionSet).HasApiVersion(v1)
+            .WithName("DownloadYearlyReport")
+            .Produces<FileResult>(200)
+            .Produces<ErrorResponse>(400)
+            .Produces<ErrorResponse>(401)
+            .Produces<ErrorResponse>(500);
         }
     }
 }

@@ -101,6 +101,7 @@ namespace SocietyLedger.Api.Extensions
 
             // Report Services (Dapper-based)
             services.AddScoped<IReportRepository, ReportRepository>();
+            services.AddScoped<IReportExportService, ReportExportService>();
             services.AddScoped<IReportService, ReportService>();
 
             services.AddSingleton<PasswordHasher>();
