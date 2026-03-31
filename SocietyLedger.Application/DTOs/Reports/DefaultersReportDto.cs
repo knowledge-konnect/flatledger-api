@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace SocietyLedger.Application.DTOs.Reports
 {
-    public class DefaulterDto
+    public class DefaulterDto_old
     {
         [JsonPropertyName("flat_no")]
         public string FlatNo { get; set; } = null!;

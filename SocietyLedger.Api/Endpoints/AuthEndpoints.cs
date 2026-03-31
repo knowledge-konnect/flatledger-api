@@ -9,6 +9,7 @@ using SocietyLedger.Application.DTOs.Auth;
 using SocietyLedger.Application.DTOs.User;
 using SocietyLedger.Application.Interfaces.Services;
 using SocietyLedger.Shared;
+using SocietyLedger.Domain.Exceptions;
 using Swashbuckle.AspNetCore.Annotations;
 namespace SocietyLedger.Api.Endpoints
 {
@@ -18,9 +19,10 @@ namespace SocietyLedger.Api.Endpoints
 
         /// <summary>
         /// Cookie path scoped to auth routes only.
-        /// Adjust if the API is mounted under a versioned prefix (e.g. "/v1/auth").
+        /// Must match the full API prefix so the browser sends the cookie on every
+        /// /api/auth/* request (e.g. /api/auth/refresh, /api/auth/revoke).
         /// </summary>
-        private const string RefreshTokenCookiePath = "/auth";
+        private const string RefreshTokenCookiePath = "/api/auth";
 
         /// <summary>
         /// Sets the refresh token as an httpOnly cookie scoped to the auth path.
@@ -45,14 +47,16 @@ namespace SocietyLedger.Api.Endpoints
 
         /// <summary>
         /// Clears the refresh token cookie by overwriting it with an expired, empty value.
+        /// Attributes must match <see cref="SetRefreshTokenCookie"/> (same Name + Path + SameSite + Secure)
+        /// so the browser recognises it as the same cookie and evicts it.
         /// </summary>
         private static void ClearRefreshTokenCookie(HttpContext ctx, IWebHostEnvironment env)
         {
             ctx.Response.Cookies.Append(RefreshTokenCookieName, string.Empty, new CookieOptions
             {
                 HttpOnly = true,
-                Secure   = !env.IsDevelopment(),
-                SameSite = SameSiteMode.Strict,
+                Secure   = true,
+                SameSite = SameSiteMode.None,
                 Path     = RefreshTokenCookiePath,
                 Expires  = DateTimeOffset.UnixEpoch,
                 MaxAge   = TimeSpan.Zero
@@ -126,22 +130,46 @@ namespace SocietyLedger.Api.Endpoints
                     Summary = "Refresh token",
                     Description = "Rotates the refresh token (read from the httpOnly cookie) and returns a new access token."
                 )]
-            async (IAuthService authService, HttpContext ctx, IWebHostEnvironment env) =>
+            async (IAuthService authService, ITokenService tokenService, HttpContext ctx, IWebHostEnvironment env) =>
                 {
                     var ip = ctx.GetClientIp();
 
-                    // Refresh token must arrive via the httpOnly cookie — never the request body.
-                    var refreshToken = ctx.Request.Cookies[RefreshTokenCookieName];
-                    if (string.IsNullOrWhiteSpace(refreshToken))
+                    // Check cookie presence safely (do not log token value).
+                    var cookiePresent = ctx.Request.Cookies.TryGetValue(RefreshTokenCookieName, out var refreshToken);
+                    Log.Debug("Refresh endpoint called. CookiePresent={Present} TraceId={TraceId} Ip={Ip}", cookiePresent, ctx.TraceIdentifier, ip);
+
+                    if (!cookiePresent || string.IsNullOrWhiteSpace(refreshToken))
                     {
+                        Log.Warning("Refresh token cookie missing. TraceId={TraceId} Ip={Ip}", ctx.TraceIdentifier, ip);
                         var errorResponse = ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, ErrorMessages.INVALID_TOKEN, ctx.TraceIdentifier);
                         return Results.Json(errorResponse, statusCode: 401);
                     }
 
-                    var res = await authService.RefreshTokenAsync(refreshToken, ip);
-                    // Rotate: overwrite the cookie with the newly issued refresh token.
-                    SetRefreshTokenCookie(ctx, res.RefreshToken, res.RefreshTokenExpiresAt, env);
-                    return Results.Ok(ApiResponse<LoginResponse>.Success(res, "Token refreshed successfully"));
+                    // Log the hash (safe) so operators can correlate with DB rows.
+                    try
+                    {
+                        var hashed = tokenService.HashToken(refreshToken);
+                        Log.Debug("Refresh token hash for lookup: {Hash} TraceId={TraceId}", hashed, ctx.TraceIdentifier);
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Warning(ex, "Failed to hash refresh token for debugging. TraceId={TraceId}", ctx.TraceIdentifier);
+                    }
+
+                    try
+                    {
+                        var res = await authService.RefreshTokenAsync(refreshToken, ip);
+                        // Rotate: overwrite the cookie with the newly issued refresh token.
+                        SetRefreshTokenCookie(ctx, res.RefreshToken, res.RefreshTokenExpiresAt, env);
+                        Log.Information("Refresh token rotated successfully. TraceId={TraceId} User={User}", ctx.TraceIdentifier, res.UserPublicId);
+                        return Results.Ok(ApiResponse<LoginResponse>.Success(res, "Token refreshed successfully"));
+                    }
+                    catch (AuthenticationException ex)
+                    {
+                        Log.Warning(ex, "Refresh failed - invalid or expired token. TraceId={TraceId} Ip={Ip}", ctx.TraceIdentifier, ip);
+                        var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, ErrorMessages.INVALID_TOKEN, ctx.TraceIdentifier);
+                        return Results.Json(errorResponse, statusCode: 401);
+                    }
                 })
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)

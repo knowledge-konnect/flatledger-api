@@ -14,6 +14,7 @@ using SocietyLedger.Api.Extensions;
 using SocietyLedger.Api.Middlewares;
 using SocietyLedger.Infrastructure.Persistence.Contexts;
 using SocietyLedger.Shared;
+using Microsoft.AspNetCore.HttpOverrides;
 using System.Security.Claims;
 using System.Text;
 using System.Threading.RateLimiting;
@@ -253,6 +254,18 @@ builder.Services.AddHostedService<MonthlyBillGenerationService>();
 builder.Services.AddHostedService<TrialExpirationService>();
 
 // ----------------------------
+// Forwarded headers — trust Render's SSL-terminating load balancer so that
+// Request.Scheme is "https" and X-Forwarded-For is populated correctly.
+// ----------------------------
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    // Clear known-network/known-proxy defaults so Render's proxy IPs are trusted.
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
+// ----------------------------
 // Build the app
 // ----------------------------
 var app = builder.Build();
@@ -262,6 +275,9 @@ var app = builder.Build();
 // ----------------------------
 // Swagger is only served in non-production environments.
 // Swagger is now enabled in all environments (including production)
+// Must be first — corrects Request.Scheme / RemoteIpAddress before any other middleware reads them.
+app.UseForwardedHeaders();
+
 app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
