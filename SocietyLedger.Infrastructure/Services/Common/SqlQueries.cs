@@ -5,7 +5,7 @@ namespace SocietyLedger.Infrastructure.Services.Common
     /// </summary>
     public static class SqlQueries
     {
-        // ── FIFO maintenance-payment allocation ───────────────────────────
+        // ── Maintenance-payment allocation (current month first) ───────────────────────────
 
         /// <summary>
         /// Checks whether a maintenance payment with the given idempotency key already exists for this society.
@@ -56,7 +56,7 @@ namespace SocietyLedger.Infrastructure.Services.Common
               AND  society_id = @SocietyId";
 
         /// <summary>
-        /// Returns all bills with an outstanding balance for the given flat, ordered oldest-period-first (FIFO). FOR UPDATE locks each row to prevent concurrent allocations.
+        /// Returns all bills with an outstanding balance for the given flat, ordered newest-period-first (current month first). FOR UPDATE locks each row to prevent concurrent allocations.
         /// </summary>
         public const string LockUnpaidBillsByFlat = @"
             SELECT b.id,
@@ -70,7 +70,7 @@ namespace SocietyLedger.Infrastructure.Services.Common
               AND  b.society_id = @SocietyId
               AND  b.is_deleted = FALSE
               AND  b.status_code != 'paid'
-            ORDER  BY b.period ASC
+            ORDER  BY b.period DESC
             FOR UPDATE";
 
         /// <summary>
@@ -100,18 +100,29 @@ namespace SocietyLedger.Infrastructure.Services.Common
         /// </summary>
         public const string GetAllocationsByIdempotencyKey = @"
             SELECT mp.bill_id,
-                   b.public_id  AS bill_public_id,
-                   b.period     AS period,
+                   b.public_id                  AS bill_public_id,
+                   b.period                     AS period,
                    mp.adjustment_id,
-                   a.public_id  AS adjustment_public_id,
-                   mp.amount    AS allocated_amount,
-                   mp.notes     AS notes
+                   a.public_id                  AS adjustment_public_id,
+                   mp.amount                    AS allocated_amount,
+                   mp.notes                     AS notes,
+                   mp.outstanding_after_payment AS outstanding_after_payment
             FROM   maintenance_payments mp
             LEFT JOIN bills       b ON b.id = mp.bill_id
             LEFT JOIN adjustments a ON a.id = mp.adjustment_id
             WHERE  mp.society_id      = @SocietyId
               AND  mp.idempotency_key = @IdempotencyKey
             ORDER  BY mp.id";
+
+        /// <summary>
+        /// Stamps outstanding_after_payment on every row that shares the same idempotency key.
+        /// Executed once after all FIFO allocation inserts, before the transaction commits.
+        /// </summary>
+        public const string UpdateOutstandingAfterPayment = @"
+            UPDATE maintenance_payments
+            SET    outstanding_after_payment = @OutstandingAfterPayment
+            WHERE  society_id      = @SocietyId
+              AND  idempotency_key = @IdempotencyKey";
 
         // ── Maintenance Summary (4 focused, index-friendly queries) ──────────
 

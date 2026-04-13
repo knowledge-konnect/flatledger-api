@@ -234,13 +234,9 @@ namespace SocietyLedger.Infrastructure.Services
                             continue;
                         }
 
-                        // Amount priority:
-                        //   1. flat.maintenance_amount  (flat-level override, set when flat is configured)
-                        //   2. maintenance_config.default_monthly_charge  (society-wide default)
-                        //   3. 0 if neither is configured (edge-case guard)
-                        var amount = flat.maintenance_amount > 0
-                            ? flat.maintenance_amount
-                            : (maintConfig?.default_monthly_charge ?? 0m);
+                        // Amount from maintenance_config.default_monthly_charge (society-wide default).
+                        // If not configured, amount is 0 (edge-case guard).
+                        var amount = maintConfig?.default_monthly_charge ?? 0m;
 
                         newBills.Add(new bill
                         {

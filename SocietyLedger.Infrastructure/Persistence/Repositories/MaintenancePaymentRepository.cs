@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Serilog.Sinks.File;
 using SocietyLedger.Application.DTOs.MaintenancePayment;
 using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Infrastructure.Persistence.Contexts;
@@ -31,20 +32,48 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             return payment != null ? MapToDto(payment) : null;
         }
 
-        public async Task<IEnumerable<MaintenancePaymentEntity>> GetBySocietyIdAsync(long societyId)
+        public async Task<IEnumerable<MaintenancePaymentEntity>> GetBySocietyIdAsync(long societyId, string? period = null)
         {
-            var payments = await _db.maintenance_payments
+            var query = _db.maintenance_payments
                 .ForSociety(societyId)
-                .Include(mp => mp.flat)
-                .Include(mp => mp.payment_mode)
-                .Include(mp => mp.recorded_byNavigation)
-                .Include(mp => mp.society)
-                .Include(mp => mp.bill)
+                .AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(period)
+                && DateTime.TryParseExact(period + "-01", "yyyy-MM-dd", null,
+                    System.Globalization.DateTimeStyles.None, out var periodStartLocal))
+            {
+                var periodStart = DateTime.SpecifyKind(periodStartLocal, DateTimeKind.Utc);
+                var periodEnd   = DateTime.SpecifyKind(periodStartLocal.AddMonths(1), DateTimeKind.Utc);
+                query = query.Where(mp => mp.payment_date >= periodStart && mp.payment_date < periodEnd);
+            }
+
+            var payments = await query
                 .OrderByDescending(mp => mp.payment_date)
+                .Select(mp => new MaintenancePaymentEntity
+                {
+                    PublicId = mp.public_id,
+                    SocietyId = mp.society_id,
+                    SocietyPublicId = mp.society != null ? mp.society.public_id : Guid.Empty,
+                    FlatPublicId = mp.flat != null ? mp.flat.public_id : Guid.Empty,
+                    FlatNumber = mp.flat != null ? mp.flat.flat_no : null,
+                    Amount = mp.amount,
+                    PaymentDate = mp.payment_date,
+                    PaymentModeId = mp.payment_mode_id,
+                    PaymentModeName = mp.payment_mode != null ? mp.payment_mode.display_name : null,
+                    ReferenceNumber = mp.reference_number,
+                    ReceiptUrl = mp.receipt_url,
+                    Notes = mp.notes,
+                    RecordedBy = mp.recorded_by,
+                    RecordedByName = mp.recorded_byNavigation != null ? mp.recorded_byNavigation.name : null,
+                    CreatedAt = mp.created_at,
+                    BillPublicId = mp.bill != null ? mp.bill.public_id : null,
+                    Period = mp.bill != null ? mp.bill.period : mp.payment_date.ToString("yyyy-MM"),
+                    OutstandingAfterPayment = mp.outstanding_after_payment
+                })
                 .AsNoTracking()
                 .ToListAsync();
 
-            return payments.Select(MapToDto);
+            return payments;
         }
 
         public async Task<IEnumerable<MaintenancePaymentEntity>> GetByFlatPublicIdAsync(Guid flatPublicId)
@@ -71,7 +100,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             var flat = await _db.flats
                 .ForSociety(payment.SocietyId)
                 .FirstOrDefaultAsync(f => f.public_id == payment.FlatPublicId);
-            
+
             if (flat == null)
                 throw new InvalidOperationException($"Flat with PublicId {payment.FlatPublicId} not found in society {payment.SocietyId}");
 
@@ -118,7 +147,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             var payment = await _db.maintenance_payments
                 .ForSociety(societyId)
                 .FirstOrDefaultAsync(mp => mp.public_id == publicId);
-            
+
             if (payment == null)
                 throw new InvalidOperationException($"Maintenance payment with PublicId {publicId} not found in society {societyId}");
 
@@ -156,7 +185,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             var payment = await _db.maintenance_payments
                 .ForSociety(societyId)
                 .FirstOrDefaultAsync(mp => mp.public_id == publicId);
-            
+
             if (payment != null)
             {
                 payment.is_deleted = true;
@@ -169,23 +198,24 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
         {
             return new MaintenancePaymentEntity
             {
-                PublicId        = payment.public_id,
-                SocietyId       = payment.society_id,
+                PublicId = payment.public_id,
+                SocietyId = payment.society_id,
                 SocietyPublicId = payment.society?.public_id ?? Guid.Empty,
-                FlatPublicId    = payment.flat?.public_id ?? Guid.Empty,
-                FlatNumber      = payment.flat?.flat_no,
-                Amount          = payment.amount,
-                PaymentDate     = payment.payment_date,
-                PaymentModeId   = payment.payment_mode_id,
+                FlatPublicId = payment.flat?.public_id ?? Guid.Empty,
+                FlatNumber = payment.flat?.flat_no,
+                Amount = payment.amount,
+                PaymentDate = payment.payment_date,
+                PaymentModeId = payment.payment_mode_id,
                 PaymentModeName = payment.payment_mode?.display_name,
                 ReferenceNumber = payment.reference_number,
-                ReceiptUrl      = payment.receipt_url,
-                Notes           = payment.notes,
-                RecordedBy      = payment.recorded_by,
-                RecordedByName  = payment.recorded_byNavigation?.name,
-                CreatedAt       = payment.created_at,
-                BillPublicId    = payment.bill?.public_id,
-                Period          = payment.bill?.period
+                ReceiptUrl = payment.receipt_url,
+                Notes = payment.notes,
+                RecordedBy = payment.recorded_by,
+                RecordedByName = payment.recorded_byNavigation?.name,
+                CreatedAt = payment.created_at,
+                BillPublicId = payment.bill?.public_id,
+                Period = payment.bill?.period,
+                OutstandingAfterPayment = payment.outstanding_after_payment
             };
         }
     }

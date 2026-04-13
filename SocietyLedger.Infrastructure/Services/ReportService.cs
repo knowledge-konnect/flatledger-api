@@ -86,7 +86,8 @@ namespace SocietyLedger.Infrastructure.Services
             var bytes = _exportService.GenerateMonthlyReport(data);
             var monthName = new DateTime(year, month, 1).ToString("MMMM");
             var safeName = SanitizeFileName(data.SocietyName);
-            return (bytes, $"FlatLedger_Monthly_Report_{safeName}_{monthName}_{year}.xlsx");
+            var fileName = $"{safeName}_Monthly_Report_{monthName}_{year}.xlsx";
+            return (bytes, fileName);
         }
 
         public async Task<(byte[] Bytes, string FileName)> DownloadYearlyReportAsync(
@@ -99,7 +100,8 @@ namespace SocietyLedger.Infrastructure.Services
                 ? $"FY_{year - 1}-{year % 100:D2}"
                 : year.ToString();
             var safeName = SanitizeFileName(data.SocietyName);
-            return (bytes, $"FlatLedger_Yearly_Report_{safeName}_{label}.xlsx");
+            var fileName = $"{safeName}_Yearly_Report_{label}.xlsx";
+            return (bytes, fileName);
         }
 
         private static string SanitizeFileName(string name)
