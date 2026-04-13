@@ -113,7 +113,7 @@ namespace SocietyLedger.Infrastructure.Services
 
         private static void BuildMonthlyPaymentsSheet(XLWorkbook wb, MonthlyReportDto data)
         {
-            // C(3)=Flat No D(4)=Owner E(5)=Opening F(6)=Current Bill G(7)=Paid H(8)=Total Due I(9)=Closing J(10)=Status
+            // C(3)=Flat No D(4)=Owner E(5)=Previous Balance F(6)=Monthly Charges G(7)=Total Due (Before Payment) H(8)=Amount Paid I(9)=Outstanding J(10)=Status
             const int colEnd = ColStart + 7; // column J
             var ws = wb.AddWorksheet("Payments");
             SetSheetDefaults(ws);
@@ -121,16 +121,24 @@ namespace SocietyLedger.Infrastructure.Services
 
             row = WriteReportTitle(ws, row, ColStart, colEnd, data.SocietyName, $"Payments - {data.PeriodLabel}");
 
+            int noteRow = row;
+            // small explanatory note for users clarifying column meanings
+            ws.Range(noteRow, ColStart, noteRow, colEnd).Merge();
+            ws.Cell(noteRow, ColStart).Value = "Note: 'Total Due (Before Payment)' = Previous Balance + Monthly Charges. 'Outstanding' = Total Due - Amount Paid.";
+            ws.Cell(noteRow, ColStart).Style.Font.Italic = true;
+            ws.Cell(noteRow, ColStart).Style.Font.FontColor = XLColor.DarkGray;
+            row++;
+
             int headerRow = row;
             WriteTableHeader(ws, row, ColStart, new[]
             {
                 "Flat No",
                 "Owner Name",
-                "Opening Balance",
-                "Current Bill",
-                "Paid",
-                "Total Due",
-                "Closing Balance",
+                "Previous Balance",
+                "Monthly Charges",
+                "Total Due (Before Payment)",
+                "Amount Paid",
+                "Outstanding",
                 "Status"
             });
             row++;
@@ -138,30 +146,30 @@ namespace SocietyLedger.Infrastructure.Services
             int dataStart = row;
             foreach (var flat in data.FlatDetails ?? new List<FlatDetailDto>())
             {
-                var closingBalance = flat.BalanceAmount;
+                var outstanding = flat.BalanceAmount;
 
                 ws.Cell(row, ColStart + 0).Value = flat.FlatNo;
                 ws.Cell(row, ColStart + 1).Value = flat.OwnerName ?? "-";
-                ws.Cell(row, ColStart + 2).Value = flat.OpeningBalance;
-                ws.Cell(row, ColStart + 3).Value = flat.CurrentBill;
-                ws.Cell(row, ColStart + 4).Value = flat.CurrentPaid;
-                ws.Cell(row, ColStart + 5).Value = flat.TotalDue;
-                ws.Cell(row, ColStart + 6).Value = closingBalance;
+                ws.Cell(row, ColStart + 2).Value = flat.OpeningBalance;   // Previous Balance
+                ws.Cell(row, ColStart + 3).Value = flat.CurrentBill;      // Monthly Charges
+                ws.Cell(row, ColStart + 4).Value = flat.TotalDue;         // Total Due
+                ws.Cell(row, ColStart + 5).Value = flat.CurrentPaid;      // Amount Paid
+                ws.Cell(row, ColStart + 6).Value = outstanding;           // Outstanding
                 ws.Range(row, ColStart + 2, row, ColStart + 6).Style.NumberFormat.Format = AmountFormat;
                 ws.Range(row, ColStart + 2, row, ColStart + 6).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
 
                 if (flat.CurrentPaid > 0)
                 {
-                    ws.Cell(row, ColStart + 4).Style.Font.FontColor = ColourPaidText;
-                    ws.Cell(row, ColStart + 4).Style.Font.Bold = true;
+                    ws.Cell(row, ColStart + 5).Style.Font.FontColor = ColourPaidText;
+                    ws.Cell(row, ColStart + 5).Style.Font.Bold = true;
                 }
 
-                if (closingBalance > 0)
+                if (outstanding > 0)
                 {
                     ws.Cell(row, ColStart + 6).Style.Font.FontColor = ColourPendingText;
                     ws.Cell(row, ColStart + 6).Style.Font.Bold = true;
                 }
-                else if (closingBalance < 0)
+                else if (outstanding < 0)
                 {
                     ws.Cell(row, ColStart + 6).Style.Font.FontColor = ColourPaidText;
                     ws.Cell(row, ColStart + 6).Style.Font.Bold = true;
@@ -170,7 +178,7 @@ namespace SocietyLedger.Infrastructure.Services
                 var statusCell = ws.Cell(row, ColStart + 7);
                 statusCell.Value = FormatMonthlyStatus(flat.Status);
                 statusCell.Style.Font.Bold = true;
-                statusCell.Style.Font.FontColor = GetMonthlyStatusColor(flat.Status, closingBalance);
+                statusCell.Style.Font.FontColor = GetMonthlyStatusColor(flat.Status, outstanding);
                 statusCell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
 
                 ApplyRowBorder(ws, row, ColStart, colEnd);

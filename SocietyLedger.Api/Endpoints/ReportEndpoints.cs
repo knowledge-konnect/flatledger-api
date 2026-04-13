@@ -237,7 +237,7 @@ namespace SocietyLedger.Api.Endpoints
                 async (
                     IReportService reportService,
                     HttpContext ctx,
-                    [FromQuery] int year,
+                    [FromQuery] int? year,
                     [FromQuery] string yearType = "financial",
                     CancellationToken ct = default) =>
                 {
@@ -245,13 +245,14 @@ namespace SocietyLedger.Api.Endpoints
                     if (userId == 0) return Results.Json(
                         ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid token", ctx.TraceIdentifier), statusCode: 401);
 
-                    if (year < 2000 || year > 2100) return Results.Json(
+                    var selectedYear = year ?? DateTime.UtcNow.Year;
+                    if (selectedYear < 2000 || selectedYear > 2100) return Results.Json(
                         ErrorResponse.Create("INVALID_PARAM", "year must be between 2000 and 2100", ctx.TraceIdentifier), statusCode: 400);
 
                     if (yearType != "calendar" && yearType != "financial") return Results.Json(
                         ErrorResponse.Create("INVALID_PARAM", "yearType must be 'calendar' or 'financial'", ctx.TraceIdentifier), statusCode: 400);
 
-                    var (bytes, fileName) = await reportService.DownloadYearlyReportAsync(userId, year, yearType, ct);
+                    var (bytes, fileName) = await reportService.DownloadYearlyReportAsync(userId, selectedYear, yearType, ct);
                     return Results.File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
                 })
             .WithTags(groupName)
