@@ -7,8 +7,7 @@ using SocietyLedger.Infrastructure.Data;
 using SocietyLedger.Shared;
 using System.Data;
 using System.Text.Json;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
+using System.Text.Json.Serialization;
 
 namespace SocietyLedger.Infrastructure.Persistence.Repositories
 {
@@ -16,8 +15,6 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
     {
         private readonly IDbConnectionFactory _connectionFactory;
         private readonly ILogger<ReportRepository> _logger;
-
-        // Using Newtonsoft.Json for deserialization to map snake_case JSON -> PascalCase DTOs
 
         public ReportRepository(IDbConnectionFactory connectionFactory, ILogger<ReportRepository> logger)
         {
@@ -163,47 +160,64 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             if (string.IsNullOrWhiteSpace(json) || json == "{}")
                 return default;
 
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+                NumberHandling = JsonNumberHandling.AllowReadingFromString
+            };
+
             try
             {
-                return JsonConvert.DeserializeObject<T>(json);
+                using var doc = JsonDocument.Parse(json);
+                var payload = UnwrapFunctionResult(doc.RootElement);
+
+                if (payload.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+                    return default;
+
+                if (payload.ValueKind == JsonValueKind.String)
+                {
+                    var inner = payload.GetString();
+                    if (string.IsNullOrWhiteSpace(inner))
+                        return default;
+
+                    return Deserialize<T>(inner);
+                }
+
+                return JsonSerializer.Deserialize<T>(payload.GetRawText(), options);
             }
             catch
             {
-                // Some DB functions return wrapper JSON such as:
-                //  - an array: [ { "get_yearly_report": { ... } } ]
-                //  - an object: { "get_yearly_report": { ... } }
-                // Try to parse and unwrap the first meaningful value.
                 try
                 {
-                    var token = JToken.Parse(json);
-
-                    // If array, take first non-null element
-                    if (token.Type == JTokenType.Array)
-                    {
-                        var arr = (JArray)token;
-                        if (arr.Count > 0)
-                            token = arr[0];
-                    }
-
-                    if (token.Type == JTokenType.Object)
-                    {
-                        var obj = (JObject)token;
-                        var firstProp = obj.Properties().FirstOrDefault();
-                        if (firstProp != null)
-                            return firstProp.Value.ToObject<T>();
-                    }
-
-                    // If token is directly the desired object/array, try converting it.
-                    if (token.Type == JTokenType.Object || token.Type == JTokenType.Array)
-                        return token.ToObject<T>();
+                    return JsonSerializer.Deserialize<T>(json, options);
                 }
                 catch
                 {
-                    // fall through
+                    return default;
                 }
-
-                return default;
             }
+        }
+
+        private static JsonElement UnwrapFunctionResult(JsonElement root)
+        {
+            // Unwrap single-item arrays returned by some SQL function call shapes.
+            while (root.ValueKind == JsonValueKind.Array && root.GetArrayLength() == 1)
+            {
+                root = root[0];
+            }
+
+            // Unwrap single-property objects where the value is the actual payload.
+            while (root.ValueKind == JsonValueKind.Object)
+            {
+                var props = root.EnumerateObject().ToList();
+                if (props.Count != 1)
+                    break;
+
+                root = props[0].Value;
+            }
+
+            return root;
         }
 
         /// <summary>
