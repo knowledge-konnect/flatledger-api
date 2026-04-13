@@ -1,48 +1,6 @@
-using Serilog;
-using System.Security.Claims;
+// RequestLoggingMiddleware has been removed.
+// Per-request logging is now handled by app.UseSerilogRequestLogging() in Program.cs,
+// which emits one structured log line per request (Method, Path, StatusCode, Elapsed, UserId, CorrelationId)
+// and automatically suppresses noise from /health and /swagger endpoints.
+// This file is intentionally left as a comment to aid git-blame traceability.
 
-namespace SocietyLedger.Api.Middlewares
-{
-    /// <summary>
-    /// Middleware that logs each HTTP request's method, path, user ID, response status,
-    /// and elapsed time using Serilog structured logging.
-    /// </summary>
-    public class RequestLoggingMiddleware
-    {
-        private readonly RequestDelegate _next;
-
-        public RequestLoggingMiddleware(RequestDelegate next)
-        {
-            _next = next;
-        }
-
-        /// <summary>
-        /// Logs the start of the request, invokes the next middleware,
-        /// then logs the response status and elapsed duration.
-        /// </summary>
-        public async Task InvokeAsync(HttpContext context)
-        {
-            var startTime = DateTime.UtcNow;
-            var userId = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "anonymous";
-
-            Log.Information(
-                "HTTP {Method} {Path} started. UserId: {UserId}",
-                context.Request.Method,
-                context.Request.Path,
-                userId
-            );
-
-            await _next(context);
-
-            var duration = (DateTime.UtcNow - startTime).TotalMilliseconds;
-            Log.Information(
-                "HTTP {Method} {Path} responded {StatusCode} in {Duration}ms. UserId: {UserId}",
-                context.Request.Method,
-                context.Request.Path,
-                context.Response.StatusCode,
-                duration,
-                userId
-            );
-        }
-    }
-}

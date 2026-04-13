@@ -48,6 +48,9 @@ public partial class maintenance_payment
 
     public long? adjustment_id { get; set; }
 
+    [Precision(13, 2)]
+    public decimal? outstanding_after_payment { get; set; }
+
     [ForeignKey("adjustment_id")]
     [InverseProperty("maintenance_payments")]
     public virtual adjustment? adjustment { get; set; }

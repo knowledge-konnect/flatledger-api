@@ -14,6 +14,7 @@ using SocietyLedger.Api.Extensions;
 using SocietyLedger.Api.Middlewares;
 using SocietyLedger.Infrastructure.Persistence.Contexts;
 using SocietyLedger.Shared;
+using Microsoft.AspNetCore.HttpOverrides;
 using System.Security.Claims;
 using System.Text;
 using System.Threading.RateLimiting;
@@ -32,14 +33,37 @@ if (!string.IsNullOrEmpty(renderPort))
 
 
 // ----------------------------
-LogEventLevel level = builder.Environment.IsProduction() ? LogEventLevel.Warning : LogEventLevel.Information;
-var logTemplate = "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] {Message}{NewLine}{Exception}";
+var logTemplate = "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] [{CorrelationId}] {Message}{NewLine}{Exception}";
 
-Log.Logger = new LoggerConfiguration()
-    .MinimumLevel.Is(level)
-    .WriteTo.Console(outputTemplate: logTemplate)
-    .WriteTo.File("Logs/SocietyLedger-.txt", rollingInterval: RollingInterval.Day, outputTemplate: logTemplate)
-    .CreateLogger();
+builder.Host.UseSerilog((ctx, lc) =>
+{
+    var minLevel = ctx.HostingEnvironment.IsProduction() ? LogEventLevel.Warning : LogEventLevel.Information;
+    lc
+        .MinimumLevel.Is(minLevel)
+        .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+        .MinimumLevel.Override("Microsoft.EntityFrameworkCore.Database.Command", LogEventLevel.Warning)
+        .MinimumLevel.Override("System", LogEventLevel.Warning)
+        .Enrich.FromLogContext()
+        .Enrich.WithMachineName();
+
+    if (ctx.HostingEnvironment.IsProduction())
+    {
+        // Render.com has an ephemeral filesystem — log to stdout only and forward
+        // via the Render log drain (Datadog, Papertrail, Logtail, etc.).
+        lc.WriteTo.Async(a => a.Console(outputTemplate: logTemplate));
+    }
+    else
+    {
+        lc.WriteTo.Async(a => a.Console(outputTemplate: logTemplate))
+          .WriteTo.Async(a => a.File(
+              "Logs/SocietyLedger-.txt",
+              rollingInterval: RollingInterval.Day,
+              retainedFileCountLimit: 14,
+              fileSizeLimitBytes: 50_000_000,
+              rollOnFileSizeLimit: true,
+              outputTemplate: logTemplate));
+    }
+});
 
 Log.Information("Starting SocietyLedger API...");
 
@@ -146,6 +170,19 @@ builder.Services.AddRateLimiter(options =>
             });
     });
 
+    // Strict per-IP limit for auth endpoints — brute-force protection.
+    // Applied explicitly via .RequireRateLimiting("AuthPolicy") on /login and /register.
+    options.AddPolicy("AuthPolicy", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 5,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            }));
+
     options.OnRejected = async (context, token) =>
     {
         context.HttpContext.Response.StatusCode = 429;
@@ -185,7 +222,7 @@ builder.Services.AddAuthentication(options =>
         ValidateAudience = true,
         ValidateLifetime = true,
         ValidateIssuerSigningKey = true,
-        ClockSkew = TimeSpan.FromMinutes(1)   // small drift tolerance only — NOT the token lifetime
+        ClockSkew = TimeSpan.Zero
     };
 });
 
@@ -217,6 +254,18 @@ builder.Services.AddHostedService<MonthlyBillGenerationService>();
 builder.Services.AddHostedService<TrialExpirationService>();
 
 // ----------------------------
+// Forwarded headers — trust Render's SSL-terminating load balancer so that
+// Request.Scheme is "https" and X-Forwarded-For is populated correctly.
+// ----------------------------
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    // Clear known-network/known-proxy defaults so Render's proxy IPs are trusted.
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
+// ----------------------------
 // Build the app
 // ----------------------------
 var app = builder.Build();
@@ -225,7 +274,9 @@ var app = builder.Build();
 // Middleware pipeline
 // ----------------------------
 // Swagger is only served in non-production environments.
-// In production the schema is private — exposed Swagger reveals the full attack surface.
+// Swagger is now enabled in all environments (including production)
+// Must be first — corrects Request.Scheme / RemoteIpAddress before any other middleware reads them.
+app.UseForwardedHeaders();
 
 app.UseSwagger();
 app.UseSwaggerUI(c =>
@@ -250,11 +301,35 @@ app.Use(async (ctx, next) =>
     await next();
 });
 
-// Correlation ID middleware
+// Correlation ID middleware — pushes CorrelationId into Serilog LogContext
 app.UseMiddleware<SocietyLedger.Api.CorrelationIdMiddleware>();
 
 app.UseCors("DefaultCorsPolicy");
-app.UseMiddleware<RequestLoggingMiddleware>();
+
+// Serilog built-in request logging replaces the custom RequestLoggingMiddleware:
+// one structured log line per request with Method, Path, StatusCode, Elapsed, UserId.
+app.UseSerilogRequestLogging(options =>
+{
+    options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0}ms";
+    options.GetLevel = (ctx, elapsed, ex) =>
+    {
+        // Suppress health-check and Swagger probes — Verbose is always below the configured minimum.
+        if (ctx.Request.Path.StartsWithSegments("/health") ||
+            ctx.Request.Path.StartsWithSegments("/swagger"))
+            return LogEventLevel.Verbose;
+
+        return ex != null || ctx.Response.StatusCode >= 500 ? LogEventLevel.Error :
+               ctx.Response.StatusCode >= 400 ? LogEventLevel.Warning :
+               elapsed > 1000 ? LogEventLevel.Warning :
+               LogEventLevel.Information;
+    };
+    options.EnrichDiagnosticContext = (diagCtx, httpCtx) =>
+    {
+        diagCtx.Set("UserId", httpCtx.User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "anonymous");
+        diagCtx.Set("CorrelationId", httpCtx.Request.Headers["X-Correlation-ID"].FirstOrDefault() ?? httpCtx.TraceIdentifier);
+    };
+});
+
 app.UseMiddleware<ExceptionMiddleware>();
 app.UseRateLimiter();
 app.UseAuthentication();
@@ -270,9 +345,6 @@ var versionSet = app.NewApiVersionSet()
     .HasApiVersion(new ApiVersion(ApiConstants.API_VERSION_1_0))
     .ReportApiVersions()
     .Build();
-
-app.MapGroup(ApiRoutes.IMPORT)
-   .MapImportRoutes(RouteGroupNames.IMPORT, versionSet);
 
 app.MapGroup(ApiRoutes.AUTH)
    .MapAuthRoutes(RouteGroupNames.AUTHENTICATION, versionSet);

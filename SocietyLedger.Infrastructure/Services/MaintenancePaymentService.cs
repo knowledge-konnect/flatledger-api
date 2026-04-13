@@ -29,23 +29,23 @@ namespace SocietyLedger.Infrastructure.Services
             IDapperService dapper)
         {
             _maintenancePaymentRepo = maintenancePaymentRepo;
-            _paymentModeRepo        = paymentModeRepo;
-            _userContext            = userContext;
-            _db                     = db;
-            _dapper                 = dapper;
+            _paymentModeRepo = paymentModeRepo;
+            _userContext = userContext;
+            _db = db;
+            _dapper = dapper;
         }
 
         // ------------------------------------------------------------------ //
-        //  FIFO payment allocation                                             //
+        //  Payment allocation (current month first)                          //
         //                                                                      //
         //  Allocation order (all within a single RepeatableRead transaction):  //
         //    1. OpeningBalance adjustments  — oldest created_at first          //
-        //    2. Monthly bills               — oldest period first              //
+        //    2. Monthly bills               — newest period first              //
         //    3. Remainder → advance row     — bill_id=NULL, adjustment_id=NULL //
         // ------------------------------------------------------------------ //
 
         /// <summary>
-        /// Records a maintenance payment and allocates it FIFO: opening-balance adjustments first, then monthly bills, then advance.
+        /// Records a maintenance payment and allocates it: opening-balance adjustments first, then monthly bills (current month first), then advance.
         /// </summary>
         public async Task<MaintenancePaymentResponse> ProcessPaymentAsync(MaintenancePaymentRequest request, long userId)
         {
@@ -96,16 +96,21 @@ namespace SocietyLedger.Infrastructure.Services
                             .Where(r => r.bill_id == null && r.adjustment_id == null)
                             .Sum(r => (decimal)r.allocated_amount);
 
+                        var idempotentOutstanding = rows.Count > 0
+                            ? (decimal?)rows[0].outstanding_after_payment
+                            : null;
+
                         return new MaintenancePaymentResponse
                         {
-                            FlatPublicId    = request.FlatPublicId,
-                            Amount          = request.Amount,
-                            PaymentDate     = request.PaymentDate,
-                            ReferenceNumber = request.ReferenceNumber,
-                            Notes           = request.Notes,
-                            TotalPaid       = billAllocs.Sum(a => a.AllocatedAmount),
-                            Allocations     = billAllocs,
-                            RemainingAdvance = advance
+                            FlatPublicId            = request.FlatPublicId,
+                            Amount                  = request.Amount,
+                            PaymentDate             = request.PaymentDate,
+                            ReferenceNumber         = request.ReferenceNumber,
+                            Notes                   = request.Notes,
+                            TotalPaid               = billAllocs.Sum(a => a.AllocatedAmount),
+                            Allocations             = billAllocs,
+                            RemainingAdvance        = advance,
+                            OutstandingAfterPayment = idempotentOutstanding
                         };
                     }
 
@@ -126,7 +131,7 @@ namespace SocietyLedger.Infrastructure.Services
                         new { FlatPublicId = request.FlatPublicId, SocietyId = societyId })
                         ?? throw new NotFoundException("Flat not found or does not belong to society.");
 
-                    var remaining  = request.Amount;
+                    var remaining = request.Amount;
                     var allocations = new List<MaintenancePaymentAllocation>();
 
                     // ── Step 4: Allocate to OpeningBalance adjustments (FIFO, oldest first) ──
@@ -134,6 +139,9 @@ namespace SocietyLedger.Infrastructure.Services
                         conn, tx,
                         SqlQueries.LockOpeningBalanceAdjustments,
                         new { FlatId = flat.id, SocietyId = societyId, EntryType = EntryTypeCodes.OpeningBalance })).ToList();
+
+                    var obStartingBalance   = adjustments.Sum(a => a.remaining_amount);
+                    var totalOBAllocated    = 0m;
 
                     foreach (var adj in adjustments)
                     {
@@ -152,36 +160,39 @@ namespace SocietyLedger.Infrastructure.Services
                             SqlQueries.InsertMaintenancePayment,
                             new
                             {
-                                SocietyId       = societyId,
-                                FlatId          = flat.id,
-                                BillId          = (long?)null,
-                                AdjustmentId    = adj.id,
-                                Amount          = allocation,
-                                PaymentDate     = request.PaymentDate,
-                                PaymentModeId   = paymentModeId,
+                                SocietyId = societyId,
+                                FlatId = flat.id,
+                                BillId = (long?)null,
+                                AdjustmentId = adj.id,
+                                Amount = allocation,
+                                PaymentDate = request.PaymentDate,
+                                PaymentModeId = paymentModeId,
                                 ReferenceNumber = request.ReferenceNumber,
-                                ReceiptUrl      = request.ReceiptUrl,
-                                Notes           = "Opening Balance Clearance",
-                                RecordedBy      = userId,
-                                IdempotencyKey  = idempotencyKey,
-                                Now             = now
+                                ReceiptUrl = request.ReceiptUrl,
+                                Notes = "Opening Balance Clearance",
+                                RecordedBy = userId,
+                                IdempotencyKey = idempotencyKey,
+                                Now = now
                             });
 
-                        remaining -= allocation;
+                        totalOBAllocated += allocation;
+                        remaining        -= allocation;
                     }
 
-                    // ── Step 5: Lock unpaid bills FIFO (oldest period first) ──────────────
+                    // ── Step 5: Lock unpaid bills (newest period first) ──────────────
                     var bills = (await _dapper.QueryAsync<BillRow>(
                         conn, tx,
                         SqlQueries.LockUnpaidBillsByFlat,
                         new { FlatId = flat.id, SocietyId = societyId })).ToList();
 
-                    // ── Step 6: Allocate remaining amount to bills FIFO ───────────────────
+                    var billsStartingOutstanding = bills.Sum(b => b.amount - b.PaidAmount);
+
+                    // ── Step 6: Allocate remaining amount to bills (current month first) ───────────────────
                     foreach (var bill in bills)
                     {
                         if (remaining <= 0) break;
 
-                        var balance    = bill.amount - bill.PaidAmount;
+                        var balance = bill.amount - bill.PaidAmount;
                         var allocation = Math.Min(balance, remaining);
                         if (allocation <= 0) continue;
 
@@ -190,19 +201,19 @@ namespace SocietyLedger.Infrastructure.Services
                             SqlQueries.InsertMaintenancePayment,
                             new
                             {
-                                SocietyId       = societyId,
-                                FlatId          = flat.id,
-                                BillId          = bill.id,
-                                AdjustmentId    = (long?)null,
-                                Amount          = allocation,
-                                PaymentDate     = request.PaymentDate,
-                                PaymentModeId   = paymentModeId,
+                                SocietyId = societyId,
+                                FlatId = flat.id,
+                                BillId = bill.id,
+                                AdjustmentId = (long?)null,
+                                Amount = allocation,
+                                PaymentDate = request.PaymentDate,
+                                PaymentModeId = paymentModeId,
                                 ReferenceNumber = request.ReferenceNumber,
-                                ReceiptUrl      = request.ReceiptUrl,
-                                Notes           = request.Notes,
-                                RecordedBy      = userId,
-                                IdempotencyKey  = idempotencyKey,
-                                Now             = now
+                                ReceiptUrl = request.ReceiptUrl,
+                                Notes = request.Notes,
+                                RecordedBy = userId,
+                                IdempotencyKey = idempotencyKey,
+                                Now = now
                             });
 
                         var newPaid = bill.PaidAmount + allocation;
@@ -213,8 +224,8 @@ namespace SocietyLedger.Infrastructure.Services
                             {
                                 PaidAmount = newPaid,
                                 StatusCode = newPaid >= bill.amount ? BillStatusCodes.Paid : BillStatusCodes.Partial,
-                                BillId     = bill.id,
-                                Now        = now
+                                BillId = bill.id,
+                                Now = now
                             });
 
                         allocations.Add(new MaintenancePaymentAllocation(bill.public_id, allocation, bill.period));
@@ -229,23 +240,34 @@ namespace SocietyLedger.Infrastructure.Services
                             SqlQueries.InsertMaintenancePayment,
                             new
                             {
-                                SocietyId       = societyId,
-                                FlatId          = flat.id,
-                                BillId          = (long?)null,
-                                AdjustmentId    = (long?)null,
-                                Amount          = remaining,
-                                PaymentDate     = request.PaymentDate,
-                                PaymentModeId   = paymentModeId,
+                                SocietyId = societyId,
+                                FlatId = flat.id,
+                                BillId = (long?)null,
+                                AdjustmentId = (long?)null,
+                                Amount = remaining,
+                                PaymentDate = request.PaymentDate,
+                                PaymentModeId = paymentModeId,
                                 ReferenceNumber = request.ReferenceNumber,
-                                ReceiptUrl      = request.ReceiptUrl,
-                                Notes           = "Advance Payment",
-                                RecordedBy      = userId,
-                                IdempotencyKey  = idempotencyKey,
-                                Now             = now
+                                ReceiptUrl = request.ReceiptUrl,
+                                Notes = "Advance Payment",
+                                RecordedBy = userId,
+                                IdempotencyKey = idempotencyKey,
+                                Now = now
                             });
                     }
 
-                    // ── Step 8: Commit ────────────────────────────────────────────────────
+                    // ── Step 8: Snapshot outstanding and stamp all rows for this payment ─
+                    var totalBillsAllocated      = allocations.Sum(a => a.AllocatedAmount);
+                    var outstandingAfterPayment  = (obStartingBalance - totalOBAllocated)
+                                                 + (billsStartingOutstanding - totalBillsAllocated)
+                                                 - remaining; // remaining is the advance (0 when fully absorbed)
+
+                    await _dapper.ExecuteAsync(
+                        conn, tx,
+                        SqlQueries.UpdateOutstandingAfterPayment,
+                        new { SocietyId = societyId, IdempotencyKey = idempotencyKey, OutstandingAfterPayment = outstandingAfterPayment });
+
+                    // ── Step 9: Commit ────────────────────────────────────────────────────
                     await tx.CommitAsync();
 
                     // #1 — Inform the caller when all bills are already paid and
@@ -256,15 +278,16 @@ namespace SocietyLedger.Infrastructure.Services
 
                     return new MaintenancePaymentResponse
                     {
-                        FlatPublicId     = flat.public_id,
-                        Amount           = request.Amount,
-                        PaymentDate      = request.PaymentDate,
-                        ReferenceNumber  = request.ReferenceNumber,
-                        Notes            = request.Notes,
-                        TotalPaid        = allocations.Sum(a => a.AllocatedAmount),
-                        Allocations      = allocations,
-                        RemainingAdvance = remaining,
-                        Message          = paymentMessage
+                        FlatPublicId            = flat.public_id,
+                        Amount                  = request.Amount,
+                        PaymentDate             = request.PaymentDate,
+                        ReferenceNumber         = request.ReferenceNumber,
+                        Notes                   = request.Notes,
+                        TotalPaid               = allocations.Sum(a => a.AllocatedAmount),
+                        Allocations             = allocations,
+                        RemainingAdvance        = remaining,
+                        Message                 = paymentMessage,
+                        OutstandingAfterPayment = outstandingAfterPayment
                     };
                 }
                 catch (Exception ex)
@@ -311,7 +334,7 @@ namespace SocietyLedger.Infrastructure.Services
         public async Task<MaintenancePaymentResponse> GetMaintenancePaymentAsync(Guid publicId, long userId)
         {
             var societyId = await _userContext.GetSocietyIdAsync(userId);
-            var payment   = await _maintenancePaymentRepo.GetByPublicIdAsync(publicId, societyId)
+            var payment = await _maintenancePaymentRepo.GetByPublicIdAsync(publicId, societyId)
                 ?? throw new NotFoundException("Maintenance payment", publicId.ToString());
 
             return MapToResponse(payment);
@@ -320,10 +343,13 @@ namespace SocietyLedger.Infrastructure.Services
         /// <summary>
         /// Retrieves all maintenance payments for a society.
         /// </summary>
-        public async Task<IEnumerable<MaintenancePaymentResponse>> GetMaintenancePaymentsBySocietyAsync(long userId)
+        public async Task<IEnumerable<MaintenancePaymentResponse>> GetMaintenancePaymentsBySocietyAsync(long userId, string? period = null)
         {
+            if (!string.IsNullOrWhiteSpace(period) && !Regex.IsMatch(period, @"^\d{4}-\d{2}$"))
+                throw new ValidationException("Period format must be yyyy-MM (e.g., 2026-02)");
+
             var societyId = await _userContext.GetSocietyIdAsync(userId);
-            var payments  = await _maintenancePaymentRepo.GetBySocietyIdAsync(societyId);
+            var payments = await _maintenancePaymentRepo.GetBySocietyIdAsync(societyId, period);
             return payments.Select(MapToResponse);
         }
 
@@ -333,7 +359,7 @@ namespace SocietyLedger.Infrastructure.Services
         public async Task<IEnumerable<MaintenancePaymentResponse>> GetMaintenancePaymentsByFlatAsync(Guid flatPublicId, long userId)
         {
             var societyId = await _userContext.GetSocietyIdAsync(userId);
-            var payments  = await _maintenancePaymentRepo.GetByFlatPublicIdAsync(flatPublicId);
+            var payments = await _maintenancePaymentRepo.GetByFlatPublicIdAsync(flatPublicId);
             return payments.Where(p => p.SocietyId == societyId).Select(MapToResponse);
         }
 
@@ -345,7 +371,7 @@ namespace SocietyLedger.Infrastructure.Services
             var societyId = await _userContext.GetSocietyIdAsync(userId);
 
             var payment = await _db.maintenance_payments
-                .FirstOrDefaultAsync(p => p.public_id  == publicId
+                .FirstOrDefaultAsync(p => p.public_id == publicId
                                        && p.society_id == societyId
                                        && !p.is_deleted)
                 ?? throw new NotFoundException("Maintenance payment", publicId.ToString());
@@ -363,7 +389,7 @@ namespace SocietyLedger.Infrastructure.Services
                         "Amount cannot be edited — this payment has fully settled a bill. Delete and re-record instead.");
             }
 
-            if (request.Amount.HasValue)         payment.amount           = request.Amount.Value;
+            if (request.Amount.HasValue) payment.amount = request.Amount.Value;
 
             if (request.PaymentDate.HasValue)
             {
@@ -377,8 +403,8 @@ namespace SocietyLedger.Infrastructure.Services
                 payment.payment_date = request.PaymentDate.Value;
             }
             if (request.ReferenceNumber != null) payment.reference_number = request.ReferenceNumber;
-            if (request.ReceiptUrl != null)      payment.receipt_url      = request.ReceiptUrl;
-            if (request.Notes != null)           payment.notes            = request.Notes;
+            if (request.ReceiptUrl != null) payment.receipt_url = request.ReceiptUrl;
+            if (request.Notes != null) payment.notes = request.Notes;
 
             if (request.PaymentModeCode != null)
             {
@@ -405,7 +431,7 @@ namespace SocietyLedger.Infrastructure.Services
 
             // Load the raw EF entity first to capture bill_id before soft-delete.
             var paymentEntity = await _db.maintenance_payments
-                .FirstOrDefaultAsync(p => p.public_id  == publicId
+                .FirstOrDefaultAsync(p => p.public_id == publicId
                                        && p.society_id == societyId
                                        && !p.is_deleted)
                 ?? throw new NotFoundException("Maintenance payment", publicId.ToString());
@@ -453,8 +479,9 @@ namespace SocietyLedger.Infrastructure.Services
         /// <summary>
         /// Returns maintenance summary for a given period.
         /// </summary>
-        public async Task<MaintenanceSummaryResponse> GetMaintenanceSummaryAsync(long societyId, string period)
+        public async Task<MaintenanceSummaryResponse> GetMaintenanceSummaryAsync(long userId, string period)
         {
+            var societyId = await _userContext.GetSocietyIdAsync(userId);
             if (string.IsNullOrEmpty(period) ||
                 !Regex.IsMatch(period, @"^\d{4}-\d{2}$"))
                 throw new ValidationException("Period format must be yyyy-MM (e.g., 2026-02)");
@@ -463,23 +490,23 @@ namespace SocietyLedger.Infrastructure.Services
             var obParam = new { SocietyId = societyId, EntryType = EntryTypeCodes.OpeningBalance };
 
             // Run all four summary queries independently — simple, index-friendly, no subqueries.
-            var totalCharges  = await _dapper.QueryFirstOrDefaultAsync<decimal>(SqlQueries.SummaryTotalCharges,  param);
+            var totalCharges = await _dapper.QueryFirstOrDefaultAsync<decimal>(SqlQueries.SummaryTotalCharges, param);
             var totalCollected = await _dapper.QueryFirstOrDefaultAsync<decimal>(SqlQueries.SummaryTotalCollected, param);
             var billOutstanding = await _dapper.QueryFirstOrDefaultAsync<decimal>(SqlQueries.SummaryBillOutstanding, param);
-            var obRemaining    = await _dapper.QueryFirstOrDefaultAsync<decimal>(SqlQueries.SummaryOpeningBalanceRemaining, obParam);
+            var obRemaining = await _dapper.QueryFirstOrDefaultAsync<decimal>(SqlQueries.SummaryOpeningBalanceRemaining, obParam);
 
-            var totalOutstanding      = billOutstanding + obRemaining;
-            var collectionPercentage  = totalCharges > 0
+            var totalOutstanding = billOutstanding + obRemaining;
+            var collectionPercentage = totalCharges > 0
                 ? Math.Round(totalCollected / totalCharges * 100, 2)
                 : 0m;
 
             return new MaintenanceSummaryResponse(
-                TotalCharges:            totalCharges,
-                TotalCollected:          totalCollected,
-                BillOutstanding:         billOutstanding,
+                TotalCharges: totalCharges,
+                TotalCollected: totalCollected,
+                BillOutstanding: billOutstanding,
                 OpeningBalanceRemaining: obRemaining,
-                TotalOutstanding:        totalOutstanding,
-                CollectionPercentage:    collectionPercentage);
+                TotalOutstanding: totalOutstanding,
+                CollectionPercentage: collectionPercentage);
         }
 
 
@@ -489,21 +516,22 @@ namespace SocietyLedger.Infrastructure.Services
 
         private static MaintenancePaymentResponse MapToResponse(MaintenancePaymentEntity p) => new()
         {
-            PublicId        = p.PublicId,
+            PublicId = p.PublicId,
             SocietyPublicId = p.SocietyPublicId,
-            FlatPublicId    = p.FlatPublicId,
-            FlatNumber      = p.FlatNumber,
-            Amount          = p.Amount,
-            PaymentDate     = p.PaymentDate,
+            FlatPublicId = p.FlatPublicId,
+            FlatNumber = p.FlatNumber,
+            Amount = p.Amount,
+            PaymentDate = p.PaymentDate,
             PaymentModeName = p.PaymentModeName ?? string.Empty,
             ReferenceNumber = p.ReferenceNumber,
-            ReceiptUrl      = p.ReceiptUrl,
-            Notes           = p.Notes,
-            RecordedByName  = p.RecordedByName,
-            CreatedAt       = p.CreatedAt,
-            Allocations     = p.BillPublicId.HasValue
+            ReceiptUrl = p.ReceiptUrl,
+            Notes = p.Notes,
+            RecordedByName = p.RecordedByName,
+            CreatedAt = p.CreatedAt,
+            Allocations = p.BillPublicId.HasValue
                 ? [new MaintenancePaymentAllocation(p.BillPublicId.Value, p.Amount, p.Period)]
-                : []
+                : [],
+            OutstandingAfterPayment = p.OutstandingAfterPayment
         };
 
         /// <summary>
@@ -530,19 +558,19 @@ namespace SocietyLedger.Infrastructure.Services
 
         private sealed class AdjustmentRow
         {
-            public long    id               { get; init; }
-            public Guid    public_id        { get; init; }
+            public long id { get; init; }
+            public Guid public_id { get; init; }
             public decimal remaining_amount { get; init; }
         }
 
         private sealed class BillRow
         {
-            public long    id          { get; init; }
-            public Guid    public_id   { get; init; }
-            public decimal amount      { get; init; }
-            public decimal PaidAmount  { get; set; }
-            public string  status_code { get; init; } = string.Empty;
-            public string  period      { get; init; } = string.Empty;
+            public long id { get; init; }
+            public Guid public_id { get; init; }
+            public decimal amount { get; init; }
+            public decimal PaidAmount { get; set; }
+            public string status_code { get; init; } = string.Empty;
+            public string period { get; init; } = string.Empty;
         }
     }
 }

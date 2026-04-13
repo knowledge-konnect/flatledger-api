@@ -12,13 +12,14 @@ using SocietyLedger.Domain.Constants;
 using SocietyLedger.Domain.Exceptions;
 using SocietyLedger.Shared;
 using Swashbuckle.AspNetCore.Annotations;
+using System.Text.RegularExpressions;
 
 namespace SocietyLedger.Api.Endpoints
 {
     public static class MaintenancePaymentEndpoints
     {
         /// <summary>
-        /// Maps maintenance payment routes: idempotent FIFO payment processing, CRUD operations,
+        /// Maps maintenance payment routes: payment processing (current month first), CRUD operations,
         /// flat-level payment history, and per-period collection summary.
         /// </summary>
         public static void MapMaintenancePaymentRoutes(this RouteGroupBuilder app, string groupName, ApiVersionSet versionSet)
@@ -30,7 +31,7 @@ namespace SocietyLedger.Api.Endpoints
             [SwaggerOperation(
                     Summary = "Create maintenance payment",
                     Description = """
-                        Records a maintenance payment and allocates it FIFO to the oldest outstanding bills for the flat. Idempotency is enforced via the Idempotency-Key header (checked in maintenance_payments). Duplicate keys return the original result without writing new data. Entire allocation is transaction-safe. Any unallocated amount is reported as remainingAdvance.
+                        Records a maintenance payment and allocates it to the outstanding bills for the flat (current month first). Idempotency is enforced via the Idempotency-Key header (checked in maintenance_payments). Duplicate keys return the original result without writing new data. Entire allocation is transaction-safe. Any unallocated amount is reported as remainingAdvance. Payment date must be in the current month or future.
                         """
                 )]
             async ([FromBody] MaintenancePaymentRequest request, IMaintenancePaymentService paymentService, HttpContext ctx) =>
@@ -54,6 +55,14 @@ namespace SocietyLedger.Api.Endpoints
                     if (request.Amount <= 0)
                     {
                         var errorResponse = ErrorResponse.Create(ErrorCodes.VALIDATION_FAILED, "Amount must be positive", ctx.TraceIdentifier);
+                        return Results.Json(errorResponse, statusCode: 400);
+                    }
+
+                    // Validate payment date is not in previous months
+                    var currentMonthStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+                    if (request.PaymentDate < currentMonthStart)
+                    {
+                        var errorResponse = ErrorResponse.Create(ErrorCodes.VALIDATION_FAILED, "Payment date cannot be in a previous month", ctx.TraceIdentifier);
                         return Results.Json(errorResponse, statusCode: 400);
                     }
 
@@ -106,12 +115,21 @@ namespace SocietyLedger.Api.Endpoints
                 [Authorize]
             [SwaggerOperation(
                     Summary = "Get maintenance payments",
-                    Description = "Retrieves all maintenance payments for the society."
+                    Description = "Retrieves all maintenance payments for the society. Optionally filter by period (YYYY-MM)."
                 )]
-            async (IMaintenancePaymentService paymentService, HttpContext ctx) =>
+            async ([FromQuery] string? period, IMaintenancePaymentService paymentService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
-                    var result = await paymentService.GetMaintenancePaymentsBySocietyAsync(userId);
+                    if (!string.IsNullOrEmpty(period))
+                    {
+                        if (!Regex.IsMatch(period, @"^\d{4}-\d{2}$"))
+                        {
+                            return Results.BadRequest("Invalid period format. Use YYYY-MM");
+                        }
+                    }
+
+                    var result = await paymentService.GetMaintenancePaymentsBySocietyAsync(userId, period);
+
                     return Results.Ok(ApiResponse<ListMaintenancePaymentsResponse>.Success(
                         new ListMaintenancePaymentsResponse(result.ToList()),
                         "Maintenance payments retrieved successfully"));
@@ -173,13 +191,25 @@ namespace SocietyLedger.Api.Endpoints
                 [Authorize]
             [SwaggerOperation(
                     Summary = "Update maintenance payment",
-                    Description = "Updates an existing maintenance payment."
+                    Description = "Updates an existing maintenance payment. If PaymentDate is provided, it must be in the current month or future."
                 )]
             async (Guid publicId, [FromBody] UpdateMaintenancePaymentRequest request, IMaintenancePaymentService paymentService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
                     if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
                         return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
+
+                    // Validate payment date if provided
+                    if (request.PaymentDate.HasValue)
+                    {
+                        var currentMonthStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+                        if (request.PaymentDate.Value < currentMonthStart)
+                        {
+                            var errorResponse = ErrorResponse.Create(ErrorCodes.VALIDATION_FAILED, "Payment date cannot be in a previous month", ctx.TraceIdentifier);
+                            return Results.Json(errorResponse, statusCode: 400);
+                        }
+                    }
+
                     var result = await paymentService.UpdateMaintenancePaymentAsync(publicId, userId, request);
                     return Results.Ok(ApiResponse<MaintenancePaymentResponse>.Success(result, "Maintenance payment updated successfully"));
                 })
@@ -222,34 +252,23 @@ namespace SocietyLedger.Api.Endpoints
                     Summary = "Get maintenance summary",
                     Description = "Retrieves maintenance charges and collection summary for a given period."
                 )]
-            async ([FromQuery] string period, IMaintenancePaymentService paymentService, IUserRepository userRepository, HttpContext ctx) =>
+            async ([FromQuery] string period, IMaintenancePaymentService paymentService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
-                    
+
                     if (userId == 0)
                     {
-                        Log.Warning("Unauthorized maintenance summary request - invalid user ID");
                         var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid or missing authentication token", ctx.TraceIdentifier);
                         return Results.Json(errorResponse, statusCode: 401);
                     }
 
                     if (string.IsNullOrEmpty(period))
                     {
-                        Log.Warning("Maintenance summary request with missing period parameter");
                         var errorResponse = ErrorResponse.Create(ErrorCodes.VALIDATION_FAILED, "Period parameter is required (format: yyyy-MM)", ctx.TraceIdentifier);
                         return Results.Json(errorResponse, statusCode: 400);
                     }
 
-                    var user = await userRepository.GetByIdAsync(userId);
-                    if (user == null)
-                    {
-                        Log.Warning("Maintenance summary request by non-existent user {UserId}", userId);
-                        var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "User not found", ctx.TraceIdentifier);
-                        return Results.Json(errorResponse, statusCode: 401);
-                    }
-
-                    var summary = await paymentService.GetMaintenanceSummaryAsync(user.SocietyId, period);
-                    Log.Information("Maintenance summary retrieved for society {SocietyId}, period {Period}", user.SocietyId, period);
+                    var summary = await paymentService.GetMaintenanceSummaryAsync(userId, period);
                     return Results.Ok(ApiResponse<MaintenanceSummaryResponse>.Success(summary, "Maintenance summary retrieved successfully"));
                 })
             .WithTags(groupName)

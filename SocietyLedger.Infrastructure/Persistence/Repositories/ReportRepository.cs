@@ -7,6 +7,7 @@ using SocietyLedger.Infrastructure.Data;
 using SocietyLedger.Shared;
 using System.Data;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace SocietyLedger.Infrastructure.Persistence.Repositories
 {
@@ -14,9 +15,6 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
     {
         private readonly IDbConnectionFactory _connectionFactory;
         private readonly ILogger<ReportRepository> _logger;
-
-        private static readonly JsonSerializerOptions JsonOptions =
-            new() { PropertyNameCaseInsensitive = true };
 
         public ReportRepository(IDbConnectionFactory connectionFactory, ILogger<ReportRepository> logger)
         {
@@ -121,6 +119,30 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             return Deserialize<ExpenseByCategoryDto>(json) ?? new ExpenseByCategoryDto();
         }
 
+        public async Task<MonthlyReportDto> GetMonthlyReportDataAsync(
+            long societyId, int year, int month, CancellationToken ct = default)
+        {
+            const string sql = "SELECT public.get_monthly_report(@SocietyId, @Year, @Month)";
+            var p = new DynamicParameters();
+            p.Add("SocietyId", societyId);
+            p.Add("Year", year);
+            p.Add("Month", month);
+            var json = await QueryJsonAsync(sql, p, ct);
+            return Deserialize<MonthlyReportDto>(json) ?? new MonthlyReportDto();
+        }
+
+        public async Task<YearlyReportDto> GetYearlyReportDataAsync(
+            long societyId, int year, string yearType, CancellationToken ct = default)
+        {
+            const string sql = "SELECT public.get_yearly_report(@SocietyId, @Year, @YearType)";
+            var p = new DynamicParameters();
+            p.Add("SocietyId", societyId);
+            p.Add("Year", year);
+            p.Add("YearType", yearType);
+            var json = await QueryJsonAsync(sql, p, ct);
+            return Deserialize<YearlyReportDto>(json) ?? new YearlyReportDto();
+        }
+
         // ------------------------------------------------------------------ //
         //  Helpers                                                             //
         // ------------------------------------------------------------------ //
@@ -133,8 +155,70 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             return result ?? "{}";
         }
 
-        private static T? Deserialize<T>(string json) =>
-            JsonSerializer.Deserialize<T>(json, JsonOptions);
+        private static T? Deserialize<T>(string json)
+        {
+            if (string.IsNullOrWhiteSpace(json) || json == "{}")
+                return default;
+
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+                NumberHandling = JsonNumberHandling.AllowReadingFromString
+            };
+
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                var payload = UnwrapFunctionResult(doc.RootElement);
+
+                if (payload.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+                    return default;
+
+                if (payload.ValueKind == JsonValueKind.String)
+                {
+                    var inner = payload.GetString();
+                    if (string.IsNullOrWhiteSpace(inner))
+                        return default;
+
+                    return Deserialize<T>(inner);
+                }
+
+                return JsonSerializer.Deserialize<T>(payload.GetRawText(), options);
+            }
+            catch
+            {
+                try
+                {
+                    return JsonSerializer.Deserialize<T>(json, options);
+                }
+                catch
+                {
+                    return default;
+                }
+            }
+        }
+
+        private static JsonElement UnwrapFunctionResult(JsonElement root)
+        {
+            // Unwrap single-item arrays returned by some SQL function call shapes.
+            while (root.ValueKind == JsonValueKind.Array && root.GetArrayLength() == 1)
+            {
+                root = root[0];
+            }
+
+            // Unwrap single-property objects where the value is the actual payload.
+            while (root.ValueKind == JsonValueKind.Object)
+            {
+                var props = root.EnumerateObject().ToList();
+                if (props.Count != 1)
+                    break;
+
+                root = props[0].Value;
+            }
+
+            return root;
+        }
 
         /// <summary>
         /// Date-only parameters (no pagination). Used by all non-paginated report queries.

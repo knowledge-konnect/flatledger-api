@@ -37,7 +37,6 @@ namespace SocietyLedger.Api.Extensions
             services.AddScoped<IBillingService, BillingService>();
             services.AddScoped<IMaintenanceConfigService, MaintenanceConfigService>();
             services.AddScoped<INotificationPreferenceService, NotificationPreferenceService>();
-            services.AddScoped<IFileImportService, FileImportService>();
 
             // SaaS Admin module
             services.AddScoped<IAdminAuthService, AdminAuthService>();
@@ -102,6 +101,7 @@ namespace SocietyLedger.Api.Extensions
 
             // Report Services (Dapper-based)
             services.AddScoped<IReportRepository, ReportRepository>();
+            services.AddScoped<IReportExportService, ReportExportService>();
             services.AddScoped<IReportService, ReportService>();
 
             services.AddSingleton<PasswordHasher>();

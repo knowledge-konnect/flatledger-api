@@ -22,7 +22,7 @@ namespace SocietyLedger.Application.DTOs.MaintenancePayment
 
     /// <summary>
     /// Records a new maintenance payment for a flat.
-    /// The amount is allocated FIFO to the oldest unpaid bills.
+    /// The amount is allocated to the outstanding bills (current month first).
     /// Caller must supply an <c>Idempotency-Key</c> header.
     /// </summary>
     public record CreateMaintenancePaymentRequest(
@@ -54,7 +54,7 @@ namespace SocietyLedger.Application.DTOs.MaintenancePayment
     /// <summary>
     /// Returned after a maintenance payment is processed.
     /// <list type="bullet">
-    ///   <item><c>TotalPaid</c> — sum of all FIFO allocations made.</item>
+    ///   <item><c>TotalPaid</c> — sum of all allocations made.</item>
     ///   <item><c>Allocations</c> — per-bill breakdown.</item>
     ///   <item><c>RemainingAdvance</c> — unallocated portion when payment exceeds dues.</item>
     /// </list>
@@ -77,7 +77,7 @@ namespace SocietyLedger.Application.DTOs.MaintenancePayment
         public string?   RecordedByName  { get; init; }
         public DateTime? CreatedAt       { get; init; }
 
-        // FIFO allocation summary
+        // Allocation summary
         public decimal                           TotalPaid        { get; init; }
         public List<MaintenancePaymentAllocation> Allocations     { get; init; } = [];
         public decimal                           RemainingAdvance { get; init; }
@@ -86,10 +86,16 @@ namespace SocietyLedger.Application.DTOs.MaintenancePayment
         /// was recorded as advance credit, or any other notable allocation outcome.
         /// </summary>
         public string?                           Message          { get; init; }
+        /// <summary>
+        /// Flat's total outstanding (opening balance dues + unpaid bills − advance)
+        /// snapshotted at the moment this payment was processed. Null for rows
+        /// created before this column was added; the frontend should fall back gracefully.
+        /// </summary>
+        public decimal?                          OutstandingAfterPayment { get; init; }
     }
 
     /// <summary>
-    /// Single FIFO allocation line — mirrors one row in <c>bill_payment_allocations</c>.
+    /// Single allocation line — mirrors one row in <c>bill_payment_allocations</c>.
     /// <c>Period</c> is the billing month (YYYY-MM) the allocation clears, used by the
     /// frontend to badge arrear payments vs current-month payments.
     /// </summary>
@@ -169,6 +175,8 @@ namespace SocietyLedger.Application.DTOs.MaintenancePayment
         // Bill info — null for advance / opening-balance rows
         public Guid?    BillPublicId    { get; init; }
         public string?  Period          { get; init; }
+        // Snapshotted flat outstanding after this payment was applied; null for pre-migration rows
+        public decimal? OutstandingAfterPayment { get; init; }
     }
 
     /// <summary>
