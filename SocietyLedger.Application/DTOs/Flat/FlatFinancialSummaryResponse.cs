@@ -1,3 +1,5 @@
+using Newtonsoft.Json;
+
 namespace SocietyLedger.Application.DTOs.Flat
 {
     public class FlatFinancialSummaryResponse
@@ -15,9 +17,9 @@ namespace SocietyLedger.Application.DTOs.Flat
         public decimal BillOutstanding { get; set; }
 
         /// <summary>
-        /// Combined outstanding:
+        /// Combined outstanding (signed):
         /// OpeningBalanceRemaining + BillOutstanding.
-        /// This is the real amount member owes.
+        /// Positive = member owes the society; Negative = society owes the member (advance).
         /// </summary>
         public decimal TotalOutstanding { get; set; }
 
@@ -32,5 +34,8 @@ namespace SocietyLedger.Application.DTOs.Flat
         /// Used for display only.
         /// </summary>
         public decimal TotalPayments { get; set; }
+
+        [JsonProperty("balance_sign_legend")]
+        public string BalanceSignLegend => "Positive = member owes the society; Negative = society owes member (advance).";
     }
 }

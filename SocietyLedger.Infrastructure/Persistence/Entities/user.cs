@@ -58,18 +58,19 @@ public partial class user
 
     public DateTime? last_payment_date { get; set; }
 
-    [StringLength(50)]
-    public string? subscription_plan { get; set; }
-
-    [Precision(10, 2)]
-    public decimal? monthly_amount { get; set; }
-
     public bool is_deleted { get; set; }
 
     public DateTime? deleted_at { get; set; }
 
     [StringLength(100)]
     public string? username { get; set; }
+
+    /// <summary>Hashed password reset token (SHA256)</summary>
+    public string? password_reset_token_hash { get; set; }
+
+    /// <summary>Expiry for the password reset token</summary>
+    [Column(TypeName = "timestamp without time zone")]
+    public DateTime? password_reset_expires_at { get; set; }
 
     [InverseProperty("created_byNavigation")]
     public virtual ICollection<adjustment> adjustments { get; set; } = new List<adjustment>();

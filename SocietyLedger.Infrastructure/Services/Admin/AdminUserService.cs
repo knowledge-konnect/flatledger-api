@@ -52,7 +52,8 @@ namespace SocietyLedger.Infrastructure.Services.Admin
                     LastLogin = x.u.last_login,
                     CreatedAt = x.u.created_at,
                     SubscriptionStatus = x.u.subscription_status,
-                    SubscriptionPlan = x.u.subscription_plan,
+                    // subscription_plan is deprecated — use subscriptions table for plan data
+                    SubscriptionPlan = null,
                     TrialEndsDate = x.u.trial_ends_date,
                     NextBillingDate = x.u.next_billing_date
                 })
@@ -83,7 +84,8 @@ namespace SocietyLedger.Infrastructure.Services.Admin
                           LastLogin = u.last_login,
                           CreatedAt = u.created_at,
                           SubscriptionStatus = u.subscription_status,
-                          SubscriptionPlan = u.subscription_plan,
+                          // subscription_plan is deprecated — use subscriptions table for plan data
+                          SubscriptionPlan = null,
                           TrialEndsDate = u.trial_ends_date,
                           NextBillingDate = u.next_billing_date
                       })

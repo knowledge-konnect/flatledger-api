@@ -12,17 +12,23 @@ namespace SocietyLedger.Api.Endpoints.Admin
 {
     public static class AdminSubscriptionEndpoints
     {
+        /// <summary>
+        /// Maps admin subscription routes: paginated subscription listing and individual subscription detail retrieval.
+        /// Requires the SuperAdmin policy.
+        /// </summary>
         public static void MapAdminSubscriptionRoutes(this RouteGroupBuilder app, string groupName, ApiVersionSet versionSet)
         {
             var v1 = new ApiVersion(ApiConstants.API_VERSION_1_0);
 
             // GET /api/admin/subscriptions
             app.MapGet("/", [Authorize(Policy = "SuperAdmin")]
-                [SwaggerOperation(Summary = "List subscriptions", Description = "Paginated list of all subscriptions with optional filters.")]
-                async ([FromQuery] int page, [FromQuery] int pageSize, [FromQuery] string? status, [FromQuery] long? userId,
+                [SwaggerOperation(Summary = "List subscriptions", Description = "Paginated list of all subscriptions. Filter by societyId (preferred) or legacy userId.")]
+                async ([FromQuery] int page, [FromQuery] int pageSize, [FromQuery] string? status,
+                       [FromQuery] long? societyId, [FromQuery] long? userId,
                        IAdminSubscriptionService service) =>
                 {
-                    var result = await service.GetSubscriptionsAsync(page < 1 ? 1 : page, pageSize < 1 ? 20 : pageSize, status, userId);
+                    var result = await service.GetSubscriptionsAsync(
+                        page < 1 ? 1 : page, pageSize < 1 ? 20 : pageSize, status, userId, societyId);
                     return Results.Ok(ApiResponse<PagedResult<AdminSubscriptionDto>>.Success(result));
                 })
             .WithTags(groupName).WithApiVersionSet(versionSet).HasApiVersion(v1).WithName("AdminListSubscriptions");

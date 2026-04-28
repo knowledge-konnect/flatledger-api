@@ -32,8 +32,12 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             return payment != null ? MapToDto(payment) : null;
         }
 
-        public async Task<IEnumerable<MaintenancePaymentEntity>> GetBySocietyIdAsync(long societyId, string? period = null)
+        public async Task<IEnumerable<MaintenancePaymentEntity>> GetBySocietyIdAsync(long societyId, string? period = null, int page = 1, int pageSize = 50)
         {
+            // Clamp to safe bounds
+            page     = Math.Max(1, page);
+            pageSize = Math.Clamp(pageSize, 1, 200);
+
             var query = _db.maintenance_payments
                 .ForSociety(societyId)
                 .AsQueryable();
@@ -49,6 +53,8 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
 
             var payments = await query
                 .OrderByDescending(mp => mp.payment_date)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
                 .Select(mp => new MaintenancePaymentEntity
                 {
                     PublicId = mp.public_id,
@@ -76,7 +82,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             return payments;
         }
 
-        public async Task<IEnumerable<MaintenancePaymentEntity>> GetByFlatPublicIdAsync(Guid flatPublicId)
+        public async Task<IEnumerable<MaintenancePaymentEntity>> GetByFlatPublicIdAsync(Guid flatPublicId, long societyId)
         {
             var payments = await _db.maintenance_payments
                 .Include(mp => mp.flat)
@@ -84,7 +90,9 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                 .Include(mp => mp.recorded_byNavigation)
                 .Include(mp => mp.society)
                 .Include(mp => mp.bill)
-                .Where(mp => mp.flat!.public_id == flatPublicId && !mp.is_deleted)
+                .Where(mp => mp.flat!.public_id == flatPublicId
+                          && mp.society_id == societyId   // pushed to DB — no in-memory filter
+                          && !mp.is_deleted)
                 .OrderByDescending(mp => mp.payment_date)
                 .AsNoTracking()
                 .ToListAsync();

@@ -22,17 +22,12 @@ using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ----------------------------
-// Render.com PORT support
-// Render injects a PORT env var at runtime; bind to it so the health
-// check and reverse-proxy can reach the process.
-// ----------------------------
+// Render.com injects a PORT env var at runtime; bind to it so the health
+// check and reverse-proxy can reach the process on the correct port.
 var renderPort = Environment.GetEnvironmentVariable("PORT");
 if (!string.IsNullOrEmpty(renderPort))
     builder.WebHost.UseUrls($"http://+:{renderPort}");
 
-
-// ----------------------------
 var logTemplate = "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] [{CorrelationId}] {Message}{NewLine}{Exception}";
 
 builder.Host.UseSerilog((ctx, lc) =>
@@ -48,8 +43,8 @@ builder.Host.UseSerilog((ctx, lc) =>
 
     if (ctx.HostingEnvironment.IsProduction())
     {
-        // Render.com has an ephemeral filesystem — log to stdout only and forward
-        // via the Render log drain (Datadog, Papertrail, Logtail, etc.).
+        // Render.com has an ephemeral filesystem, so log to stdout only.
+        // Forward logs to a drain (Datadog, Papertrail, Logtail, etc.) via the Render dashboard.
         lc.WriteTo.Async(a => a.Console(outputTemplate: logTemplate));
     }
     else
@@ -67,11 +62,8 @@ builder.Host.UseSerilog((ctx, lc) =>
 
 Log.Information("Starting SocietyLedger API...");
 
-// ----------------------------
-// CORS
-// The frontend sends credentials (withCredentials: true / httpOnly cookie), so
-// AllowAnyOrigin() is forbidden by the browser.  Origins are loaded from config.
-// ----------------------------
+// CORS: AllowAnyOrigin() is forbidden when the frontend sends credentials
+// (withCredentials: true / httpOnly cookie). Origins are loaded from config.
 var allowedOrigins = builder.Configuration
     .GetSection("AllowedOrigins")
     .Get<string[]>() ?? [];
@@ -83,18 +75,15 @@ builder.Services.AddCors(options =>
         policy.WithOrigins(allowedOrigins)
               .AllowAnyHeader()
               .AllowAnyMethod()
-              .AllowCredentials();   // required for httpOnly cookie
+              .AllowCredentials(); // Required for httpOnly cookie support
     });
 });
 
-// ----------------------------
-// Health Checks
-// ----------------------------
-builder.Services.AddHealthChecks();
+// Health check wired to EF Core — reports unhealthy if the DB is unreachable.
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<AppDbContext>("database");
 
-// ----------------------------
 // Swagger / OpenAPI
-// ----------------------------
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -104,7 +93,7 @@ builder.Services.AddSwaggerGen(c =>
         Version = "v1"
     });
 
-    // JWT Authorization for Swagger
+    // Enables the "Authorize" button in Swagger UI for JWT bearer tokens.
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Name = "Authorization",
@@ -132,9 +121,8 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 
-// ----------------------------
-// API Versioning
-// ----------------------------
+// API Versioning — URL segment strategy (e.g. /api/v1/...).
+// ReportApiVersions adds the api-supported-versions header to every response.
 builder.Services.AddApiVersioning(options =>
 {
     options.DefaultApiVersion = new ApiVersion(ApiConstants.API_VERSION_1_0);
@@ -148,9 +136,8 @@ builder.Services.AddApiVersioning(options =>
     options.SubstituteApiVersionInUrl = true;
 });
 
-// ----------------------------
-// Rate Limiting
-// ----------------------------
+// Rate limiting: per-user (authenticated) or per-IP (anonymous), 100 req/min globally.
+// Auth endpoints use a stricter 5 req/min policy for brute-force protection.
 builder.Services.AddRateLimiter(options =>
 {
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
@@ -170,7 +157,6 @@ builder.Services.AddRateLimiter(options =>
             });
     });
 
-    // Strict per-IP limit for auth endpoints — brute-force protection.
     // Applied explicitly via .RequireRateLimiting("AuthPolicy") on /login and /register.
     options.AddPolicy("AuthPolicy", context =>
         RateLimitPartition.GetFixedWindowLimiter(
@@ -195,9 +181,7 @@ builder.Services.AddRateLimiter(options =>
     };
 });
 
-// ----------------------------
 // JWT Authentication
-// ----------------------------
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
 var key = jwtSettings["Key"];
 if (string.IsNullOrWhiteSpace(key))
@@ -231,32 +215,27 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("ActiveSubscription", policy =>
         policy.Requirements.Add(new SubscriptionRequirement()));
 
-    // SuperAdmin policy: grants access to all /api/admin/* endpoints.
+    // SuperAdmin policy grants access to all /api/admin/* endpoints.
     // Only JWTs issued by AdminAuthService carry the role:super_admin claim.
     options.AddPolicy("SuperAdmin", policy =>
         policy.RequireClaim(System.Security.Claims.ClaimTypes.Role, "super_admin"));
 });
 
 builder.Services.AddScoped<IAuthorizationHandler, SubscriptionAuthorizationHandler>();
-// ----------------------------
-// Application services
-// ----------------------------
+
+// Application and infrastructure services
 builder.Services.AddApplicationServices(builder.Configuration);
 builder.Services.AddInfrastructureServices(builder.Configuration);
 builder.Services.AddSharedServices();
 
-// BackgroundService is used for monthly billing. Hangfire removed for MVP.
-
-// ----------------------------
-// Background services
-// ----------------------------
+// Background services for monthly billing and trial expiration.
+// Hangfire was removed in favour of these lightweight hosted services for the MVP.
 builder.Services.AddHostedService<MonthlyBillGenerationService>();
 builder.Services.AddHostedService<TrialExpirationService>();
 
-// ----------------------------
-// Forwarded headers — trust Render's SSL-terminating load balancer so that
-// Request.Scheme is "https" and X-Forwarded-For is populated correctly.
-// ----------------------------
+// Trust Render's SSL-terminating load balancer so that Request.Scheme is "https"
+// and X-Forwarded-For is populated correctly. Clearing known networks/proxies
+// ensures Render's dynamic proxy IPs are always trusted.
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
@@ -265,49 +244,50 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     options.KnownProxies.Clear();
 });
 
-// ----------------------------
-// Build the app
-// ----------------------------
 var app = builder.Build();
 
-// ----------------------------
 // Middleware pipeline
-// ----------------------------
-// Swagger is only served in non-production environments.
-// Swagger is now enabled in all environments (including production)
 // Must be first — corrects Request.Scheme / RemoteIpAddress before any other middleware reads them.
 app.UseForwardedHeaders();
 
-app.UseSwagger();
-app.UseSwaggerUI(c =>
+// Swagger is only served in development to avoid leaking the API surface.
+if (app.Environment.IsDevelopment())
 {
-    c.SwaggerEndpoint("/swagger/v1/swagger.json", "SocietyLedger API V1");
-    c.RoutePrefix = "";
-});
+    app.UseSwagger();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "SocietyLedger API V1");
+        c.RoutePrefix = "";
+    });
+}
 
-// Skip HTTPS redirect on Render — SSL is terminated at the load balancer
+// SSL is terminated at the Render load balancer, so HTTPS redirect is only needed locally.
 if (!app.Environment.IsProduction())
 {
     app.UseHttpsRedirection();
 }
 
-// Secure headers
+// Minimal security headers — tightened for an API-only surface (no browser assets served).
 app.Use(async (ctx, next) =>
 {
     ctx.Response.Headers.Append("X-Content-Type-Options", "nosniff");
     ctx.Response.Headers.Append("X-Frame-Options", "DENY");
     ctx.Response.Headers.Append("Referrer-Policy", "no-referrer");
     ctx.Response.Headers.Append("X-XSS-Protection", "1; mode=block");
+    if (!ctx.Request.Path.StartsWithSegments("/swagger"))
+    {
+        ctx.Response.Headers.Append("Content-Security-Policy", "default-src 'none'");
+    }
     await next();
 });
 
-// Correlation ID middleware — pushes CorrelationId into Serilog LogContext
+// Correlation ID middleware — pushes CorrelationId into Serilog LogContext for every request.
 app.UseMiddleware<SocietyLedger.Api.CorrelationIdMiddleware>();
 
 app.UseCors("DefaultCorsPolicy");
 
-// Serilog built-in request logging replaces the custom RequestLoggingMiddleware:
-// one structured log line per request with Method, Path, StatusCode, Elapsed, UserId.
+// Serilog structured request logging: one log line per request with Method, Path, StatusCode, Elapsed, UserId.
+// Health-check and Swagger probes are suppressed at Verbose level to reduce noise.
 app.UseSerilogRequestLogging(options =>
 {
     options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0}ms";
@@ -317,7 +297,6 @@ app.UseSerilogRequestLogging(options =>
         if (ctx.Request.Path.StartsWithSegments("/health") ||
             ctx.Request.Path.StartsWithSegments("/swagger"))
             return LogEventLevel.Verbose;
-
         return ex != null || ctx.Response.StatusCode >= 500 ? LogEventLevel.Error :
                ctx.Response.StatusCode >= 400 ? LogEventLevel.Warning :
                elapsed > 1000 ? LogEventLevel.Warning :
@@ -338,9 +317,7 @@ app.UseAuthorization();
 // Health check endpoint
 app.MapHealthChecks("/health");
 
-// ----------------------------
 // API Version Set & Endpoints
-// ----------------------------
 var versionSet = app.NewApiVersionSet()
     .HasApiVersion(new ApiVersion(ApiConstants.API_VERSION_1_0))
     .ReportApiVersions()
@@ -388,12 +365,10 @@ app.MapGroup(ApiRoutes.SOCIETIES)
 app.MapGroup(ApiRoutes.NOTIFICATIONS)
    .MapNotificationRoutes(RouteGroupNames.NOTIFICATION, versionSet);
 
-// Dashboard endpoints
-app.MapDashboardEndpoints();
+app.MapGroup(ApiRoutes.DASHBOARD)
+   .MapDashboardRoutes(RouteGroupNames.DASHBOARD, versionSet);
 
-// -----------------------------------------------
-// SaaS Admin module routes
-// -----------------------------------------------
+// SaaS Admin module routes — all require the SuperAdmin policy.
 app.MapGroup(ApiRoutes.ADMIN_AUTH)
    .MapAdminAuthRoutes(RouteGroupNames.ADMIN_AUTH, versionSet);
 
@@ -426,7 +401,7 @@ app.MapGroup(ApiRoutes.REPORTS)
 
 // Proactively warm up the Supabase connection pool on startup.
 // Free-tier Supabase instances can take 60-90s to resume from idle; retrying here
-// prevents the first real request from timing out.
+// prevents the first real request from timing out after a cold start.
 const int maxWarmupAttempts = 5;
 for (int attempt = 1; attempt <= maxWarmupAttempts; attempt++)
 {

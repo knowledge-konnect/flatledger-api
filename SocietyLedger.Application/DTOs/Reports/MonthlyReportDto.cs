@@ -61,7 +61,15 @@ namespace SocietyLedger.Application.DTOs.Reports
         [JsonProperty("closing_balance")]
         [STJJsonPropertyName("closing_balance")]
         [STJJsonConverter(typeof(ZeroOnNullDecimalConverter))]
+        /// <summary>
+        /// Signed closing balance for the society's fund position.
+        /// Positive = society has net receivable (members owe); Negative = society owes members (advance).
+        /// </summary>
         public decimal ClosingBalance { get; set; }
+
+        [JsonProperty("balance_sign_legend")]
+        [STJJsonPropertyName("balance_sign_legend")]
+        public string BalanceSignLegend => "Positive = member owes the society; Negative = society owes member (advance).";
     }
 
     public class PaymentSummaryDto
@@ -149,10 +157,36 @@ namespace SocietyLedger.Application.DTOs.Reports
         [STJJsonPropertyName("owner_name")]
         public string? OwnerName { get; set; }
 
-        [JsonProperty("pending")]
-        [STJJsonPropertyName("pending")]
+        [JsonProperty("contact_mobile")]
+        [STJJsonPropertyName("contact_mobile")]
+        public string? ContactMobile { get; set; }
+
+        [JsonProperty("total_billed")]
+        [STJJsonPropertyName("total_billed")]
         [STJJsonConverter(typeof(ZeroOnNullDecimalConverter))]
-        public decimal Pending { get; set; }
+        public decimal TotalBilled { get; set; }
+
+        [JsonProperty("total_paid")]
+        [STJJsonPropertyName("total_paid")]
+        [STJJsonConverter(typeof(ZeroOnNullDecimalConverter))]
+        public decimal TotalPaid { get; set; }
+
+        [JsonProperty("total_outstanding")]
+        [STJJsonPropertyName("total_outstanding")]
+        [STJJsonConverter(typeof(ZeroOnNullDecimalConverter))]
+        public decimal TotalOutstanding { get; set; }
+
+        [JsonProperty("pending_months")]
+        [STJJsonPropertyName("pending_months")]
+        public int PendingMonths { get; set; }
+
+        [JsonProperty("oldest_due_period")]
+        [STJJsonPropertyName("oldest_due_period")]
+        public string? OldestDuePeriod { get; set; }
+
+        [JsonProperty("latest_due_period")]
+        [STJJsonPropertyName("latest_due_period")]
+        public string? LatestDuePeriod { get; set; }
     }
 
     public class ExpenseDto
@@ -167,7 +201,7 @@ namespace SocietyLedger.Application.DTOs.Reports
         public decimal TotalAmount { get; set; }
     }
 
-    internal sealed class ZeroOnNullDecimalConverter : System.Text.Json.Serialization.JsonConverter<decimal>
+    public sealed class ZeroOnNullDecimalConverter : System.Text.Json.Serialization.JsonConverter<decimal>
     {
         public override decimal Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {

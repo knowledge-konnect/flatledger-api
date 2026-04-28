@@ -16,6 +16,25 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             _db = db;
         }
 
+        /// <summary>
+        /// Returns the latest active or trial subscription for the society.
+        /// Ordered by creation date descending so the most-recent row is returned.
+        /// </summary>
+        public async Task<Subscription?> GetBySocietyIdAsync(long societyId)
+        {
+            var efSubscription = await _db.subscriptions
+                .Include(s => s.plan)
+                .AsNoTracking()
+                .Where(s => s.society_id == societyId
+                         && (s.status == SubscriptionStatusCodes.Active
+                          || s.status == SubscriptionStatusCodes.Trial
+                          || s.status == SubscriptionStatusCodes.Cancelled))
+                .OrderByDescending(s => s.created_at)
+                .FirstOrDefaultAsync();
+
+            return efSubscription?.ToDomain();
+        }
+
         public async Task<Subscription?> GetByUserIdAsync(long userId)
         {
             var efSubscription = await _db.subscriptions
@@ -54,12 +73,24 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             await _db.SaveChangesAsync();
         }
 
+        public async Task BulkUpdateAsync(IEnumerable<Subscription> subscriptions)
+        {
+            foreach (var subscription in subscriptions)
+            {
+                var entity = subscription.ToEntity();
+                entity.updated_at = DateTime.UtcNow;
+                _db.subscriptions.Update(entity);
+            }
+            await _db.SaveChangesAsync();
+        }
+
         public async Task<IEnumerable<Subscription>> GetExpiredTrialsAsync()
         {
             var now = DateTime.UtcNow;
             var efSubscriptions = await _db.subscriptions
                 .Include(s => s.plan)
                 .Where(s => s.status == SubscriptionStatusCodes.Trial && s.trial_end < now)
+                .AsNoTracking()
                 .ToListAsync();
 
             return efSubscriptions.Select(s => s.ToDomain());

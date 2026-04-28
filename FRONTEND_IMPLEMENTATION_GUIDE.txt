@@ -1,0 +1,236 @@
+================================================================================
+FRONTEND IMPLEMENTATION: Balance Sign Convention & Bulk Upload Enhancement
+================================================================================
+
+OVERVIEW
+--------
+The backend now uses SIGNED BALANCES to represent financial state:
+- POSITIVE = Member owes the society
+- NEGATIVE = Society owes the member (advance/credit)
+
+All APIs include a 'balance_sign_legend' field with this explanation. Your 
+frontend must display balances with proper visual distinction and always show 
+the legend.
+
+================================================================================
+CHANGES REQUIRED
+================================================================================
+
+1. BALANCE DISPLAY & FORMATTING
+   (across all pages showing balances)
+
+   AFFECTED FIELDS:
+   - FundPositionDto.ClosingBalance (monthly reports)
+   - FlatFinancialSummaryResponse.TotalOutstanding
+   - FlatFinancialSummaryResponse.OpeningBalanceRemaining
+   - FlatFinancialSummaryResponse.BillOutstanding
+   - Any other 'balance', 'outstanding', or 'amount_due' fields
+
+   IMPLEMENTATION:
+   
+   // Color-code by sign
+   const formatBalance = (amount) => {
+     if (amount > 0) {
+       return `<span class="text-red-600">₹${amount.toLocaleString()}</span>`;
+       // Member owes
+     } else if (amount < 0) {
+       return `<span class="text-green-600">₹${Math.abs(amount).toLocaleString()} (Advance)</span>`;
+     } else {
+       return `₹0`;
+     }
+   };
+
+   VISUAL INDICATORS:
+   - Positive: Red badge/icon with "Due" label
+   - Negative: Green badge/icon with "Advance" or "Credit" label
+   - Show amount: e.g., "₹1,500 (Due)" or "₹-500 (Advance)"
+
+================================================================================
+
+2. LEGEND DISPLAY
+   (on all pages with balances)
+
+   DATA SOURCE: Pull 'balance_sign_legend' from the API response.
+
+   PLACEMENT OPTIONS:
+   - Below/above balance tables
+   - Tooltip on hover over balance values
+   - Collapsible "Info" section
+   - Dashboard header note
+
+   EXAMPLE HTML:
+   
+   <div class="alert alert-info">
+     <strong>Balance Legend:</strong> {{ balanceSignLegend }}
+   </div>
+
+================================================================================
+
+3. BULK UPLOAD: ADD 'skipBilling' CHECKBOX
+
+   LOCATION: Flat bulk-upload form (Excel upload, manual entry, or import flow)
+
+   UI ELEMENT:
+   
+   <label>
+     <input type="checkbox" name="skipBilling" />
+     Skip Bill Generation
+   </label>
+   <small>Check to create flats without generating monthly bills.</small>
+
+   REQUEST PAYLOAD:
+   
+   POST /api/flats/bulk
+   {
+     "flats": [
+       { "flatNo": "A1", "ownerName": "John", "contactMobile": "9999999999", ... },
+       { "flatNo": "A2", "ownerName": "Jane", "contactMobile": "8888888888", ... }
+     ],
+     "skipBilling": false  // or true if user checks the box
+   }
+
+   CONFIRMATION DIALOG:
+   
+   If skipBilling=true, show:
+   "You are creating flats without generating bills. 
+    Bills can be generated later via the Billing menu. Continue?"
+
+================================================================================
+
+4. REPORTS & EXPORTS
+
+   MONTHLY REPORT (EXCEL):
+   - Already includes the legend in the sheet (backend done).
+
+   API JSON RESPONSES:
+   - Display 'balance_sign_legend' from FundPositionDto and 
+     FlatFinancialSummaryResponse.
+
+================================================================================
+
+5. FLAT FINANCIAL SUMMARY PAGE
+
+   SHOW:
+   - TotalOutstanding (signed, color-coded)
+   - OpeningBalanceRemaining (signed, color-coded)
+   - BillOutstanding (signed, color-coded)
+   - TotalCharges (historical, always positive)
+   - TotalPayments (historical, always positive)
+
+   EXAMPLE UI:
+   
+   Financial Summary for Flat A1
+   ────────────────────────────
+   Opening Balance (Due):        ₹500 (red, icon)
+   Bill Outstanding (Due):       ₹2,000 (red, icon)
+   ─────────────────────────────
+   Total Outstanding:            ₹2,500 (red, bold)
+
+   OR (if advance scenario)
+
+   Opening Balance:              ₹0
+   Bill Outstanding (Advance):   ₹-1,000 (green, icon)
+   ─────────────────────────────
+   Total Outstanding:            ₹1,000 (Advance) (green, bold)
+
+   Legend: Positive = Member owes; Negative = Society owes (advance).
+
+================================================================================
+
+6. PAYMENT FLOW (if applicable)
+
+   - After payment, show updated balance in real-time.
+   - If balance flips to negative (advance created), highlight it prominently.
+   - Example: "Payment successful! Flat now has ₹500 advance credit."
+
+================================================================================
+API ENDPOINTS TO INTEGRATE
+================================================================================
+
+1. FLAT FINANCIAL SUMMARY (SINGLE)
+   
+   GET /api/flats/{publicId}/financial-summary
+   
+   Response example:
+   {
+     "openingBalanceRemaining": 500,
+     "billOutstanding": 2000,
+     "totalOutstanding": 2500,
+     "totalCharges": 5000,
+     "totalPayments": 2500,
+     "balance_sign_legend": "Positive = member owes the society; Negative = 
+                            society owes member (advance)."
+   }
+
+================================================================================
+
+2. FLAT FINANCIAL SUMMARY (BULK)
+   
+   POST /api/flats/financial-summary/bulk
+   
+   Body:
+   {
+     "flatPublicIds": ["uuid1", "uuid2", "uuid3"]
+   }
+   
+   Response includes: balance_sign_legend
+
+================================================================================
+
+3. MONTHLY REPORT (JSON)
+   
+   GET /api/reports/monthly?year=2026&month=4
+   
+   Response.FundPosition includes:
+   {
+     "opening_balance": 10000,
+     "collected": 5000,
+     "expenses": 2000,
+     "closing_balance": 13000,
+     "balance_sign_legend": "Positive = member owes the society; Negative = 
+                            society owes member (advance)."
+   }
+
+================================================================================
+
+4. BULK CREATE FLATS (WITH skipBilling)
+   
+   POST /api/flats/bulk
+   
+   Body:
+   {
+     "flats": [
+       { "flatNo": "A1", "ownerName": "John", ... },
+       { "flatNo": "A2", "ownerName": "Jane", ... }
+     ],
+     "skipBilling": true  // or false
+   }
+
+================================================================================
+STYLING GUIDELINES
+================================================================================
+
+- RED SHADES for amounts due (e.g., text-red-600, bg-red-50)
+- GREEN SHADES for advances/credits (e.g., text-green-600, bg-green-50)
+- ICONS: ⚠️ for due, ✓ or 💳 for advance
+- FONT WEIGHT: Bold for TotalOutstanding to emphasize overall position
+- RESPONSIVE: Ensure tables and balance cards are mobile-friendly
+
+================================================================================
+TESTING CHECKLIST
+================================================================================
+
+[ ] Positive balance displays red with correct formatting
+[ ] Negative balance displays green with "Advance" label
+[ ] balance_sign_legend is visible on all balance-display pages
+[ ] Bulk-upload form includes and submits skipBilling flag
+[ ] Monthly report downloads include legend in Excel
+[ ] Confirmation dialog appears when skipBilling=true
+[ ] All balance fields pull from the correct API response properties
+[ ] Color coding works across all devices (mobile, tablet, desktop)
+[ ] Legend is readable and accessible (WCAG AA compliance)
+[ ] Negative balances with "Advance" label are clear to end users
+
+================================================================================
+END OF FRONTEND IMPLEMENTATION GUIDE
+================================================================================

@@ -11,6 +11,10 @@ namespace SocietyLedger.Api.Endpoints.Admin
 {
     public static class AdminUserEndpoints
     {
+        /// <summary>
+        /// Maps admin user routes: paginated society user listing and individual user detail retrieval.
+        /// Requires the SuperAdmin policy.
+        /// </summary>
         public static void MapAdminUserRoutes(this RouteGroupBuilder app, string groupName, ApiVersionSet versionSet)
         {
             var v1 = new ApiVersion(ApiConstants.API_VERSION_1_0);

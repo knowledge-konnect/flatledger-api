@@ -15,15 +15,18 @@ namespace SocietyLedger.Infrastructure.Services
         private readonly IExpenseRepository _expenseRepo;
         private readonly IUserContext _userContext;
         private readonly AppDbContext _db;
+        private readonly IDashboardService _dashboardService;
 
         public ExpenseService(
             IExpenseRepository expenseRepo,
             IUserContext userContext,
-            AppDbContext db)
+            AppDbContext db,
+            IDashboardService dashboardService)
         {
-            _expenseRepo = expenseRepo ?? throw new ArgumentNullException(nameof(expenseRepo));
-            _userContext = userContext ?? throw new ArgumentNullException(nameof(userContext));
-            _db = db ?? throw new ArgumentNullException(nameof(db));
+            _expenseRepo      = expenseRepo ?? throw new ArgumentNullException(nameof(expenseRepo));
+            _userContext      = userContext ?? throw new ArgumentNullException(nameof(userContext));
+            _db               = db ?? throw new ArgumentNullException(nameof(db));
+            _dashboardService = dashboardService ?? throw new ArgumentNullException(nameof(dashboardService));
         }
 
         public async Task<ExpenseResponse> CreateExpenseAsync(long userId, CreateExpenseRequest request)
@@ -72,6 +75,7 @@ namespace SocietyLedger.Infrastructure.Services
             await _expenseRepo.SaveChangesAsync();
 
             Log.Information("Expense created successfully by user {UserId} for society {SocietyId}", userId, societyId);
+            _dashboardService.InvalidateDashboardCache(societyId);
             
             // Reload to get navigation properties
             var createdExpense = await _expenseRepo.GetByPublicIdAsync(expenseEntity.public_id, societyId);
@@ -118,16 +122,15 @@ namespace SocietyLedger.Infrastructure.Services
 
         public async Task<IEnumerable<ExpenseCategoryResponse>> GetExpenseCategoriesAsync()
         {
-            var categories = await _db.expense_categories
+            return await _db.expense_categories
                 .AsNoTracking()
                 .OrderBy(c => c.display_name)
+                .Select(c => new ExpenseCategoryResponse
+                {
+                    Code = c.code,
+                    DisplayName = c.display_name
+                })
                 .ToListAsync();
-
-            return categories.Select(c => new ExpenseCategoryResponse
-            {
-                Code = c.code,
-                DisplayName = c.display_name
-            });
         }
 
         public async Task<ExpenseResponse> UpdateExpenseAsync(Guid publicId, long userId, UpdateExpenseRequest request)
@@ -172,6 +175,8 @@ namespace SocietyLedger.Infrastructure.Services
             await _expenseRepo.UpdateAsync(trackedExpense);
             await _expenseRepo.SaveChangesAsync();
 
+            _dashboardService.InvalidateDashboardCache(societyId);
+
             // Reload with navigation properties
             var updatedExpense = await _expenseRepo.GetByPublicIdAsync(publicId, societyId);
             if (updatedExpense == null)
@@ -191,7 +196,91 @@ namespace SocietyLedger.Infrastructure.Services
             await _expenseRepo.DeleteByPublicIdAsync(publicId, societyId);
             await _expenseRepo.SaveChangesAsync();
 
+            _dashboardService.InvalidateDashboardCache(societyId);
             Log.Information("Expense deleted successfully: {PublicId}", publicId);
+        }
+
+        private static readonly HashSet<string> AllowedExpenseSortFields = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "dateIncurred", "amount", "categoryCode"
+        };
+
+        public async Task<PagedExpensesResponse> GetPagedAsync(
+            long userId,
+            DateOnly? startDate,
+            DateOnly? endDate,
+            string? categoryCode,
+            string? search,
+            int page,
+            int size,
+            string sortBy,
+            string sortDir)
+        {
+            var societyId = await _userContext.GetSocietyIdAsync(userId);
+
+            var query = _db.expenses
+                .Where(e => e.society_id == societyId && !e.is_deleted)
+                .AsQueryable();
+
+            if (startDate.HasValue)
+                query = query.Where(e => e.date_incurred >= startDate.Value);
+
+            if (endDate.HasValue)
+                query = query.Where(e => e.date_incurred <= endDate.Value);
+
+            if (!string.IsNullOrWhiteSpace(categoryCode))
+                query = query.Where(e => e.category_code == categoryCode);
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var term = search.ToLower();
+                query = query.Where(e =>
+                    (e.vendor != null && e.vendor.ToLower().Contains(term)) ||
+                    (e.description != null && e.description.ToLower().Contains(term)));
+            }
+
+            query = (sortBy.ToLower(), sortDir.ToLower()) switch
+            {
+                ("dateincurred", "asc")   => query.OrderBy(e => e.date_incurred),
+                ("dateincurred", _)       => query.OrderByDescending(e => e.date_incurred),
+                ("amount", "asc")         => query.OrderBy(e => e.amount),
+                ("amount", _)             => query.OrderByDescending(e => e.amount),
+                ("categorycode", "asc")   => query.OrderBy(e => e.category_code),
+                ("categorycode", _)       => query.OrderByDescending(e => e.category_code),
+                _                         => query.OrderByDescending(e => e.date_incurred),
+            };
+
+            var totalCount = await query.LongCountAsync();
+            var totalPages = size > 0 ? (int)Math.Ceiling((double)totalCount / size) : 0;
+
+            var items = await query
+                .Skip(page * size)
+                .Take(size)
+                .Select(e => new ExpenseEntity
+                {
+                    PublicId = e.public_id,
+                    SocietyId = e.society_id,
+                    DateIncurred = e.date_incurred,
+                    CategoryCode = e.category_code,
+                    Vendor = e.vendor,
+                    Description = e.description,
+                    Amount = e.amount,
+                    ApprovedBy = e.approved_by,
+                    ApprovedByName = e.approved_byNavigation != null ? e.approved_byNavigation.name : null,
+                    CreatedBy = e.created_by,
+                    CreatedByName = e.created_byNavigation != null ? e.created_byNavigation.name : null,
+                    CreatedAt = e.created_at
+                })
+                .ToListAsync();
+
+            return new PagedExpensesResponse
+            {
+                Content = items.Select(MapToResponse).ToList(),
+                TotalElements = totalCount,
+                TotalPages = totalPages,
+                Page = page,
+                Size = size
+            };
         }
 
         private ExpenseResponse MapToResponse(ExpenseEntity entity)

@@ -155,7 +155,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             return result ?? "{}";
         }
 
-        private static T? Deserialize<T>(string json)
+        private T? Deserialize<T>(string json)
         {
             if (string.IsNullOrWhiteSpace(json) || json == "{}")
                 return default;
@@ -186,14 +186,16 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
 
                 return JsonSerializer.Deserialize<T>(payload.GetRawText(), options);
             }
-            catch
+            catch (Exception ex)
             {
+                _logger.LogError(ex, "JSON deserialization failed for type {Type}. Retrying with raw JSON.", typeof(T).Name);
                 try
                 {
                     return JsonSerializer.Deserialize<T>(json, options);
                 }
-                catch
+                catch (Exception ex2)
                 {
+                    _logger.LogError(ex2, "JSON deserialization retry also failed for type {Type}.", typeof(T).Name);
                     return default;
                 }
             }

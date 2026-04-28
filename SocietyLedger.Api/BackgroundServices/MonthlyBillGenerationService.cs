@@ -1,26 +1,30 @@
-using System;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using SocietyLedger.Application.Interfaces.Services;
 
 namespace SocietyLedger.Api.BackgroundServices
 {
     /// <summary>
-    /// Background service that checks daily if today is the 1st of the month and triggers monthly bill generation.
-    /// Ensures bill generation runs only once per day.
+    /// Background service that triggers monthly bill generation on the 1st of each month.
+    /// Uses the DB (via <see cref="IBillingService"/> idempotency) as the authoritative source for
+    /// whether bills have already been generated for the current period. The in-process
+    /// <c>_lastRunDate</c> guard was removed in favour of a DB check so that a process restart
+    /// on the 1st does not skip billing — <c>GenerateMonthlyBillsAsync</c> skips flats that
+    /// already have a bill for the period, making re-runs safe.
     /// </summary>
     public class MonthlyBillGenerationService : BackgroundService
     {
         private readonly IServiceProvider _serviceProvider;
         private readonly ILogger<MonthlyBillGenerationService> _logger;
         private readonly IConfiguration _configuration;
-        private DateTime _lastRunDate = DateTime.MinValue;
         private readonly int _maxRetryAttempts;
         private readonly TimeSpan _retryDelay;
 
-        public MonthlyBillGenerationService(IServiceProvider serviceProvider, ILogger<MonthlyBillGenerationService> logger, IConfiguration configuration)
+        public MonthlyBillGenerationService(
+            IServiceProvider serviceProvider,
+            ILogger<MonthlyBillGenerationService> logger,
+            IConfiguration configuration)
         {
             _serviceProvider = serviceProvider;
             _logger = logger;
@@ -33,67 +37,65 @@ namespace SocietyLedger.Api.BackgroundServices
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                var now = DateTime.Now;
-                if (now.Day == 1 && _lastRunDate.Date != now.Date)
+                var now = DateTime.UtcNow;
+
+                if (now.Day == 1)
                 {
-                    _logger.LogInformation("Monthly bill generation triggered on {Date}", now);
-                    int attempt = 0;
-                    bool success = false;
-                    Exception? lastException = null;
-                    while (attempt < _maxRetryAttempts && !success && !stoppingToken.IsCancellationRequested)
-                    {
-                        attempt++;
-                        try
-                        {
-                            using (var scope = _serviceProvider.CreateScope())
-                            {
-                                // Use IBillingService to generate bills for all societies for the current month
-                                var billingService = scope.ServiceProvider.GetRequiredService<SocietyLedger.Application.Interfaces.Services.IBillingService>();
-                                var billingMonth = new DateTime(now.Year, now.Month, 1);
-                                await billingService.GenerateMonthlyBillsAsync(billingMonth);
-                            }
-                            _logger.LogInformation("Monthly bill generation succeeded on attempt {Attempt}", attempt);
-                            _lastRunDate = now.Date;
-                            success = true;
-                        }
-                        catch (Exception ex)
-                        {
-                            lastException = ex;
-                            _logger.LogError(ex, "Attempt {Attempt} failed to generate monthly bills.", attempt);
-                            if (attempt < _maxRetryAttempts)
-                            {
-                                _logger.LogInformation("Retrying in {RetryDelay} minutes...", _retryDelay.TotalMinutes);
-                                try
-                                {
-                                    await Task.Delay(_retryDelay, stoppingToken);
-                                }
-                                catch (OperationCanceledException)
-                                {
-                                    // Service is stopping
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    if (!success && lastException != null)
-                    {
-                        _logger.LogCritical(lastException, "Monthly bill generation failed after {MaxRetryAttempts} attempts.", _maxRetryAttempts);
-                    }
+                    // Idempotency is fully handled inside GenerateMonthlyBillsAsync, which skips
+                    // any flat that already has a bill for the period. Safe to call on every
+                    // restart that lands on the 1st without double-billing.
+                    var currentPeriod = now.ToString("yyyy-MM");
+                    _logger.LogInformation("Monthly bill generation triggered. Period={Period}", currentPeriod);
+                    await RunWithRetryAsync(now, stoppingToken);
                 }
-                // Sleep until the next day (midnight)
+
+                // Sleep until next UTC midnight
                 var tomorrow = now.Date.AddDays(1);
                 var delay = tomorrow - now;
-                await Task.Delay(delay, stoppingToken);
+                try { await Task.Delay(delay, stoppingToken); }
+                catch (OperationCanceledException) { break; }
             }
         }
-    }
 
-    /// <summary>
-    /// Example interface for monthly bill generation service.
-    /// Implement this in your application layer.
-    /// </summary>
-    public interface IMonthlyBillService
-    {
-        Task GenerateMonthlyBillsAsync(CancellationToken cancellationToken);
+        private async Task RunWithRetryAsync(DateTime now, CancellationToken stoppingToken)
+        {
+            int attempt = 0;
+            Exception? lastException = null;
+
+            while (attempt < _maxRetryAttempts && !stoppingToken.IsCancellationRequested)
+            {
+                attempt++;
+                try
+                {
+                    using var scope = _serviceProvider.CreateScope();
+                    var billingService = scope.ServiceProvider.GetRequiredService<IBillingService>();
+                    var billingMonth = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+                    await billingService.GenerateMonthlyBillsAsync(billingMonth);
+
+                    _logger.LogInformation(
+                        "Monthly bill generation succeeded. Period={Period} Attempt={Attempt}",
+                        billingMonth.ToString("yyyy-MM"), attempt);
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    lastException = ex;
+                    _logger.LogError(ex,
+                        "Monthly bill generation attempt failed. Period={Period} Attempt={Attempt}/{Max}",
+                        now.ToString("yyyy-MM"), attempt, _maxRetryAttempts);
+
+                    if (attempt < _maxRetryAttempts)
+                    {
+                        try { await Task.Delay(_retryDelay, stoppingToken); }
+                        catch (OperationCanceledException) { return; }
+                    }
+                }
+            }
+
+            _logger.LogCritical(lastException,
+                "Monthly bill generation failed after all retries. Period={Period} Attempts={Attempts}",
+                now.ToString("yyyy-MM"), _maxRetryAttempts);
+        }
+
     }
 }

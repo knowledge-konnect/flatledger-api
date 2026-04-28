@@ -21,6 +21,7 @@ namespace SocietyLedger.Infrastructure.Services
         private readonly ISocietyRepository _societyRepo;
         private readonly ITokenService _tokenService;
         private readonly ISubscriptionService _subscriptionService;
+        private readonly IEmailService _emailService;
         private readonly PasswordHasher _hasher;
         private readonly ILogger<AuthService> _logger;
         private readonly AppDbContext _db;
@@ -31,6 +32,7 @@ namespace SocietyLedger.Infrastructure.Services
             ISocietyRepository societyRepo,
             ITokenService tokenService,
             ISubscriptionService subscriptionService,
+            IEmailService emailService,
             PasswordHasher hasher,
             ILogger<AuthService> logger,
             AppDbContext db)
@@ -40,6 +42,7 @@ namespace SocietyLedger.Infrastructure.Services
             _societyRepo = societyRepo;
             _tokenService = tokenService;
             _subscriptionService = subscriptionService;
+            _emailService = emailService;
             _hasher = hasher;
             _logger = logger;
             _db = db;
@@ -99,7 +102,7 @@ namespace SocietyLedger.Infrastructure.Services
             _db.refresh_tokens.Add(refreshEntity);
             await _db.SaveChangesAsync();
 
-            _logger.LogInformation("User {UserId} logged in successfully from IP {IP}", user.Id, ipAddress);
+            _logger.LogInformation("User {UserPublicId} logged in from {IP}", user.PublicId, ipAddress);
 
             return new LoginResponse
             {
@@ -182,8 +185,11 @@ namespace SocietyLedger.Infrastructure.Services
 
             _db.refresh_tokens.Add(refreshEntity);
             await _db.SaveChangesAsync();
+            await tx.CommitAsync();
 
-            // Trial subscription is best-effort — registration succeeds even if this fails.
+            // Fix #7: trial creation runs AFTER the transaction commits so a commit failure
+            // cannot leave an orphaned trial row with no user.
+            // Best-effort: registration succeeds even if trial creation fails.
             try
             {
                 await _subscriptionService.CreateTrialSubscriptionAsync(user.Id);
@@ -193,11 +199,9 @@ namespace SocietyLedger.Infrastructure.Services
                 _logger.LogWarning(ex, "Failed to create trial subscription for user {UserId}", user.Id);
             }
 
-            await tx.CommitAsync();
-
             _logger.LogInformation(
-                "New user {UserId} registered new society {SocietyId} from {IP}",
-                user.Id, society.Id, ipAddress);
+                "New user {UserPublicId} registered new society {SocietyId} from {IP}",
+                user.PublicId, society.Id, ipAddress);
 
             return new RegisterResponse
             {
@@ -357,6 +361,150 @@ namespace SocietyLedger.Infrastructure.Services
             {
                 Message = "Password changed successfully.",
                 ForcePasswordChange = false
+            };
+        }
+
+        /// <summary>
+        /// Initiates forgot password flow: generates a cryptographically-secure token, hashes it, stores on user,
+        /// and sends reset email. Always succeeds (returns 200) to avoid account enumeration.
+        /// </summary>
+        public async Task ForgotPasswordAsync(string email, string resetLinkTemplate, string ipAddress)
+        {
+            if (string.IsNullOrWhiteSpace(email))
+                throw new ArgumentNullException(nameof(email));
+
+            var user = await _userRepo.GetByEmailAsync(email);
+            if (user == null)
+            {
+                // Security: do not reveal if user exists. Just return success.
+                _logger.LogInformation("Forgot password request for non-existent user {Email} from {IP}", email, ipAddress);
+                return;
+            }
+
+            if (!user.IsActive)
+            {
+                _logger.LogInformation("Forgot password request for inactive user {UserId} from {IP}", user.Id, ipAddress);
+                return;
+            }
+
+            // Generate a secure random token (same method as refresh tokens).
+            var tokenPair = _tokenService.GenerateRefreshToken();
+            var token = tokenPair.Token;
+
+            // Hash the token (only store hash in DB).
+            var tokenHash = _tokenService.HashToken(token);
+
+            // Store hash and expiry on user entity. Token expires in 15 minutes.
+            user.PasswordResetTokenHash = tokenHash;
+            user.PasswordResetExpiresAt = DateTime.UtcNow.AddMinutes(15);
+            user.UpdatedAt = DateTime.UtcNow;
+
+            await _userRepo.UpdateAsync(user);
+            await _userRepo.SaveChangesAsync();
+
+            // Send email with the unhashed token (the user needs to use this token).
+            var resetLink = string.Format(resetLinkTemplate, Uri.EscapeDataString(token));
+            try
+            {
+                await _emailService.SendPasswordResetEmailAsync(user.Email ?? "", user.Name, resetLink);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to send password reset email to {Email}", email);
+                // Don't throw; ForgotPassword always returns 200 success for security.
+            }
+
+            _logger.LogInformation("Password reset token generated for user {UserId} (email: {Email}) from {IP}", user.Id, email, ipAddress);
+        }
+
+        /// <summary>
+        /// Validates a password reset token: checks hash match, expiry, and existence.
+        /// Throws if invalid or expired.
+        /// </summary>
+        public async Task ValidatePasswordResetTokenAsync(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+                throw new ValidationException("Invalid or expired token.");
+
+            var tokenHash = _tokenService.HashToken(token);
+
+            var user = await _db.users
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => u.password_reset_token_hash == tokenHash && !u.is_deleted);
+
+            if (user == null)
+                throw new ValidationException("Invalid or expired token.");
+
+            if (user.password_reset_expires_at == null || user.password_reset_expires_at < DateTime.UtcNow)
+                throw new ValidationException("Invalid or expired token.");
+
+            _logger.LogInformation("Password reset token validated for user {UserId}", user.id);
+        }
+
+        /// <summary>
+        /// Resets password using token: validates token, hashes new password, clears the token (single-use),
+        /// and optionally returns JWT for auto-login.
+        /// </summary>
+        public async Task<PasswordResetResponse> ResetPasswordAsync(string token, string newPassword, string ipAddress)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+                throw new ValidationException("Token is required.");
+
+            var tokenHash = _tokenService.HashToken(token);
+
+            var efUser = await _db.users
+                .Include(u => u.role)
+                .Include(u => u.society)
+                .FirstOrDefaultAsync(u => u.password_reset_token_hash == tokenHash && !u.is_deleted);
+
+            if (efUser == null || efUser.password_reset_expires_at == null || efUser.password_reset_expires_at < DateTime.UtcNow)
+                throw new ValidationException("Invalid or expired token.");
+
+            // Hash new password.
+            var newPasswordHash = _hasher.Hash(newPassword);
+
+            // Clear the reset token (single-use).
+            efUser.password_hash = newPasswordHash;
+            efUser.password_reset_token_hash = null;
+            efUser.password_reset_expires_at = null;
+            efUser.force_password_change = false;
+            efUser.updated_at = DateTime.UtcNow;
+
+            await _db.SaveChangesAsync();
+
+            _logger.LogInformation("Password reset successfully for user {UserId} from {IP}", efUser.id, ipAddress);
+
+            // Optional: auto-login after password reset. Return the new JWT.
+            var domain = efUser.ToDomain();
+            var role = domain.Role;
+
+            if (role != null)
+            {
+                var tokenClaims = new TokenClaims(
+                    UserId: efUser.id,
+                    UserPublicId: efUser.public_id,
+                    Email: efUser.email ?? string.Empty,
+                    Name: efUser.name,
+                    SocietyPublicId: efUser.society?.public_id ?? Guid.Empty,
+                    RoleId: role.Id,
+                    RoleCode: role.Code,
+                    RoleDisplayName: role.DisplayName);
+
+                var accessToken = _tokenService.GenerateAccessToken(tokenClaims, out var accessExpires);
+
+                return new PasswordResetResponse
+                {
+                    Ok = true,
+                    Message = "Password reset successfully.",
+                    AccessToken = accessToken,
+                    AccessTokenExpiresAt = accessExpires
+                };
+            }
+
+            return new PasswordResetResponse
+            {
+                Ok = true,
+                Message = "Password reset successfully."
             };
         }
     }

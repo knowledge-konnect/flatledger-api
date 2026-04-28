@@ -168,5 +168,80 @@ namespace SocietyLedger.Infrastructure.Services.Common
               AND  entry_type       = @EntryType
               AND  remaining_amount > 0
               AND  is_deleted       = FALSE";
+
+        // ── Maintenance Summary CTE ────────────────────────────────────────────────
+
+        /// <summary>
+        /// Single CTE that returns total charges, collected, bill outstanding, and opening-balance
+        /// remaining for a society period — all in one round-trip.
+        /// Parameters: @SocietyId, @Period, @EntryType.
+        /// Maps to <see cref="SocietyLedger.Infrastructure.Services.Common.SummaryRow"/>.
+        /// </summary>
+        public const string MaintenanceSummary = @"
+            WITH charges AS (
+                SELECT COALESCE(SUM(amount), 0) AS v
+                FROM   bills
+                WHERE  society_id = @SocietyId AND period = @Period AND is_deleted = FALSE
+            ),
+            collected AS (
+                SELECT COALESCE(SUM(mp.amount), 0) AS v
+                FROM   maintenance_payments mp
+                JOIN   bills b ON b.id = mp.bill_id
+                WHERE  b.society_id = @SocietyId AND b.period = @Period AND mp.is_deleted = FALSE
+            ),
+            outstanding AS (
+                SELECT COALESCE(SUM(amount - COALESCE(paid_amount, 0)), 0) AS v
+                FROM   bills
+                WHERE  society_id  = @SocietyId AND period = @Period AND is_deleted = FALSE
+                  AND  status_code != 'cancelled'
+                  AND  (amount - COALESCE(paid_amount, 0)) > 0
+            ),
+            ob AS (
+                SELECT COALESCE(SUM(remaining_amount), 0) AS v
+                FROM   adjustments
+                WHERE  society_id = @SocietyId AND entry_type = @EntryType
+                  AND  remaining_amount > 0 AND is_deleted = FALSE
+            )
+            SELECT
+                charges.v     AS ""TotalCharges"",
+                collected.v   AS ""TotalCollected"",
+                outstanding.v AS ""BillOutstanding"",
+                ob.v          AS ""ObRemaining""
+            FROM charges, collected, outstanding, ob";
+
+        /// <summary>
+        /// Atomically recalculates a bill's <c>paid_amount</c> and <c>status_code</c> after a
+        /// maintenance payment row is soft-deleted. Single UPDATE with correlated sub-SELECTs —
+        /// no read-then-write race condition.
+        /// Parameter: @BillId (bigint).
+        /// </summary>
+        public const string RecalculateBillAfterPaymentDelete = @"
+            UPDATE bills
+            SET    paid_amount = COALESCE((
+                       SELECT SUM(amount)
+                       FROM   maintenance_payments
+                       WHERE  bill_id    = @BillId
+                         AND  is_deleted = FALSE
+                   ), 0),
+                   status_code = CASE
+                       WHEN COALESCE((
+                           SELECT SUM(amount)
+                           FROM   maintenance_payments
+                           WHERE  bill_id    = @BillId
+                             AND  is_deleted = FALSE
+                       ), 0) <= 0
+                           THEN 'unpaid'
+                       WHEN COALESCE((
+                           SELECT SUM(amount)
+                           FROM   maintenance_payments
+                           WHERE  bill_id    = @BillId
+                             AND  is_deleted = FALSE
+                       ), 0) >= amount
+                           THEN 'paid'
+                       ELSE 'partial'
+                   END,
+                   updated_at = NOW()
+            WHERE  id         = @BillId
+              AND  is_deleted = FALSE";
     }
 }

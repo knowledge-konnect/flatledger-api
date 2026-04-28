@@ -541,6 +541,11 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.currency).HasDefaultValueSql("'INR'::character varying");
             entity.Property(e => e.duration_months).HasDefaultValue(1);
             entity.Property(e => e.is_active).HasDefaultValue(true);
+            entity.Property(e => e.price).HasPrecision(10, 2);
+            entity.Property(e => e.max_flats).HasDefaultValue(1);
+            entity.Property(e => e.display_order).HasDefaultValue(0);
+            entity.Property(e => e.is_popular).HasDefaultValue(false);
+            // plan_group is required by model - no default
         });
 
         modelBuilder.Entity<plan_component>(entity =>
@@ -664,6 +669,8 @@ public partial class AppDbContext : DbContext
                 .HasConstraintName("subscription_events_subscription_id_fkey");
 
             entity.HasOne(d => d.user).WithMany(p => p.subscription_events).HasConstraintName("subscription_events_user_id_fkey");
+            
+            entity.HasOne(d => d.society).WithMany().HasConstraintName("subscription_events_society_id_fkey");
         });
 
         modelBuilder.Entity<user>(entity =>
@@ -675,9 +682,7 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.force_password_change).HasDefaultValue(false);
             entity.Property(e => e.is_active).HasDefaultValue(true);
             entity.Property(e => e.is_deleted).HasDefaultValue(false);
-            entity.Property(e => e.monthly_amount).HasDefaultValueSql("299.00");
             entity.Property(e => e.public_id).HasDefaultValueSql("gen_random_uuid()");
-            entity.Property(e => e.subscription_plan).HasDefaultValueSql("'pro'::character varying");
             entity.Property(e => e.subscription_status).HasDefaultValueSql("'trial'::character varying");
             entity.Property(e => e.trial_ends_date).HasDefaultValueSql("(now() + '30 days'::interval)");
             entity.Property(e => e.updated_at).HasDefaultValueSql("now()");

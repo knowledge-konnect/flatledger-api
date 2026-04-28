@@ -27,5 +27,8 @@ namespace SocietyLedger.Application.DTOs.Dashboard
 
         [JsonPropertyName("insights")]
         public List<string> Insights { get; set; } = new();
+
+        [JsonPropertyName("flat_summary")]
+        public FlatSummaryDto FlatSummary { get; set; } = new();
     }
 }

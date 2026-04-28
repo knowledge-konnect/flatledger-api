@@ -1,13 +1,15 @@
 namespace SocietyLedger.Domain.Entities
 {
     /// <summary>
-    /// Represents a user's SaaS subscription. A user may be on a free trial or a paid plan.
+    /// Represents a society's SaaS subscription. A society may be on a free trial or a paid plan.
+    /// Billing is always society-scoped — never user-scoped.
     /// Status transitions are recorded in <see cref="SubscriptionEvent"/>.
     /// </summary>
     public class Subscription
     {
         public Guid Id { get; set; }
-        public long UserId { get; set; }
+        public long UserId { get; set; }   // The admin user who created/manages this subscription
+        public long SocietyId { get; set; } // The society this subscription belongs to
         public Guid PlanId { get; set; }
         public string Status { get; set; } = null!;
         public decimal SubscribedAmount { get; set; }
@@ -30,10 +32,19 @@ namespace SocietyLedger.Domain.Entities
     {
         public Guid Id { get; set; }
         public string Name { get; set; } = null!;
-        public decimal MonthlyAmount { get; set; }
+        public decimal Price { get; set; }
         public string Currency { get; set; } = null!;
         public bool? IsActive { get; set; }
         public DateTime? CreatedAt { get; set; }
+
+        // New fields for flat-based pricing
+        public int MaxFlats { get; set; }
+        public int DisplayOrder { get; set; }
+        public bool IsPopular { get; set; }
+        public string? Description { get; set; }
+        public int? DiscountPercentage { get; set; }
+        public string PlanGroup { get; set; } = null!;
+        public int DurationMonths { get; set; }
     }
 
     /// <summary>
@@ -73,6 +84,7 @@ namespace SocietyLedger.Domain.Entities
     {
         public Guid Id { get; set; }
         public long UserId { get; set; }
+        public long SocietyId { get; set; }
         public Guid? SubscriptionId { get; set; }
         public string EventType { get; set; } = null!;
         public string? OldStatus { get; set; }

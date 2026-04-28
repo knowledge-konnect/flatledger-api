@@ -12,5 +12,20 @@ namespace SocietyLedger.Application.Interfaces.Services
         Task<IEnumerable<ExpenseCategoryResponse>> GetExpenseCategoriesAsync();
         Task<ExpenseResponse> UpdateExpenseAsync(Guid publicId, long userId, UpdateExpenseRequest request);
         Task DeleteExpenseAsync(Guid publicId, long userId);
+
+        /// <summary>
+        /// Returns a paginated, filtered, and sorted list of expenses for the user's society.
+        /// All parameters are optional — omitting them returns the first page of all expenses.
+        /// </summary>
+        Task<PagedExpensesResponse> GetPagedAsync(
+            long userId,
+            DateOnly? startDate,
+            DateOnly? endDate,
+            string? categoryCode,
+            string? search,
+            int page,
+            int size,
+            string sortBy,
+            string sortDir);
     }
 }

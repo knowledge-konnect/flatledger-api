@@ -201,9 +201,11 @@ CREATE TABLE public.invoices (
   description text,
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
+  society_id bigint NOT NULL,
   CONSTRAINT invoices_pkey PRIMARY KEY (id),
   CONSTRAINT invoices_subscription_id_fkey FOREIGN KEY (subscription_id) REFERENCES public.subscriptions(id),
-  CONSTRAINT invoices_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
+  CONSTRAINT invoices_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
+  CONSTRAINT invoices_society_id_fkey FOREIGN KEY (society_id) REFERENCES public.societies(id)
 );
 CREATE TABLE public.jobs (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
@@ -277,6 +279,7 @@ CREATE TABLE public.maintenance_payments (
   deleted_at timestamp with time zone,
   idempotency_key text,
   adjustment_id bigint,
+  outstanding_after_payment numeric,
   CONSTRAINT maintenance_payments_pkey PRIMARY KEY (id),
   CONSTRAINT fk_maintenance_adjustment FOREIGN KEY (adjustment_id) REFERENCES public.adjustments(id),
   CONSTRAINT fk_maintenance_bill FOREIGN KEY (bill_id) REFERENCES public.bills(id),
@@ -370,14 +373,31 @@ CREATE TABLE public.plan_components (
   CONSTRAINT plan_components_maintenance_component_id_fkey FOREIGN KEY (maintenance_component_id) REFERENCES public.maintenance_components(id),
   CONSTRAINT plan_components_maintenance_plan_id_fkey FOREIGN KEY (maintenance_plan_id) REFERENCES public.maintenance_plans(id)
 );
+CREATE TABLE public.plan_price_history (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  plan_id uuid NOT NULL,
+  price numeric NOT NULL,
+  effective_from timestamp with time zone NOT NULL DEFAULT now(),
+  effective_to timestamp with time zone,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT plan_price_history_pkey PRIMARY KEY (id),
+  CONSTRAINT fk_plan_price_history_plan FOREIGN KEY (plan_id) REFERENCES public.plans(id)
+);
 CREATE TABLE public.plans (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
-  name character varying NOT NULL,
-  monthly_amount numeric NOT NULL,
+  name character varying NOT NULL UNIQUE,
+  price numeric NOT NULL CHECK (price > 0::numeric),
   currency character varying NOT NULL DEFAULT 'INR'::character varying,
   is_active boolean DEFAULT true,
   created_at timestamp with time zone DEFAULT now(),
-  duration_months integer NOT NULL DEFAULT 1,
+  duration_months integer NOT NULL DEFAULT 1 CHECK (duration_months = ANY (ARRAY[1, 12])),
+  max_flats integer NOT NULL CHECK (max_flats > 0),
+  display_order integer DEFAULT 0,
+  is_popular boolean DEFAULT false,
+  description text,
+  discount_percentage integer,
+  plan_group character varying,
+  updated_at timestamp with time zone DEFAULT now(),
   CONSTRAINT plans_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.platform_settings (
@@ -427,8 +447,10 @@ CREATE TABLE public.societies (
   is_deleted boolean NOT NULL DEFAULT false,
   deleted_at timestamp with time zone,
   onboarding_date date NOT NULL DEFAULT CURRENT_DATE,
+  subscription_id uuid,
   CONSTRAINT societies_pkey PRIMARY KEY (id),
-  CONSTRAINT societies_maintenance_cycle_id_fkey FOREIGN KEY (maintenance_cycle_id) REFERENCES public.maintenance_cycles(id)
+  CONSTRAINT societies_maintenance_cycle_id_fkey FOREIGN KEY (maintenance_cycle_id) REFERENCES public.maintenance_cycles(id),
+  CONSTRAINT societies_subscription_id_fkey FOREIGN KEY (subscription_id) REFERENCES public.subscriptions(id)
 );
 CREATE TABLE public.society_fund_ledger (
   id bigint NOT NULL DEFAULT nextval('society_fund_ledger_id_seq'::regclass),
@@ -454,9 +476,33 @@ CREATE TABLE public.subscription_events (
   amount numeric,
   metadata jsonb,
   created_at timestamp with time zone DEFAULT now(),
+  society_id bigint NOT NULL,
   CONSTRAINT subscription_events_pkey PRIMARY KEY (id),
   CONSTRAINT subscription_events_subscription_id_fkey FOREIGN KEY (subscription_id) REFERENCES public.subscriptions(id),
-  CONSTRAINT subscription_events_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
+  CONSTRAINT subscription_events_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
+  CONSTRAINT subscription_events_society_id_fkey FOREIGN KEY (society_id) REFERENCES public.societies(id)
+);
+CREATE TABLE public.subscription_payments (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  subscription_id uuid NOT NULL,
+  amount numeric NOT NULL,
+  payment_date timestamp with time zone DEFAULT now(),
+  payment_gateway text,
+  gateway_payment_id text,
+  status text,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT subscription_payments_pkey PRIMARY KEY (id),
+  CONSTRAINT subscription_payments_subscription_id_fkey FOREIGN KEY (subscription_id) REFERENCES public.subscriptions(id)
+);
+CREATE TABLE public.subscription_snapshots (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  subscription_id uuid NOT NULL,
+  plan_name text,
+  max_flats integer,
+  duration_months integer,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT subscription_snapshots_pkey PRIMARY KEY (id),
+  CONSTRAINT subscription_snapshots_subscription_id_fkey FOREIGN KEY (subscription_id) REFERENCES public.subscriptions(id)
 );
 CREATE TABLE public.subscriptions (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -472,9 +518,11 @@ CREATE TABLE public.subscriptions (
   cancelled_at timestamp with time zone,
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
+  society_id bigint NOT NULL,
   CONSTRAINT subscriptions_pkey PRIMARY KEY (id),
   CONSTRAINT subscriptions_plan_id_fkey FOREIGN KEY (plan_id) REFERENCES public.plans(id),
-  CONSTRAINT subscriptions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
+  CONSTRAINT subscriptions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
+  CONSTRAINT subscriptions_society_id_fkey FOREIGN KEY (society_id) REFERENCES public.societies(id)
 );
 CREATE TABLE public.users (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
@@ -498,12 +546,15 @@ CREATE TABLE public.users (
   next_billing_date timestamp without time zone,
   trial_ends_date timestamp with time zone DEFAULT (now() + '30 days'::interval),
   last_payment_date timestamp with time zone,
-  subscription_plan character varying DEFAULT 'pro'::character varying,
-  monthly_amount numeric DEFAULT 299.00,
   is_deleted boolean NOT NULL DEFAULT false,
   deleted_at timestamp with time zone,
   username character varying UNIQUE,
+  password_reset_token_hash character varying,
+  password_reset_expires_at timestamp without time zone,
   CONSTRAINT users_pkey PRIMARY KEY (id),
   CONSTRAINT users_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.roles(id),
   CONSTRAINT users_society_id_fkey FOREIGN KEY (society_id) REFERENCES public.societies(id)
+);
+CREATE TABLE public.v_opening_bal (
+  coalesce numeric
 );

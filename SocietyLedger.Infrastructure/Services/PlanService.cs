@@ -24,10 +24,17 @@ namespace SocietyLedger.Infrastructure.Services
             {
                 Id = p.Id,
                 Name = p.Name,
-                MonthlyAmount = p.MonthlyAmount,
+                Price = p.Price,
                 Currency = p.Currency,
                 IsActive = p.IsActive,
-                CreatedAt = p.CreatedAt
+                CreatedAt = p.CreatedAt,
+                DurationMonths = p.DurationMonths,
+                MaxFlats = p.MaxFlats,
+                PlanGroup = p.PlanGroup,
+                IsPopular = p.IsPopular,
+                Description = p.Description,
+                DiscountPercentage = p.DiscountPercentage,
+                DisplayOrder = p.DisplayOrder
             });
         }
 
@@ -41,10 +48,17 @@ namespace SocietyLedger.Infrastructure.Services
             {
                 Id = plan.Id,
                 Name = plan.Name,
-                MonthlyAmount = plan.MonthlyAmount,
+                Price = plan.Price,
                 Currency = plan.Currency,
                 IsActive = plan.IsActive,
-                CreatedAt = plan.CreatedAt
+                CreatedAt = plan.CreatedAt,
+                DurationMonths = plan.DurationMonths,
+                MaxFlats = plan.MaxFlats,
+                PlanGroup = plan.PlanGroup,
+                IsPopular = plan.IsPopular,
+                Description = plan.Description,
+                DiscountPercentage = plan.DiscountPercentage,
+                DisplayOrder = plan.DisplayOrder
             };
         }
     }

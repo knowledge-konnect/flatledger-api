@@ -28,11 +28,17 @@ namespace SocietyLedger.Infrastructure.Services.Admin
                 {
                     Id = p.id,
                     Name = p.name,
-                    MonthlyAmount = p.monthly_amount,
+                    Price = p.price,
                     Currency = p.currency,
                     IsActive = p.is_active,
                     CreatedAt = p.created_at,
-                    DurationMonths = p.duration_months
+                    DurationMonths = p.duration_months,
+                    MaxFlats = p.max_flats,
+                    PlanGroup = p.plan_group,
+                    IsPopular = p.is_popular,
+                    Description = p.description,
+                    DiscountPercentage = p.discount_percentage,
+                    DisplayOrder = p.display_order
                 })
                 .ToListAsync();
             return new PagedResult<AdminPlanDto>(items, total, page, pageSize);
@@ -46,27 +52,39 @@ namespace SocietyLedger.Infrastructure.Services.Admin
             {
                 Id = p.id,
                 Name = p.name,
-                MonthlyAmount = p.monthly_amount,
+                Price = p.price,
                 Currency = p.currency,
                 IsActive = p.is_active,
                 CreatedAt = p.created_at,
-                DurationMonths = p.duration_months
+                DurationMonths = p.duration_months,
+                MaxFlats = p.max_flats,
+                PlanGroup = p.plan_group,
+                IsPopular = p.is_popular,
+                Description = p.description,
+                DiscountPercentage = p.discount_percentage,
+                DisplayOrder = p.display_order
             };
         }
 
         public async Task<AdminPlanDto> CreatePlanAsync(AdminPlanCreateRequest request)
         {
-            if (await _db.plans.AnyAsync(x => x.name == request.Name))
-                throw new ConflictException($"Plan with name '{request.Name}' already exists.");
+            if (await _db.plans.AnyAsync(x => x.plan_group == request.PlanGroup && x.duration_months == request.DurationMonths))
+                throw new ConflictException($"Plan with group '{request.PlanGroup}' and duration {request.DurationMonths} already exists.");
             var plan = new plan
             {
                 id = Guid.NewGuid(),
                 name = request.Name,
-                monthly_amount = request.MonthlyAmount,
+                price = request.Price,
                 currency = request.Currency,
                 is_active = true,
                 created_at = DateTime.UtcNow,
-                duration_months = request.DurationMonths
+                duration_months = request.DurationMonths,
+                max_flats = request.MaxFlats,
+                plan_group = request.PlanGroup,
+                is_popular = request.IsPopular,
+                description = request.Description,
+                discount_percentage = request.DiscountPercentage,
+                display_order = request.DisplayOrder
             };
             _db.plans.Add(plan);
             await _db.SaveChangesAsync();
@@ -78,10 +96,16 @@ namespace SocietyLedger.Infrastructure.Services.Admin
             var plan = await _db.plans.FirstOrDefaultAsync(x => x.id == id);
             if (plan == null) throw new NotFoundException("Plan", id.ToString());
             plan.name = request.Name;
-            plan.monthly_amount = request.MonthlyAmount;
+            plan.price = request.Price;
             plan.currency = request.Currency;
             plan.is_active = request.IsActive;
             plan.duration_months = request.DurationMonths;
+            plan.max_flats = request.MaxFlats;
+            plan.plan_group = request.PlanGroup;
+            plan.is_popular = request.IsPopular;
+            plan.description = request.Description;
+            plan.discount_percentage = request.DiscountPercentage;
+            plan.display_order = request.DisplayOrder;
             await _db.SaveChangesAsync();
             return await GetPlanByIdAsync(plan.id) ?? throw new Exception("Failed to update plan");
         }

@@ -11,6 +11,10 @@ namespace SocietyLedger.Api.Endpoints.Admin
 {
     public static class AdminPaymentEndpoints
     {
+        /// <summary>
+        /// Maps admin payment routes: paginated cross-society payment listing with optional filters.
+        /// Requires the SuperAdmin policy.
+        /// </summary>
         public static void MapAdminPaymentRoutes(this RouteGroupBuilder app, string groupName, ApiVersionSet versionSet)
         {
             var v1 = new ApiVersion(ApiConstants.API_VERSION_1_0);

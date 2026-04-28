@@ -81,7 +81,7 @@ namespace SocietyLedger.Api.Endpoints
                 {
                     var ip = ctx.GetClientIp();
                     var res = await authService.RegisterAsync(request, ip);
-                    // Deliver refresh token as httpOnly cookie; [JsonIgnore] keeps it out of the body.
+                    // Deliver the refresh token as an httpOnly cookie; [JsonIgnore] keeps it out of the response body.
                     SetRefreshTokenCookie(ctx, res.RefreshToken, res.RefreshTokenExpiresAt, env);
                     return Results.Ok(ApiResponse<RegisterResponse>.Success(res, "Account created successfully"));
                 })
@@ -145,7 +145,8 @@ namespace SocietyLedger.Api.Endpoints
                         return Results.Json(errorResponse, statusCode: 401);
                     }
 
-                    // Log the hash (safe) so operators can correlate with DB rows.
+                    // Log the token hash (never the raw value) so operators can correlate
+                    // refresh attempts with rows in the token store.
                     try
                     {
                         var hashed = tokenService.HashToken(refreshToken);
@@ -307,6 +308,130 @@ namespace SocietyLedger.Api.Endpoints
     .Produces<ErrorResponse>(401)
     .Produces<ErrorResponse>(404)
     .Produces<ErrorResponse>(500);
+
+            // Forgot Password
+            app.MapPost("/forgot-password",
+            [AllowAnonymous]
+            [SwaggerOperation(
+                Summary = "Initiate password reset",
+                Description = "Sends a password reset email to the provided email address. Always returns 200 success (no account enumeration)."
+            )]
+            async ([FromBody] ForgotPasswordRequest request, IAuthService authService, HttpContext ctx) =>
+            {
+                var ip = ctx.GetClientIp();
+                var traceId = ctx.TraceIdentifier;
+
+                try
+                {
+                    // Build the reset link template: https://app/reset-password?token={0}
+                    // The token will be URL-encoded by string.Format
+                    var resetLinkTemplate = "https://app.example.com/reset-password?token={0}";
+
+                    await authService.ForgotPasswordAsync(request.Email, resetLinkTemplate, ip);
+
+                    Log.Information("Forgot password request for {Email} from {IP} TraceId={TraceId}", request.Email, ip, traceId);
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "Error in forgot password for {Email} from {IP} TraceId={TraceId}", request.Email, ip, traceId);
+                }
+
+                // Always return 200 to avoid account enumeration
+                return Results.Ok(new { ok = true, message = "If an account exists with this email, password reset instructions have been sent." });
+            })
+            .AddEndpointFilter<FluentValidationFilter<ForgotPasswordRequest>>()
+            .RequireRateLimiting("AuthPolicy")
+            .WithTags(groupName)
+            .WithApiVersionSet(versionSet)
+            .HasApiVersion(version_1_0)
+            .WithName("ForgotPassword")
+            .Produces(200)
+            .Produces<ErrorResponse>(400)
+            .Produces<ErrorResponse>(500);
+
+            // Validate Password Reset Token
+            app.MapGet("/reset-password/validate",
+            [AllowAnonymous]
+            [SwaggerOperation(
+                Summary = "Validate password reset token",
+                Description = "Validates that a password reset token is valid, unexpired, and unused."
+            )]
+            async ([FromQuery] string token, IAuthService authService, HttpContext ctx) =>
+            {
+                if (string.IsNullOrWhiteSpace(token))
+                {
+                    var errorResponse = ErrorResponse.Create(ErrorCodes.VALIDATION_FAILED, "Token is required", ctx.TraceIdentifier);
+                    return Results.Json(errorResponse, statusCode: 400);
+                }
+
+                try
+                {
+                    await authService.ValidatePasswordResetTokenAsync(token);
+                    return Results.Ok(new { ok = true });
+                }
+                catch (ValidationException)
+                {
+                    return Results.Json(
+                        new { ok = false, code = "invalid_or_expired" },
+                        statusCode: 400);
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "Error validating password reset token. TraceId={TraceId}", ctx.TraceIdentifier);
+                    var errorResponse = ErrorResponse.Create(ErrorCodes.INTERNAL_SERVER_ERROR, ErrorMessages.INTERNAL_SERVER_ERROR, ctx.TraceIdentifier);
+                    return Results.Json(errorResponse, statusCode: 500);
+                }
+            })
+            .WithTags(groupName)
+            .WithApiVersionSet(versionSet)
+            .HasApiVersion(version_1_0)
+            .WithName("ValidateResetToken")
+            .Produces(200)
+            .Produces(400)
+            .Produces<ErrorResponse>(500);
+
+            // Reset Password
+            app.MapPost("/reset-password",
+            [AllowAnonymous]
+            [SwaggerOperation(
+                Summary = "Reset password with token",
+                Description = "Resets the password using a valid password reset token. Token is single-use and becomes invalid after reset."
+            )]
+            async ([FromBody] ResetPasswordRequest request, IAuthService authService, HttpContext ctx) =>
+            {
+                var ip = ctx.GetClientIp();
+                var traceId = ctx.TraceIdentifier;
+
+                try
+                {
+                    var res = await authService.ResetPasswordAsync(request.Token, request.NewPassword, ip);
+                    Log.Information("Password reset successfully from {IP} TraceId={TraceId}", ip, traceId);
+                    return Results.Ok(res);
+                }
+                catch (ValidationException ex)
+                {
+                    Log.Warning("Password reset validation error from {IP} TraceId={TraceId}: {Message}", ip, traceId, ex.Message);
+                    return Results.Json(
+                        new { ok = false, code = "invalid_or_expired", message = ex.Message },
+                        statusCode: 400);
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "Error resetting password from {IP} TraceId={TraceId}", ip, traceId);
+                    var errorResponse = ErrorResponse.Create(ErrorCodes.INTERNAL_SERVER_ERROR, ErrorMessages.INTERNAL_SERVER_ERROR, ctx.TraceIdentifier);
+                    return Results.Json(errorResponse, statusCode: 500);
+                }
+            })
+            .AddEndpointFilter<FluentValidationFilter<ResetPasswordRequest>>()
+            .RequireRateLimiting("AuthPolicy")
+            .WithTags(groupName)
+            .WithApiVersionSet(versionSet)
+            .HasApiVersion(version_1_0)
+            .WithName("ResetPassword")
+            .Produces(200)
+            .Produces(400)
+            .Produces<ErrorResponse>(429)
+            .Produces<ErrorResponse>(500);
         }
     }
 }

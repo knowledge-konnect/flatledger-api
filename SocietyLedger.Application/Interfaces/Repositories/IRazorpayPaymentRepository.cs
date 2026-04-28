@@ -10,5 +10,10 @@ namespace SocietyLedger.Application.Interfaces.Repositories
         Task AddAsync(Payment payment);
         Task UpdateAsync(Payment payment);
         Task SaveChangesAsync();
+        /// <summary>
+        /// Acquires a PostgreSQL advisory lock for the duration of <paramref name="action"/>,
+        /// then releases it. Used to serialise concurrent payment verification and webhook processing.
+        /// </summary>
+        Task ExecuteWithAdvisoryLockAsync(long lockKey, Func<Task> action);
     }
 }

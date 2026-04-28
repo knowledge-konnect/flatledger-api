@@ -25,6 +25,7 @@ namespace SocietyLedger.Api.Extensions
 
             // Add application-level services (use cases)
             services.AddScoped<IAuthService, AuthService>();
+            services.AddScoped<IEmailService, EmailService>();
             services.AddScoped<IFlatService, FlatService>();
             services.AddScoped<IUserService, UserService>();
             services.AddScoped<ISubscriptionService, SubscriptionService>();
@@ -54,8 +55,9 @@ namespace SocietyLedger.Api.Extensions
 
         /// <summary>
         /// Registers infrastructure services: EF Core (Npgsql), Dapper, all repositories,
-        /// security helpers (PasswordHasher, TokenService), and Hangfire job classes.
-        /// Uses pgBouncer-compatible settings with a 120-second command timeout for Supabase cold starts.
+        /// security helpers (PasswordHasher, TokenService), and endpoint filters.
+        /// Uses a 120-second command timeout to handle Supabase free-tier cold starts.
+        /// pgBouncer transaction mode (port 6543) is assumed — savepoints and retries are disabled.
         /// </summary>
         public static IServiceCollection AddInfrastructureServices(this IServiceCollection services, IConfiguration configuration)
         {
@@ -68,8 +70,7 @@ namespace SocietyLedger.Api.Extensions
             services.AddDbContext<AppDbContext>(options =>
                 options.UseNpgsql(dataSource, npgsql =>
                 {
-                    // pgBouncer transaction mode (port 6543): no savepoints, no retry.
-                    // 120s to handle Supabase free-tier cold starts.
+                    // 120s timeout to handle Supabase free-tier cold starts (can take 60-90s to resume).
                     npgsql.CommandTimeout(120);
                 }));
 
@@ -108,6 +109,7 @@ namespace SocietyLedger.Api.Extensions
             services.AddScoped<ITokenService, TokenService>();
 
             services.AddSingleton(typeof(FluentValidationFilter<>));
+            services.AddSingleton<ViewerForbiddenFilter>();
 
             services.Configure<JwtSettings>(configuration.GetSection("JwtSettings"));
 
@@ -123,7 +125,5 @@ namespace SocietyLedger.Api.Extensions
             services.AddMemoryCache();
             return services;
         }
-
-        // ...existing code...
     }
 }

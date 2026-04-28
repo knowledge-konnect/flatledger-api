@@ -196,7 +196,7 @@ namespace SocietyLedger.Api.Endpoints
                 [Authorize]
                 [SwaggerOperation(
                     Summary = "Download Monthly Report",
-                    Description = "Downloads an Excel report for the given month with fund position, flat payment status, and expenses by category."
+                    Description = "Downloads an Excel report for the given month with fund position, flat payment status, and expenses by category.\n\nAll monetary balances are signed: Positive = member owes the society; Negative = society owes the member (advance)."
                 )]
                 async (
                     IReportService reportService,

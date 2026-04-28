@@ -11,6 +11,10 @@ namespace SocietyLedger.Api.Endpoints.Admin
 {
     public static class AdminInvoiceEndpoints
     {
+        /// <summary>
+        /// Maps admin invoice routes: paginated SaaS subscription invoice listing with optional filters.
+        /// Requires the SuperAdmin policy.
+        /// </summary>
         public static void MapAdminInvoiceRoutes(this RouteGroupBuilder app, string groupName, ApiVersionSet versionSet)
         {
             var v1 = new ApiVersion(ApiConstants.API_VERSION_1_0);

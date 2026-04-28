@@ -47,7 +47,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                 // automatically when the transaction commits or rolls back.
                 var now = DateTime.UtcNow;
                 var lockKey = (long)((uint)now.Year << 12 | (uint)now.Month);
-                await _db.Database.ExecuteSqlRawAsync($"SELECT pg_advisory_xact_lock({lockKey})");
+                await _db.Database.ExecuteSqlAsync($"SELECT pg_advisory_xact_lock({lockKey})");
 
                 // Generate the number inside the lock so the read and the insert are atomic.
                 invoice.InvoiceNumber = await GenerateNextInvoiceNumberAsync(now);

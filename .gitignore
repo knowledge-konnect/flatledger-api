@@ -33,3 +33,29 @@ nuget.config
 ## OS ##
 .DS_Store
 Thumbs.db
+
+## IDE ##
+.idea/
+
+## Secrets & Certificates ##
+.env
+*.env
+*.pfx
+*.cer
+*.key
+*.pem
+
+## Test output ##
+TestResults/
+coverage/
+
+## Publish output ##
+publish/
+
+## Local databases ##
+*.db
+*.sqlite
+*.sqlite3
+
+## Docker local overrides (may contain secrets) ##
+docker-compose.override.yml

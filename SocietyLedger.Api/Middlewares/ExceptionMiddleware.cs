@@ -58,6 +58,8 @@ namespace SocietyLedger.Api.Middlewares
 
         private static Task HandleExceptionAsync(HttpContext context, Exception exception, string correlationId)
         {
+            // Map domain exceptions to HTTP status codes and structured error payloads.
+            // Unrecognised exceptions fall through to 500 with a generic message to avoid leaking internals.
             var (statusCode, response) = exception switch
             {
                 ValidationException vex => (

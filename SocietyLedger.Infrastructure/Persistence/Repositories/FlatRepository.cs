@@ -114,6 +114,33 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             }
         }
 
+        /// <summary>
+        /// Batch adds multiple flats in a single database operation (one SaveChanges call).
+        /// Returns the created flats with generated IDs and PublicIds.
+        /// </summary>
+        public async Task<IEnumerable<Flat>> BulkAddAsync(IEnumerable<Flat> flats)
+        {
+            if (flats == null || !flats.Any())
+                return Enumerable.Empty<Flat>();
+
+            var entities = flats.Select(f => f.ToEntity()).ToList();
+            
+            await _db.flats.AddRangeAsync(entities);
+            await _db.SaveChangesAsync();
+
+            // Copy generated IDs back to domain models
+            var result = new List<Flat>();
+            foreach (var entity in entities)
+            {
+                var flat = entity.ToDomain();
+                flat.Id = entity.id;
+                flat.PublicId = entity.public_id;
+                result.Add(flat);
+            }
+
+            return result;
+        }
+
         public async Task SaveChangesAsync()
         {
             await _db.SaveChangesAsync();

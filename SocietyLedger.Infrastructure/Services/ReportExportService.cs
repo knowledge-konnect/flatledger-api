@@ -66,6 +66,14 @@ namespace SocietyLedger.Infrastructure.Services
 
             row = WriteReportTitle(ws, row, ColStart, colEnd, data.SocietyName, $"Monthly Report - {data.PeriodLabel}");
 
+            // Legend: explain sign semantics for balances (positive = member owes, negative = society owes)
+            ws.Range(row, ColStart, row, colEnd).Merge();
+            ws.Cell(row, ColStart).Value = "Note: Positive = member owes the society; Negative = society owes member (advance).";
+            ws.Cell(row, ColStart).Style.Font.Italic = true;
+            ws.Cell(row, ColStart).Style.Font.FontSize = 9;
+            ws.Cell(row, ColStart).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
+            row += 2;
+
             // Fund Position
             row = WriteSectionHeader(ws, row, ColStart, colEnd, "Fund Position");
             row = WriteKvRow(ws, row, ColStart, "Opening Balance", data.FundPosition.OpeningBalance, isAmount: true);

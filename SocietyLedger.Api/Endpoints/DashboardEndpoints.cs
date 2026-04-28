@@ -1,88 +1,54 @@
+using Asp.Versioning;
+using Asp.Versioning.Builder;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Serilog;
 using SocietyLedger.Api.Extensions;
 using SocietyLedger.Application.DTOs.Dashboard;
-using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Infrastructure.Services;
 using SocietyLedger.Shared;
+using Swashbuckle.AspNetCore.Annotations;
 
 namespace SocietyLedger.Api.Endpoints
 {
     public static class DashboardEndpoints
     {
         /// <summary>
-        /// Maps dashboard routes: aggregated society financial summary for the authenticated user.
+        /// Maps dashboard routes: aggregated financial summary for the authenticated user's society.
         /// </summary>
-        public static void MapDashboardEndpoints(this WebApplication app)
+        public static void MapDashboardRoutes(this RouteGroupBuilder app, string groupName, ApiVersionSet versionSet)
         {
-            var group = app.MapGroup("/api/dashboard")
-                .WithName("Dashboard")
-                .RequireAuthorization()
-                .WithTags("Dashboard");
+            var v1 = new ApiVersion(ApiConstants.API_VERSION_1_0);
 
-            group.MapGet("/", GetDashboard)
-                .WithName("GetDashboard")
-                .WithDescription("Get complete dashboard data for authenticated user's society")
-                .Produces<ApiResponse<DashboardResponseDto>>(StatusCodes.Status200OK)
-                .Produces<ErrorResponse>(StatusCodes.Status400BadRequest)
-                .Produces(StatusCodes.Status401Unauthorized)
-                .Produces(StatusCodes.Status403Forbidden)
-                .Produces<ErrorResponse>(StatusCodes.Status500InternalServerError);
-        }
-
-        [Authorize]
-        private static async Task<IResult> GetDashboard(
-            IDashboardService dashboardService,
-            IUserRepository userRepository,
-            HttpContext httpContext,
-            [FromQuery] DateTime? startDate,
-            [FromQuery] DateTime? endDate,
-            CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                var userId = httpContext.GetUserId();
-                if (userId == 0)
+            app.MapGet("/",
+                [Authorize]
+                [SwaggerOperation(
+                    Summary = "Get dashboard",
+                    Description = "Returns aggregated society financial summary for the authenticated user."
+                )]
+                async (
+                    IDashboardService dashboardService,
+                    HttpContext ctx,
+                    [FromQuery] DateTime? startDate,
+                    [FromQuery] DateTime? endDate,
+                    CancellationToken cancellationToken) =>
                 {
-                    Log.Warning("Unauthorized dashboard request - invalid user ID");
-                    var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid or missing authentication token", httpContext.TraceIdentifier);
-                    return Results.Json(errorResponse, statusCode: 401);
-                }
+                    if (startDate.HasValue && endDate.HasValue && startDate > endDate)
+                        return Results.BadRequest(ApiResponse<object>.Fail("Start date must be before end date"));
 
-                // Get user to extract societyId
-                var user = await userRepository.GetByIdAsync(userId);
-                if (user == null || !user.IsActive)
-                {
-                    Log.Warning("Dashboard request by inactive or non-existent user {UserId}", userId);
-                    var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "User not found or inactive", httpContext.TraceIdentifier);
-                    return Results.Json(errorResponse, statusCode: 401);
-                }
-
-                // Validate dates if provided
-                if (startDate.HasValue && endDate.HasValue && startDate > endDate)
-                    return Results.BadRequest(
-                        ApiResponse<object>.Fail("Start date must be before end date"));
-
-                // Get dashboard data
-                var dashboardData = await dashboardService.GetDashboardDataAsync(
-                    user.SocietyId, startDate, endDate, cancellationToken);
-
-                return Results.Ok(
-                    ApiResponse<DashboardResponseDto>.Success(
-                        dashboardData,
-                        "Dashboard data retrieved successfully"));
-            }
-            catch (ArgumentException ex)
-            {
-                return Results.BadRequest(
-                    ApiResponse<object>.Fail(ex.Message));
-            }
-            catch (Exception)
-            {
-                return Results.StatusCode(
-                    StatusCodes.Status500InternalServerError);
-            }
+                    // Society ID resolution is handled inside the service using the userId claim.
+                    var userId = ctx.GetUserId();
+                    var data = await dashboardService.GetDashboardDataAsync(userId, startDate, endDate, cancellationToken);
+                    return Results.Ok(ApiResponse<DashboardResponseDto>.Success(data, "Dashboard data retrieved successfully"));
+                })
+            .WithTags(groupName)
+            .WithApiVersionSet(versionSet)
+            .HasApiVersion(v1)
+            .WithName("GetDashboard")
+            .Produces<ApiResponse<DashboardResponseDto>>(200)
+            .Produces<ErrorResponse>(400)
+            .Produces<ErrorResponse>(401)
+            .Produces<ErrorResponse>(500);
         }
     }
 }

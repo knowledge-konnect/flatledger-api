@@ -12,6 +12,10 @@ namespace SocietyLedger.Api.Endpoints.Admin
 {
     public static class AdminPlatformSettingEndpoints
     {
+        /// <summary>
+        /// Maps admin platform setting routes: list, get, upsert, and delete key-value platform settings.
+        /// Requires the SuperAdmin policy.
+        /// </summary>
         public static void MapAdminPlatformSettingRoutes(this RouteGroupBuilder app, string groupName, ApiVersionSet versionSet)
         {
             var v1 = new ApiVersion(ApiConstants.API_VERSION_1_0);

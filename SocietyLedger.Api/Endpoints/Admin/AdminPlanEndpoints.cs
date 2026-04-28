@@ -12,6 +12,10 @@ namespace SocietyLedger.Api.Endpoints.Admin
 {
     public static class AdminPlanEndpoints
     {
+        /// <summary>
+        /// Maps admin plan routes: list, get, create, update, and delete subscription plans.
+        /// Requires the SuperAdmin policy.
+        /// </summary>
         public static void MapAdminPlanRoutes(this RouteGroupBuilder app, string groupName, ApiVersionSet versionSet)
         {
             var version_1_0 = new ApiVersion(ApiConstants.API_VERSION_1_0);

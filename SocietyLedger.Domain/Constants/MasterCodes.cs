@@ -70,7 +70,7 @@ namespace SocietyLedger.Domain.Constants
     public static class FlatStatusCodes
     {
         public const string OwnerOccupied = "owner_occupied";
-        public const string TenantOccupied = "tenant_occupied";
+        public const string TenantOccupied = "rented";
         public const string Vacant = "vacant";
         public const string UnderMaintenance = "under_maintenance";
     }

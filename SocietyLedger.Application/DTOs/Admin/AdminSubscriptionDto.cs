@@ -6,6 +6,8 @@ namespace SocietyLedger.Application.DTOs.Admin
         public long UserId { get; set; }
         public string UserName { get; set; } = null!;
         public string? UserEmail { get; set; }
+        public long SocietyId { get; set; }
+        public string? SocietyName { get; set; }
         public Guid PlanId { get; set; }
         public string PlanName { get; set; } = null!;
         public string Status { get; set; } = null!;

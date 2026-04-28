@@ -1,9 +1,12 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Domain.Constants;
 using SocietyLedger.Domain.Entities;
+using SocietyLedger.Infrastructure.Persistence.Contexts;
+using System.Text.Json;
 
 namespace SocietyLedger.Api.BackgroundServices
 {
@@ -15,7 +18,6 @@ namespace SocietyLedger.Api.BackgroundServices
         private readonly ILogger<TrialExpirationService> _logger;
         private readonly IServiceProvider _serviceProvider;
         private readonly IConfiguration _configuration;
-        private readonly TimeSpan _checkInterval;
         private readonly TimeSpan _retryDelay;
 
         public TrialExpirationService(
@@ -26,7 +28,6 @@ namespace SocietyLedger.Api.BackgroundServices
             _logger = logger;
             _serviceProvider = serviceProvider;
             _configuration = configuration;
-            _checkInterval = TimeSpan.FromHours(_configuration.GetValue<int>("BackgroundServices:TrialExpirationIntervalHours", 24));
             _retryDelay = TimeSpan.FromMinutes(_configuration.GetValue<int>("BackgroundServices:TrialExpirationRetryMinutes", 5));
         }
 
@@ -36,14 +37,20 @@ namespace SocietyLedger.Api.BackgroundServices
 
             while (!stoppingToken.IsCancellationRequested)
             {
+                // Align to next UTC midnight so the check always runs at a predictable time
+                // regardless of when the process started or restarted.
+                var now      = DateTime.UtcNow;
+                var midnight = now.Date.AddDays(1);
+                var delay    = midnight - now;
+                try { await Task.Delay(delay, stoppingToken); }
+                catch (OperationCanceledException) { break; }
+
                 try
                 {
                     await CheckExpiredTrialsAsync();
-                    await Task.Delay(_checkInterval, stoppingToken);
                 }
                 catch (OperationCanceledException)
                 {
-                    // Service is stopping — exit gracefully
                     break;
                 }
                 catch (Exception ex)
@@ -59,44 +66,45 @@ namespace SocietyLedger.Api.BackgroundServices
         {
             using var scope = _serviceProvider.CreateScope();
             var subscriptionRepo = scope.ServiceProvider.GetRequiredService<ISubscriptionRepository>();
-            var eventRepo = scope.ServiceProvider.GetRequiredService<ISubscriptionEventRepository>();
+            var eventRepo        = scope.ServiceProvider.GetRequiredService<ISubscriptionEventRepository>();
+            var db               = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
             var expiredTrials = (await subscriptionRepo.GetExpiredTrialsAsync()).ToList();
-            var now = DateTime.UtcNow;
+            if (expiredTrials.Count == 0)
+                return;
+
+            var now    = DateTime.UtcNow;
+            var events = new List<SubscriptionEvent>(expiredTrials.Count);
 
             foreach (var subscription in expiredTrials)
             {
-                try
-                {
-                    subscription.Status = SubscriptionStatusCodes.Expired;
-                    subscription.UpdatedAt = now;
-                    await subscriptionRepo.UpdateAsync(subscription);
+                subscription.Status    = SubscriptionStatusCodes.Expired;
+                subscription.UpdatedAt = now;
 
-                    // Create subscription event
-                    await eventRepo.CreateAsync(new SubscriptionEvent
-                    {
-                        Id = Guid.NewGuid(),
-                        UserId = subscription.UserId,
-                        SubscriptionId = subscription.Id,
-                        EventType = "trial_expired",
-                        OldStatus = SubscriptionStatusCodes.Trial,
-                        NewStatus = SubscriptionStatusCodes.Expired,
-                        Metadata = $"{{\"trial_end\":\"{subscription.TrialEnd}\"}}",
-                        CreatedAt = now
-                    });
+                // Use JsonSerializer — never interpolate values into JSON strings.
+                var eventMeta = JsonSerializer.Serialize(new { trial_end = subscription.TrialEnd });
 
-                    _logger.LogInformation("Trial expired for user {UserId}, subscription {SubscriptionId}",
-                        subscription.UserId, subscription.Id);
-                }
-                catch (Exception ex)
+                events.Add(new SubscriptionEvent
                 {
-                    _logger.LogError(ex, "Error processing expired trial for user {UserId}", subscription.UserId);
-                }
+                    Id             = Guid.NewGuid(),
+                    UserId         = subscription.UserId,
+                    SubscriptionId = subscription.Id,
+                    EventType      = "trial_expired",
+                    OldStatus      = SubscriptionStatusCodes.Trial,
+                    NewStatus      = SubscriptionStatusCodes.Expired,
+                    Metadata       = eventMeta,
+                    CreatedAt      = now
+                });
             }
 
-            if (expiredTrials.Count > 0)
-            {
-                _logger.LogInformation("Processed {Count} expired trials", expiredTrials.Count);
-            }
+            // Both writes commit atomically — if event insert fails the subscription
+            // update is rolled back, preserving the Trial status for the next run.
+            await using var tx = await db.Database.BeginTransactionAsync();
+            await subscriptionRepo.BulkUpdateAsync(expiredTrials);
+            await eventRepo.BulkCreateAsync(events);
+            await tx.CommitAsync();
+
+            _logger.LogInformation("Processed {Count} expired trials", expiredTrials.Count);
         }
     }
 }

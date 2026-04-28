@@ -86,31 +86,16 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                 return null;
 
             var lowered = usernameOrEmail.ToLowerInvariant();
-            var row = await (from u in _db.users.AsNoTracking()
-                             join r in _db.roles.AsNoTracking() on u.role_id equals r.id into rg
-                             from r in rg.DefaultIfEmpty()
-                             join s in _db.societies.AsNoTracking() on u.society_id equals s.id into sg
-                             from s in sg.DefaultIfEmpty()
-                             where ((u.email ?? string.Empty).ToLower() == lowered) ||
-                                   ((u.username ?? string.Empty).ToLower() == lowered)
-                                   && !u.is_deleted
-                             select new
-                             {
-                                 UserEntity = u,
-                                 RoleEntity = r,
-                                 SocietyName = s != null ? s.name : null,
-                                 SocietyPublicId = s != null ? s.public_id : Guid.Empty
-                             })
-                             .FirstOrDefaultAsync();
+            var efUser = await _db.users
+                .Include(u => u.role)
+                .Include(u => u.society)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => 
+                    ((u.email ?? string.Empty).ToLower() == lowered ||
+                     (u.username ?? string.Empty).ToLower() == lowered) &&
+                    !u.is_deleted);
 
-            if (row == null) return null;
-
-            var domainUser = row.UserEntity.ToDomain();
-            domainUser.Role = row.RoleEntity != null ? row.RoleEntity.ToDomain() : null;
-            domainUser.SocietyName = row.SocietyName ?? string.Empty;
-            domainUser.SocietyPublicId = row.SocietyPublicId;
-            return domainUser;
-
+            return efUser?.ToDomain();
         }
 
         /// <summary>

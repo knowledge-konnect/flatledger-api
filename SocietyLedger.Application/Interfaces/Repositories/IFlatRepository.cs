@@ -10,6 +10,7 @@ namespace SocietyLedger.Application.Interfaces.Repositories
         Task<Flat?> GetByEmailAndSocietyAsync(string email, long societyId);
         Task<Flat?> GetByMobileAndSocietyAsync(string mobile, long societyId);
         Task AddAsync(Flat entity);
+        Task<IEnumerable<Flat>> BulkAddAsync(IEnumerable<Flat> flats);
         Task UpdateAsync(Flat entity, long societyId);
         Task DeleteByPublicIdAsync(Guid publicId, long societyId);
         Task SaveChangesAsync();

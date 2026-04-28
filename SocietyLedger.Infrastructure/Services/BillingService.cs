@@ -16,12 +16,14 @@ namespace SocietyLedger.Infrastructure.Services
         private readonly AppDbContext _db;
         private readonly IUserContext _userContext;
         private readonly ILogger<BillingService> _logger;
+        private readonly IDashboardService _dashboardService;
 
-        public BillingService(AppDbContext db, IUserContext userContext, ILogger<BillingService> logger)
+        public BillingService(AppDbContext db, IUserContext userContext, ILogger<BillingService> logger, IDashboardService dashboardService)
         {
-            _db          = db;
-            _userContext = userContext;
-            _logger      = logger;
+            _db               = db;
+            _userContext      = userContext;
+            _logger           = logger;
+            _dashboardService = dashboardService;
         }
 
         // ------------------------------------------------------------------ //
@@ -106,6 +108,8 @@ namespace SocietyLedger.Infrastructure.Services
                 "Bills generated: societyId={SocietyId}, period={Period}, count={Count}, by={UserId}",
                 societyId, period, bills.Count, userId);
 
+            _dashboardService.InvalidateDashboardCache(societyId);
+
             // #6 — Warn when any bills were generated with ₹0 (no maintenance amount configured).
             var zeroBillCount = bills.Count(b => b.amount == 0m);
             var warnings = zeroBillCount > 0
@@ -162,11 +166,11 @@ namespace SocietyLedger.Infrastructure.Services
                 "GenerateMonthlyBillsAsync started. BillingMonth={BillingMonth:yyyy-MM}",
                 billingMonth);
 
-            // ---- 1. Collect all distinct society IDs that have active flats ----------
-            var societyIds = await _db.flats
-                .Where(f => !f.is_deleted)
-                .Select(f => f.society_id)
-                .Distinct()
+            // Fix #10: query societies table directly — more accurate and avoids loading all flat rows
+            // just to get distinct society IDs.
+            var societyIds = await _db.societies
+                .Where(s => !s.is_deleted)
+                .Select(s => s.id)
                 .ToListAsync();
 
             if (societyIds.Count == 0)
@@ -187,22 +191,33 @@ namespace SocietyLedger.Infrastructure.Services
                 };
             }
 
-            // ---- 2. Process each society independently ----------------------------
+            // ---- 2. Batch-load all read data before the society loop (3 queries total, not 3N) ----
+            var allMaintConfigs = await _db.maintenance_configs
+                .AsNoTracking()
+                .Where(c => societyIds.Contains(c.society_id))
+                .ToDictionaryAsync(c => c.society_id);
+
+            var allFlats = (await _db.flats
+                .AsNoTracking()
+                .Where(f => societyIds.Contains(f.society_id) && !f.is_deleted)
+                .Select(f => new { f.society_id, f.id, f.maintenance_amount })
+                .ToListAsync())
+                .ToLookup(f => f.society_id);
+
+            var existingBillFlatIds = (await _db.bills
+                .Where(b => societyIds.Contains(b.society_id) && b.period == period && !b.is_deleted)
+                .Select(b => new { b.society_id, b.flat_id })
+                .ToListAsync())
+                .ToLookup(b => b.society_id, b => b.flat_id);
+
+            // ---- 3. Process each society independently ----------------------------
             foreach (var societyId in societyIds)
             {
                 try
                 {
-                    // Fetch the society's maintenance config to get the default monthly charge.
-                    var maintConfig = await _db.maintenance_configs
-                        .AsNoTracking()
-                        .FirstOrDefaultAsync(c => c.society_id == societyId);
-
-                    // Project to the minimum fields needed — avoid loading full flat entities.
-                    var flats = await _db.flats
-                        .AsNoTracking()
-                        .Where(f => f.society_id == societyId && !f.is_deleted)
-                        .Select(f => new { f.id, f.maintenance_amount })
-                        .ToListAsync();
+                    var maintConfig = allMaintConfigs.GetValueOrDefault(societyId);
+                    var flats       = allFlats[societyId].ToList();
+                    var flatIdsWithBill = existingBillFlatIds[societyId].ToHashSet();
 
                     totalFlatsProcessed += flats.Count;
 
@@ -213,15 +228,6 @@ namespace SocietyLedger.Infrastructure.Services
                             societyId);
                         continue;
                     }
-
-                    // ---- Bulk idempotency check: one query per society, not per flat ----
-                    // Fetch the set of flat IDs that already have a bill for this period.
-                    var flatIdsWithBill = await _db.bills
-                        .Where(b => b.society_id == societyId
-                                 && b.period     == period
-                                 && !b.is_deleted)
-                        .Select(b => b.flat_id)
-                        .ToHashSetAsync();
 
                     var now      = DateTime.UtcNow;
                     var newBills = new List<bill>(flats.Count);
@@ -234,9 +240,13 @@ namespace SocietyLedger.Infrastructure.Services
                             continue;
                         }
 
-                        // Amount from maintenance_config.default_monthly_charge (society-wide default).
-                        // If not configured, amount is 0 (edge-case guard).
-                        var amount = maintConfig?.default_monthly_charge ?? 0m;
+                        // Amount priority (same rule as manual GenerateBillsAsync):
+                        //   1. flat.maintenance_amount — flat-level override when configured (> 0)
+                        //   2. maintenance_config.default_monthly_charge — society-wide default
+                        //   3. 0 if neither is configured (edge-case guard)
+                        var amount = flat.maintenance_amount > 0
+                            ? flat.maintenance_amount
+                            : (maintConfig?.default_monthly_charge ?? 0m);
 
                         newBills.Add(new bill
                         {
@@ -263,6 +273,7 @@ namespace SocietyLedger.Infrastructure.Services
                             await _db.SaveChangesAsync();
                             await tx.CommitAsync();
                             billsCreated += newBills.Count;
+                            _dashboardService.InvalidateDashboardCache(societyId);
                         }
                         catch
                         {
@@ -321,6 +332,7 @@ namespace SocietyLedger.Infrastructure.Services
 
         /// <summary>
         /// Generates a bill for a single flat for the given month if it does not already exist.
+        /// Fix #4: unique constraint violation caught to handle concurrent creation gracefully.
         /// </summary>
         public async Task GenerateBillForFlatAsync(Guid flatPublicId, long userId, DateTime billingMonth)
         {
@@ -336,12 +348,10 @@ namespace SocietyLedger.Infrastructure.Services
             if (flat == null)
                 throw new NotFoundException("Flat", $"Flat with public id {flatPublicId} not found or does not belong to this society.");
 
-            // Check if bill already exists for this flat and period
             var exists = await _db.bills.AnyAsync(b => b.flat_id == flat.id && b.period == period && !b.is_deleted);
             if (exists)
-                return; // Idempotent: do nothing if bill already exists
+                return;
 
-            // Get society maintenance config
             var maintConfig = await _db.maintenance_configs
                 .AsNoTracking()
                 .FirstOrDefaultAsync(c => c.society_id == flat.society_id);
@@ -351,7 +361,7 @@ namespace SocietyLedger.Infrastructure.Services
                 : (maintConfig?.default_monthly_charge ?? 0m);
 
             var now = DateTime.UtcNow;
-            var bill = new bill
+            var newBill = new bill
             {
                 society_id   = flat.society_id,
                 flat_id      = flat.id,
@@ -365,10 +375,22 @@ namespace SocietyLedger.Infrastructure.Services
                 source       = "flat-create"
             };
 
-            await _db.bills.AddAsync(bill);
-            await _db.SaveChangesAsync();
-
-            _logger.LogInformation("Generated bill for flat {FlatId}, period {Period}", flat.id, period);
+            try
+            {
+                await _db.bills.AddAsync(newBill);
+                await _db.SaveChangesAsync();
+                _logger.LogInformation("Generated bill for flat {FlatId}, period {Period}", flat.id, period);
+            }
+            catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
+            {
+                // Fix #4: concurrent creation — another request already inserted this bill.
+                _logger.LogDebug("Bill already exists for flat {FlatId} period {Period} — concurrent insert, skipped", flat.id, period);
+            }
         }
+
+        private static bool IsUniqueConstraintViolation(DbUpdateException ex)
+            => ex.InnerException?.Message.Contains("unique", StringComparison.OrdinalIgnoreCase) == true
+            || ex.InnerException?.Message.Contains("duplicate", StringComparison.OrdinalIgnoreCase) == true
+            || ex.InnerException?.Message.Contains("23505") == true;
     }
 }

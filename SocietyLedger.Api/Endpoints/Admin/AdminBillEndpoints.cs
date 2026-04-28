@@ -11,6 +11,10 @@ namespace SocietyLedger.Api.Endpoints.Admin
 {
     public static class AdminBillEndpoints
     {
+        /// <summary>
+        /// Maps admin bill routes: paginated cross-society bill listing with optional filters.
+        /// Requires the SuperAdmin policy.
+        /// </summary>
         public static void MapAdminBillRoutes(this RouteGroupBuilder app, string groupName, ApiVersionSet versionSet)
         {
             var v1 = new ApiVersion(ApiConstants.API_VERSION_1_0);

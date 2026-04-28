@@ -15,6 +15,10 @@ namespace SocietyLedger.Api.Endpoints.Admin
 {
     public static class AdminAuthEndpoints
     {
+        /// <summary>
+        /// Maps admin authentication routes: login and profile retrieval.
+        /// All routes require the SuperAdmin policy except the login endpoint.
+        /// </summary>
         public static void MapAdminAuthRoutes(
             this RouteGroupBuilder app,
             string groupName,
@@ -39,6 +43,7 @@ namespace SocietyLedger.Api.Endpoints.Admin
                     return Results.Ok(ApiResponse<AdminLoginResponse>.Success(res, "Admin logged in successfully"));
                 })
             .AddEndpointFilter<FluentValidationFilter<AdminLoginRequest>>()
+            .RequireRateLimiting("AuthPolicy")
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)
             .HasApiVersion(version_1_0)
@@ -53,11 +58,11 @@ namespace SocietyLedger.Api.Endpoints.Admin
                 [Authorize(Policy = "SuperAdmin")]
                 [SwaggerOperation(
                     Summary = "Admin profile",
-                    Description = "Returns the authenticated platform admin's profile."
+                    Description = "Returns the authenticated platform admin's profile. Note: Admin tokens are valid for 60 minutes with no refresh. A 401 response means the session has expired and re-login via POST /api/admin/auth/login is required."
                 )]
                 async (HttpContext ctx, IAdminAuthService adminAuthService) =>
                 {
-                    // Sub claim is the internal numeric id — same pattern as society auth
+                    // The sub claim holds the internal numeric admin ID, consistent with society auth.
                     var sub = ctx.User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
                            ?? ctx.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
 
