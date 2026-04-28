@@ -67,20 +67,43 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
 
         public async Task UpdateAsync(Subscription subscription)
         {
-            var efSubscription = subscription.ToEntity();
-            efSubscription.updated_at = DateTime.UtcNow;
-            _db.subscriptions.Update(efSubscription);
+            // Fetch the tracked entity and update only the mutable fields.
+            // Using _db.subscriptions.Update(detachedEntity) marks every column dirty and can
+            // overwrite immutable fields (e.g. created_at, user_id) not present in the domain model.
+            var efSubscription = await _db.subscriptions.FirstOrDefaultAsync(s => s.id == subscription.Id);
+            if (efSubscription == null) return;
+
+            efSubscription.status               = subscription.Status;
+            efSubscription.cancelled_at         = subscription.CancelledAt;
+            efSubscription.current_period_end   = subscription.CurrentPeriodEnd;
+            efSubscription.current_period_start = subscription.CurrentPeriodStart;
+            efSubscription.trial_end            = subscription.TrialEnd;
+            efSubscription.updated_at           = DateTime.UtcNow;
+
             await _db.SaveChangesAsync();
         }
 
         public async Task BulkUpdateAsync(IEnumerable<Subscription> subscriptions)
         {
-            foreach (var subscription in subscriptions)
+            var subscriptionList = subscriptions.ToList();
+            if (subscriptionList.Count == 0) return;
+
+            var ids = subscriptionList.Select(s => s.Id).ToList();
+            var tracked = await _db.subscriptions
+                .Where(s => ids.Contains(s.id))
+                .ToListAsync();
+
+            var lookup = subscriptionList.ToDictionary(s => s.Id);
+            var now = DateTime.UtcNow;
+
+            foreach (var efSub in tracked)
             {
-                var entity = subscription.ToEntity();
-                entity.updated_at = DateTime.UtcNow;
-                _db.subscriptions.Update(entity);
+                if (!lookup.TryGetValue(efSub.id, out var domain)) continue;
+                efSub.status     = domain.Status;
+                efSub.updated_at = now;
             }
+
+            // Single SaveChanges for all rows — avoids N round-trips.
             await _db.SaveChangesAsync();
         }
 
@@ -101,6 +124,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             var efSubscriptions = await _db.subscriptions
                 .Include(s => s.plan)
                 .Where(s => s.status == SubscriptionStatusCodes.Active)
+                .AsNoTracking()
                 .ToListAsync();
 
             return efSubscriptions.Select(s => s.ToDomain());

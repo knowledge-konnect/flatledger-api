@@ -344,29 +344,18 @@ namespace SocietyLedger.Api.Endpoints
                     return Results.Json(errorResponse, statusCode: 401);
                 }
 
-                try
-                {
-                    var result = await service.BulkCreateAsync(request, userId, skipBilling: request.SkipBilling);
-                    Log.Information("Bulk flat create completed: {SucceededCount} succeeded, {FailedCount} failed", result.Succeeded.Count, result.Failed.Count);
-                    return Results.Ok(ApiResponse<BulkCreateFlatsResponse>.Success(result, "Bulk flat creation completed"));
-                }
-                catch (ValidationException ex)
-                {
-                    return Results.BadRequest(ErrorResponse.Create(ErrorCodes.VALIDATION_FAILED, ex.Message, ctx.TraceIdentifier));
-                }
-                catch (Exception ex)
-                {
-                    Log.Error(ex, "Unexpected error during bulk flat creation");
-                    return Results.StatusCode(500);
-                }
+                var result = await service.BulkCreateAsync(request, userId, skipBilling: request.SkipBilling);
+                Log.Information("Bulk flat create completed: {SucceededCount} succeeded, {FailedCount} failed", result.Succeeded.Count, result.Failed.Count);
+                return Results.Ok(ApiResponse<BulkCreateFlatsResponse>.Success(result, "Bulk flat creation completed"));
             })
+            .AddEndpointFilter<FluentValidationFilter<BulkCreateFlatsRequest>>()
             .AddEndpointFilter<FlatLimitFilter>()
             .AddEndpointFilter<ViewerForbiddenFilter>()
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)
             .HasApiVersion(version_1_0)
             .WithName("BulkCreateFlats")
-            .Produces<BulkCreateFlatsResponse>(200)
+            .Produces<ApiResponse<BulkCreateFlatsResponse>>(200)
             .Produces<ErrorResponse>(400)
             .Produces<ErrorResponse>(401)
             .Produces<ErrorResponse>(403)

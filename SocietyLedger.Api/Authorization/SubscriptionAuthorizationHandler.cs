@@ -12,7 +12,8 @@ namespace SocietyLedger.Api.Authorization
     /// <summary>
     /// Authorization handler that enforces the <see cref="SubscriptionRequirement"/>.
     /// Grants access only when the user has an active paid subscription or an unexpired trial.
-    /// Results are cached for 5 minutes to avoid a DB round-trip on every request.
+    /// Paid subscriptions are cached for 5 minutes; trials use a shorter 1-minute TTL so
+    /// near-expiry transitions are detected quickly without hammering the DB.
     /// </summary>
     public class SubscriptionAuthorizationHandler : AuthorizationHandler<SubscriptionRequirement>
     {
@@ -21,7 +22,8 @@ namespace SocietyLedger.Api.Authorization
         private readonly IMemoryCache _cache;
         private readonly ILogger<SubscriptionAuthorizationHandler> _logger;
 
-        private static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(5);
+        private static readonly TimeSpan CacheTtlPaid  = TimeSpan.FromMinutes(5);
+        private static readonly TimeSpan CacheTtlTrial = TimeSpan.FromMinutes(1);
 
         public SubscriptionAuthorizationHandler(
             ISubscriptionService subscriptionService,
@@ -62,12 +64,16 @@ namespace SocietyLedger.Api.Authorization
                 if (!_cache.TryGetValue(cacheKey, out bool isActive))
                 {
                     var status = await _subscriptionService.GetSubscriptionStatusAsync(userId);
-                    isActive = status.Status == SubscriptionStatusCodes.Active ||
-                               (status.Status == SubscriptionStatusCodes.Trial && status.TrialEndDate > DateTime.UtcNow);
+                    var isTrial = status.Status == SubscriptionStatusCodes.Trial && status.TrialEndDate > DateTime.UtcNow;
+                    isActive = status.Status == SubscriptionStatusCodes.Active || isTrial;
 
-                    // Only cache positive results — a newly expired subscription should fail immediately.
+                    // Only cache positive results — expired subscriptions must fail immediately.
+                    // Trials use a shorter TTL so expiry is detected within 1 minute.
                     if (isActive)
-                        _cache.Set(cacheKey, true, CacheTtl);
+                    {
+                        var ttl = isTrial ? CacheTtlTrial : CacheTtlPaid;
+                        _cache.Set(cacheKey, true, ttl);
+                    }
                 }
 
                 if (isActive)

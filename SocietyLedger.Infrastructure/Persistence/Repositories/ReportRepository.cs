@@ -149,8 +149,8 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
 
         private async Task<string> QueryJsonAsync(string sql, object parameters, CancellationToken ct)
         {
-            using var connection = _connectionFactory.CreateConnection() as NpgsqlConnection;
-            await connection!.OpenAsync(ct);
+            using var connection = (NpgsqlConnection)_connectionFactory.CreateConnection();
+            await connection.OpenAsync(ct);
             var result = await connection.QueryFirstOrDefaultAsync<string>(sql, parameters, commandTimeout: 30);
             return result ?? "{}";
         }

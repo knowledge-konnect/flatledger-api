@@ -50,6 +50,22 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             return entity?.ToDomain();
         }
 
+        public async Task<DateOnly?> GetOnboardingDateAsync(long societyId) =>
+            await _db.societies
+                .AsNoTracking()
+                .Where(s => s.id == societyId && !s.is_deleted)
+                .Select(s => (DateOnly?)s.onboarding_date)
+                .FirstOrDefaultAsync();
+
+        public async Task<long?> GetSocietyIdByUserIdAsync(long userId) =>
+            await _db.users
+                .Where(u => u.id == userId)
+                .Select(u => (long?)u.society_id)
+                .FirstOrDefaultAsync();
+
+        public Task<int> CountActiveFlatsBySocietyAsync(long societyId) =>
+            _db.flats.CountAsync(f => f.society_id == societyId && !f.is_deleted);
+
         public async Task SaveChangesAsync() => await _db.SaveChangesAsync();
     }
 }

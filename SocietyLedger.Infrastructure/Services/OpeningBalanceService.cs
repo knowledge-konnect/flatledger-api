@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
-using Serilog;
+using Microsoft.Extensions.Logging;
 using SocietyLedger.Application.DTOs.OpeningBalance;
+using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Application.Interfaces.Services;
 using SocietyLedger.Domain.Constants;
 using SocietyLedger.Domain.Exceptions;
@@ -12,10 +13,20 @@ namespace SocietyLedger.Infrastructure.Services
     public class OpeningBalanceService : IOpeningBalanceService
     {
         private readonly AppDbContext _db;
+        private readonly ISocietyRepository _societyRepo;
+        private readonly IUserRepository _userRepo;
+        private readonly ILogger<OpeningBalanceService> _logger;
 
-        public OpeningBalanceService(AppDbContext db)
+        public OpeningBalanceService(
+            AppDbContext db,
+            ISocietyRepository societyRepo,
+            IUserRepository userRepo,
+            ILogger<OpeningBalanceService> logger)
         {
-            _db = db;
+            _db          = db;
+            _societyRepo = societyRepo;
+            _userRepo    = userRepo;
+            _logger      = logger;
         }
 
         /// <summary>
@@ -111,10 +122,8 @@ namespace SocietyLedger.Infrastructure.Services
                 _               => throw new InvalidOperationException("Unreachable")
             };
 
-            var userName = await _db.users
-                .Where(u => u.id == source.CreatedBy)
-                .Select(u => u.name)
-                .FirstOrDefaultAsync();
+            var userName = await _userRepo.GetByIdAsync(source.CreatedBy)
+                .ContinueWith(t => t.Result?.Name);
 
             return new OpeningBalanceStatusResponse
             {
@@ -134,18 +143,14 @@ namespace SocietyLedger.Infrastructure.Services
                 throw new ArgumentNullException(nameof(request));
 
             // ── 1. Load the society to resolve onboarding_date for date validation ─
-            var society = await _db.societies
-                .AsNoTracking()
-                .Where(s => s.id == societyId && !s.is_deleted)
-                .Select(s => new { s.onboarding_date })
-                .FirstOrDefaultAsync()
+            var onboardingDate = await _societyRepo.GetOnboardingDateAsync(societyId)
                 ?? throw new NotFoundException("Society", societyId.ToString());
 
             // ── 2. Validate transaction_date against financial epoch ──────────────
-            if (request.TransactionDate < society.onboarding_date)
+            if (request.TransactionDate < onboardingDate)
                 throw new ValidationException(
                     $"transaction_date ({request.TransactionDate:yyyy-MM-dd}) cannot be earlier than " +
-                    $"the society onboarding date ({society.onboarding_date:yyyy-MM-dd}).");
+                    $"the society onboarding date ({onboardingDate:yyyy-MM-dd}).");
 
             if (request.TransactionDate > DateOnly.FromDateTime(DateTime.UtcNow))
                 throw new ValidationException(
@@ -234,7 +239,7 @@ namespace SocietyLedger.Infrastructure.Services
                 await _db.SaveChangesAsync();
                 await transaction.CommitAsync();
 
-                Log.Information(
+                _logger.LogInformation(
                     "Opening balance applied for society {SocietyId}. " +
                     "TransactionDate: {TxDate}, Items: {ItemCount}, SocietyFund: {Amount}",
                     societyId,
@@ -245,7 +250,7 @@ namespace SocietyLedger.Infrastructure.Services
             catch
             {
                 await transaction.RollbackAsync();
-                Log.Error("Error applying opening balance for society {SocietyId}", societyId);
+                _logger.LogError("Error applying opening balance for society {SocietyId}", societyId);
                 throw;
             }
         }

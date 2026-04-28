@@ -14,6 +14,7 @@ namespace SocietyLedger.Infrastructure.Services
     public class FlatService : IFlatService
     {
         private readonly IFlatRepository _repo;
+        private readonly IBillRepository _billRepo;
         private readonly IUserContext _userContext;
         private readonly AppDbContext _db;
         private readonly ILogger<FlatService> _logger;
@@ -21,7 +22,8 @@ namespace SocietyLedger.Infrastructure.Services
         private readonly IBillingService _billingService;
 
         public FlatService(
-            IFlatRepository repo, 
+            IFlatRepository repo,
+            IBillRepository billRepo,
             IUserContext userContext,
             AppDbContext db,
             ILogger<FlatService> logger,
@@ -29,6 +31,7 @@ namespace SocietyLedger.Infrastructure.Services
             IBillingService billingService)
         {
             _repo = repo ?? throw new ArgumentNullException(nameof(repo));
+            _billRepo = billRepo ?? throw new ArgumentNullException(nameof(billRepo));
             _userContext = userContext ?? throw new ArgumentNullException(nameof(userContext));
             _db = db ?? throw new ArgumentNullException(nameof(db));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -122,8 +125,8 @@ namespace SocietyLedger.Infrastructure.Services
 
         /// <summary>
         /// Bulk create multiple flats in a single operation with transactional integrity.
-        /// Validates all items, batch inserts them, and generates bills in parallel (unless skipBilling=true).
-        /// Returns succeeded and failed results with individual error messages.
+        /// Validates all items in-memory first (after 3 bulk pre-load queries), then batch-inserts
+        /// all valid flats in a single transaction. Returns succeeded and failed results.
         /// </summary>
         public async Task<BulkCreateFlatsResponse> BulkCreateAsync(BulkCreateFlatsRequest request, long userId, bool skipBilling = false)
         {
@@ -131,18 +134,17 @@ namespace SocietyLedger.Infrastructure.Services
             if (request.Flats == null || request.Flats.Count == 0)
                 throw new ValidationException("Flats list cannot be empty");
 
-            if (request.Flats.Count > SocietyLedger.Domain.Constants.ValidationPatterns.MaxBulkFlats)
-                throw new ValidationException($"Bulk create is limited to {SocietyLedger.Domain.Constants.ValidationPatterns.MaxBulkFlats} flats per request");
+            if (request.Flats.Count > ValidationPatterns.MaxBulkFlats)
+                throw new ValidationException($"Bulk create is limited to {ValidationPatterns.MaxBulkFlats} flats per request");
 
             var societyId = await _userContext.GetSocietyIdAsync(userId);
             var maintenanceConfig = await _maintenanceConfigRepo.GetBySocietyIdAsync(societyId);
             var defaultMaintenanceAmount = maintenanceConfig?.DefaultMonthlyCharge ?? 0m;
 
-            _logger.LogInformation("Bulk create: using maintenance amount {Amount} from config for societyId {SocietyId}", 
-                defaultMaintenanceAmount, societyId);
+            _logger.LogInformation("Bulk create started: {Count} items, societyId={SocietyId}, skipBilling={SkipBilling}",
+                request.Flats.Count, societyId, skipBilling);
 
-            // Pre-load all existing flat numbers, emails, and mobiles for this society in 3 bulk queries
-            // so per-flat validation is done in-memory instead of one DB round-trip per flat.
+            // ── Pre-load 1: existing flat numbers, emails, mobiles (3 queries) ──────────
             var existingFlatNos = await _db.flats
                 .Where(f => f.society_id == societyId && !f.is_deleted)
                 .Select(f => f.flat_no)
@@ -161,29 +163,48 @@ namespace SocietyLedger.Infrastructure.Services
                 .ToListAsync();
             var existingMobileSet = new HashSet<string>(existingMobiles, StringComparer.OrdinalIgnoreCase);
 
-            // Pre-fetch distinct status codes referenced in this request (typically 0-2 values)
+            // ── Pre-load 2: all distinct status codes in one query (not N sequential awaits) ──
             var distinctStatusCodes = request.Flats
                 .Where(f => !string.IsNullOrEmpty(f?.StatusCode))
                 .Select(f => f!.StatusCode!)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
+
             var statusCache = new Dictionary<string, SocietyLedger.Domain.Entities.FlatStatus?>(StringComparer.OrdinalIgnoreCase);
-            foreach (var code in distinctStatusCodes)
-                statusCache[code] = await _repo.GetByCodeAsync(code);
+            if (distinctStatusCodes.Count > 0)
+            {
+                var statuses = await _db.flat_statuses
+                    .AsNoTracking()
+                    .Where(s => distinctStatusCodes.Contains(s.code))
+                    .ToListAsync();
+                foreach (var s in statuses)
+                    statusCache[s.code] = new SocietyLedger.Domain.Entities.FlatStatus
+                    {
+                        Id          = s.id,
+                        Code        = s.code,
+                        DisplayName = s.display_name
+                    };
+                // Mark any codes that weren't found as explicitly null
+                foreach (var code in distinctStatusCodes.Where(c => !statusCache.ContainsKey(c)))
+                    statusCache[code] = null;
+            }
 
             var succeeded = new List<FlatResponseDto>();
-            var failed = new List<BulkFlatFailure>();
-            var validFlats = new List<(int Index, string FlatNo, Flat FlatEntity, BulkCreateFlatItemDto OriginalItem)>();
+            var failed    = new List<BulkFlatFailure>();
+            var validFlats = new List<(int Index, string FlatNo, Flat FlatEntity)>();
+
+            // Capture timestamp once — all flats in the batch share the same created_at
+            var now = DateTime.UtcNow;
 
             // Track values accepted in this batch to catch within-request duplicates
-            var batchFlatNos   = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var batchEmails    = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var batchMobiles   = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var batchFlatNos  = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var batchEmails   = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var batchMobiles  = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            // Phase 1: Validate all items upfront (in-memory after bulk pre-load)
+            // ── Phase 1: Validate all items in-memory ────────────────────────────────────
             for (int i = 0; i < request.Flats.Count; i++)
             {
-                var item = request.Flats[i];
+                var item   = request.Flats[i];
                 var flatNo = item?.FlatNo ?? $"(index {i})";
 
                 try
@@ -194,7 +215,6 @@ namespace SocietyLedger.Infrastructure.Services
                         continue;
                     }
 
-                    // Check required fields
                     if (string.IsNullOrWhiteSpace(item.FlatNo))
                     {
                         failed.Add(new BulkFlatFailure(i, flatNo, "FlatNo is required"));
@@ -207,7 +227,6 @@ namespace SocietyLedger.Infrastructure.Services
                         continue;
                     }
 
-                    // Check for duplicate flat number (in DB or within this batch)
                     if (existingFlatNoSet.Contains(item.FlatNo) || !batchFlatNos.Add(item.FlatNo))
                     {
                         failed.Add(new BulkFlatFailure(i, item.FlatNo, "Flat number already exists in this society"));
@@ -215,7 +234,6 @@ namespace SocietyLedger.Infrastructure.Services
                         continue;
                     }
 
-                    // Check for duplicate email if provided (in DB or within this batch)
                     if (!string.IsNullOrWhiteSpace(item.ContactEmail))
                     {
                         if (existingEmailSet.Contains(item.ContactEmail) || !batchEmails.Add(item.ContactEmail))
@@ -226,7 +244,6 @@ namespace SocietyLedger.Infrastructure.Services
                         }
                     }
 
-                    // Check for duplicate mobile if provided (in DB or within this batch)
                     if (!string.IsNullOrWhiteSpace(item.ContactMobile))
                     {
                         if (existingMobileSet.Contains(item.ContactMobile) || !batchMobiles.Add(item.ContactMobile))
@@ -237,8 +254,7 @@ namespace SocietyLedger.Infrastructure.Services
                         }
                     }
 
-                    // Resolve status code from pre-loaded cache
-                    short? statusId = null;
+                    short? statusId   = null;
                     string? statusName = null;
 
                     if (!string.IsNullOrEmpty(item.StatusCode))
@@ -249,27 +265,26 @@ namespace SocietyLedger.Infrastructure.Services
                             _logger.LogWarning("Bulk flat create: invalid status code {StatusCode} at index {Index}", item.StatusCode, i);
                             continue;
                         }
-                        statusId = status.Id;
+                        statusId   = status.Id;
                         statusName = status.DisplayName;
                     }
 
-                    var now = DateTime.UtcNow;
                     var flatEntity = new Flat
                     {
-                        PublicId = Guid.NewGuid(),
-                        SocietyId = societyId,
-                        FlatNo = item.FlatNo,
-                        OwnerName = item.OwnerName,
-                        ContactMobile = item.ContactMobile,
-                        ContactEmail = item.ContactEmail,
+                        PublicId          = Guid.NewGuid(),
+                        SocietyId         = societyId,
+                        FlatNo            = item.FlatNo,
+                        OwnerName         = item.OwnerName,
+                        ContactMobile     = item.ContactMobile,
+                        ContactEmail      = item.ContactEmail,
                         MaintenanceAmount = defaultMaintenanceAmount,
-                        StatusId = statusId,
-                        StatusName = statusName,
-                        CreatedAt = now,
-                        UpdatedAt = now
+                        StatusId          = statusId,
+                        StatusName        = statusName,
+                        CreatedAt         = now,
+                        UpdatedAt         = now
                     };
 
-                    validFlats.Add((i, item.FlatNo, flatEntity, item));
+                    validFlats.Add((i, item.FlatNo, flatEntity));
                 }
                 catch (Exception ex)
                 {
@@ -278,63 +293,56 @@ namespace SocietyLedger.Infrastructure.Services
                 }
             }
 
-            // Phase 2: Batch insert all validated flats in a single database operation
+            // ── Phase 2: Batch insert all validated flats in a single transaction ────────
             if (validFlats.Count > 0)
             {
                 try
                 {
                     var createdFlats = await _repo.BulkAddAsync(validFlats.Select(v => v.FlatEntity));
-                    var createdList = createdFlats.ToList();
+                    var createdList  = createdFlats.ToList();
 
-                    for (int i = 0; i < validFlats.Count; i++)
-                    {
-                        var created = createdList[i];
-                        succeeded.Add(MapToDto(created));
-                        _logger.LogInformation("Flat {FlatNo} created with ID {PublicId} during bulk operation", 
-                            created.FlatNo, created.PublicId);
-                    }
+                    succeeded.AddRange(createdList.Select(f => MapToDto(f)));
 
-                    // Phase 3: Generate bills for all created flats (unless skipBilling=true).
-                    // Use limited concurrency and a small retry policy to avoid flooding downstream services
-                    // and to be resilient to transient network issues when processing large batches.
+                    // ── Phase 3: Bill generation ──────────────────────────────────────────
                     if (skipBilling)
                     {
                         _logger.LogInformation("Bulk flat create: skipBilling=true, skipping bill generation for {Count} flats", createdList.Count);
                     }
                     else
                     {
-                        var currentMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+                        var currentMonth = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+                        var billingFailed = 0;
 
-                        // Process billing sequentially to avoid DbContext concurrency errors.
-                        // DbContext is not thread-safe; Task.Run with a shared instance causes
-                        // "A second operation was started on this context before a previous one completed".
+                        // Sequential to avoid DbContext concurrency errors (DbContext is not thread-safe).
                         foreach (var flat in createdList)
                         {
                             try
                             {
-                                await _billingService.GenerateBillForFlatAsync(flat.PublicId, userId, currentMonth).ConfigureAwait(false);
+                                await _billingService.GenerateBillForFlatAsync(flat.PublicId, userId, currentMonth);
                             }
                             catch (Exception ex)
                             {
-                                _logger.LogWarning(ex, "Billing generation failed for flat {PublicId} during bulk create (non-fatal)", flat.PublicId);
+                                billingFailed++;
+                                _logger.LogWarning(ex, "Bill generation failed for flat {PublicId} during bulk create (non-fatal)", flat.PublicId);
                             }
                         }
+
+                        if (billingFailed > 0)
+                            _logger.LogWarning("Bulk flat create: bill generation failed for {Failed}/{Total} flats", billingFailed, createdList.Count);
+                        else
+                            _logger.LogInformation("Bulk flat create: bills generated for {Count} flats", createdList.Count);
                     }
                 }
                 catch (Exception batchEx)
                 {
                     _logger.LogError(batchEx, "Batch insert failed for {Count} validated flats", validFlats.Count);
-                    // Mark all valid flats as failed if batch operation failed
-                    foreach (var (index, flatNo, _, _) in validFlats)
-                    {
-                        failed.Add(new BulkFlatFailure(index, flatNo, 
-                            $"Batch database operation failed: {batchEx.Message}"));
-                    }
+                    foreach (var (index, flatNo, _) in validFlats)
+                        failed.Add(new BulkFlatFailure(index, flatNo, "Batch database operation failed. Please retry."));
                 }
             }
 
-            _logger.LogInformation("Bulk flat create completed: {SucceededCount} succeeded, {FailedCount} failed, SkipBilling={SkipBilling}", 
-                succeeded.Count, failed.Count, skipBilling);
+            _logger.LogInformation("Bulk flat create completed: {Succeeded} succeeded, {Failed} failed, societyId={SocietyId}",
+                succeeded.Count, failed.Count, societyId);
 
             return new BulkCreateFlatsResponse(succeeded, failed);
         }
@@ -402,11 +410,8 @@ namespace SocietyLedger.Infrastructure.Services
                 // #4 — Cannot mark a flat as vacant while it has outstanding unpaid bills.
                 if (status.Code == FlatStatusCodes.Vacant)
                 {
-                    var hasUnpaid = await _db.bills
-                        .AnyAsync(b => b.flat_id == existing.Id
-                                    && !b.is_deleted
-                                    && b.status_code != BillStatusCodes.Paid
-                                    && b.status_code != BillStatusCodes.Cancelled);
+                    var hasUnpaid = await _billRepo.HasUnpaidBillsExcludingStatusAsync(
+                        existing.Id, BillStatusCodes.Paid, BillStatusCodes.Cancelled);
 
                     if (hasUnpaid)
                         throw new ConflictException(
@@ -442,17 +447,11 @@ namespace SocietyLedger.Infrastructure.Services
                 throw new NotFoundException("Flat", publicId.ToString());
 
             // #3 — Block deletion when the flat has outstanding unpaid bills.
-            var unpaidBills = await _db.bills
-                .Where(b => b.flat_id == existing.Id
-                         && !b.is_deleted
-                         && b.status_code != BillStatusCodes.Paid
-                         && b.status_code != BillStatusCodes.Cancelled)
-                .Select(b => new { b.amount, b.paid_amount })
-                .ToListAsync();
+            var unpaidBills = (await _billRepo.GetUnpaidBillAmountsAsync(existing.Id)).ToList();
 
             if (unpaidBills.Any())
             {
-                var totalOutstanding = unpaidBills.Sum(b => b.amount - b.paid_amount);
+                var totalOutstanding = unpaidBills.Sum(b => b.Amount - b.PaidAmount);
                 throw new ConflictException(
                     $"Cannot delete flat '{existing.FlatNo}' — it has {unpaidBills.Count} unpaid bill(s) totaling \u20b9{totalOutstanding:N2}. Settle all dues before deleting.");
             }
@@ -736,18 +735,16 @@ namespace SocietyLedger.Infrastructure.Services
 
             var query = _db.flats
                 .Include(f => f.status)
-                .Include(f => f.society)
                 .Where(f => f.society_id == societyId && !f.is_deleted)
                 .AsQueryable();
 
             if (!string.IsNullOrWhiteSpace(search))
             {
-                var term = search.ToLower();
                 query = query.Where(f =>
-                    (f.flat_no != null && f.flat_no.ToLower().Contains(term)) ||
-                    (f.owner_name != null && f.owner_name.ToLower().Contains(term)) ||
-                    (f.contact_mobile != null && f.contact_mobile.ToLower().Contains(term)) ||
-                    (f.contact_email != null && f.contact_email.ToLower().Contains(term)));
+                    EF.Functions.ILike(f.flat_no,        $"%{search}%") ||
+                    EF.Functions.ILike(f.owner_name,     $"%{search}%") ||
+                    (f.contact_mobile != null && EF.Functions.ILike(f.contact_mobile, $"%{search}%")) ||
+                    (f.contact_email  != null && EF.Functions.ILike(f.contact_email,  $"%{search}%")));
             }
 
             if (!string.IsNullOrWhiteSpace(statusCode))
@@ -765,11 +762,16 @@ namespace SocietyLedger.Infrastructure.Services
                 _                             => query.OrderBy(f => f.created_at),
             };
 
+            var societyPublicId = await _db.societies
+                .Where(s => s.id == societyId)
+                .Select(s => s.public_id)
+                .FirstOrDefaultAsync();
+
             var totalCount = await query.LongCountAsync();
             var totalPages = size > 0 ? (int)Math.Ceiling((double)totalCount / size) : 0;
 
             var items = await query
-                .Skip(page * size)
+                .Skip((page - 1) * size)
                 .Take(size)
                 .ToListAsync();
 
@@ -778,7 +780,7 @@ namespace SocietyLedger.Infrastructure.Services
 
             return new PagedFlatsResponse
             {
-                Content = items.Select(f => MapEfToDto(f, outstanding.GetValueOrDefault(f.id, 0m))).ToList(),
+                Content = items.Select(f => MapEfToDto(f, societyPublicId, outstanding.GetValueOrDefault(f.id, 0m))).ToList(),
                 TotalElements = totalCount,
                 TotalPages = totalPages,
                 Page = page,
@@ -808,12 +810,17 @@ namespace SocietyLedger.Infrastructure.Services
 
         /// <summary>
         /// Maps directly from the EF entity (used in paged queries that hit _db.flats directly).
+        /// societyPublicId is passed explicitly since the society navigation property is not loaded
+        /// in paged queries (removed to avoid the redundant join).
         /// </summary>
-        private static FlatResponseDto MapEfToDto(SocietyLedger.Infrastructure.Persistence.Entities.flat f, decimal totalOutstanding = 0m)
+        private static FlatResponseDto MapEfToDto(
+            SocietyLedger.Infrastructure.Persistence.Entities.flat f,
+            Guid societyPublicId,
+            decimal totalOutstanding = 0m)
         {
             return new FlatResponseDto(
                 f.public_id,
-                f.society?.public_id ?? Guid.Empty,
+                societyPublicId,
                 f.flat_no,
                 f.owner_name,
                 f.contact_mobile,

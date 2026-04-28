@@ -186,6 +186,8 @@ var jwtSettings = builder.Configuration.GetSection("JwtSettings");
 var key = jwtSettings["Key"];
 if (string.IsNullOrWhiteSpace(key))
     throw new InvalidOperationException("JwtSettings:Key is missing or empty. Set the JwtSettings__Key environment variable.");
+if (System.Text.Encoding.UTF8.GetByteCount(key) < 32)
+    throw new InvalidOperationException("JwtSettings:Key must be at least 32 bytes (256 bits) for HMAC-SHA256. Use a longer key.");
 var issuer = jwtSettings["Issuer"];
 var audience = jwtSettings["Audience"];
 
@@ -402,6 +404,7 @@ app.MapGroup(ApiRoutes.REPORTS)
 // Proactively warm up the Supabase connection pool on startup.
 // Free-tier Supabase instances can take 60-90s to resume from idle; retrying here
 // prevents the first real request from timing out after a cold start.
+// A dedicated 120s timeout is used only for this warmup ping — normal queries use 30s.
 const int maxWarmupAttempts = 5;
 for (int attempt = 1; attempt <= maxWarmupAttempts; attempt++)
 {
@@ -409,7 +412,7 @@ for (int attempt = 1; attempt <= maxWarmupAttempts; attempt++)
     {
         using var scope = app.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        await db.Database.ExecuteSqlRawAsync("SELECT 1");
+        await db.Database.ExecuteSqlRawAsync("SET statement_timeout = '120s'; SELECT 1");
         Log.Information("Database warmup successful on attempt {Attempt}.", attempt);
         break;
     }

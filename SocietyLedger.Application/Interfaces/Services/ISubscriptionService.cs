@@ -24,6 +24,14 @@ namespace SocietyLedger.Application.Interfaces.Services
         Task<(bool Allowed, string? Message)> CanAddFlatAsync(long userId);
 
         /// <summary>
+        /// Checks both subscription validity and whether the plan's flat limit allows
+        /// adding <paramref name="count"/> flats to the society in a single operation.
+        /// Used by the bulk-create endpoint so the entire batch is validated upfront.
+        /// </summary>
+        /// <returns>(true, null) if allowed; (false, reason) if not.</returns>
+        Task<(bool Allowed, string? Message)> CanAddFlatsAsync(long userId, int count);
+
+        /// <summary>
         /// Checks whether write operations (bills, payments, expenses) are permitted
         /// based on an active subscription. Equivalent to ValidateSubscriptionAsync.
         /// </summary>

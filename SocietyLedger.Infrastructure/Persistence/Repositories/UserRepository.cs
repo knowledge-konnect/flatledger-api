@@ -159,14 +159,14 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
         }
 
         /// <summary>
-        /// Get all users for a specific society.
+        /// Get all users for a specific society. Loads only the role navigation property —
+        /// society is already implied by the ForSociety() filter and does not need to be re-loaded.
         /// </summary>
         public async Task<IEnumerable<User>> GetBySocietyIdAsync(long societyId)
         {
             var users = await _db.users
                 .ForSociety(societyId)
                 .Include(u => u.role)
-                .Include(u => u.society)
                 .AsNoTracking()
                 .OrderBy(u => u.name)
                 .ToListAsync();

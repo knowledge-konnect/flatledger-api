@@ -6,12 +6,10 @@ using Serilog;
 using SocietyLedger.Api.Extensions;
 using SocietyLedger.Api.Filters;
 using SocietyLedger.Application.DTOs.MaintenancePayment;
-using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Application.Interfaces.Services;
 using SocietyLedger.Domain.Constants;
 using SocietyLedger.Shared;
 using Swashbuckle.AspNetCore.Annotations;
-using System.Text.RegularExpressions;
 
 namespace SocietyLedger.Api.Endpoints
 {
@@ -92,7 +90,7 @@ namespace SocietyLedger.Api.Endpoints
                    IMaintenancePaymentService paymentService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
-                    if (!string.IsNullOrEmpty(period) && !Regex.IsMatch(period, @"^\d{4}-\d{2}$"))
+                    if (!string.IsNullOrEmpty(period) && !ValidationPatterns.BillingPeriod.IsMatch(period))
                         return Results.BadRequest("Invalid period format. Use YYYY-MM");
 
                     var result = await paymentService.GetMaintenancePaymentsBySocietyAsync(

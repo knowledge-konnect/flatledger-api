@@ -8,11 +8,13 @@ namespace SocietyLedger.Infrastructure.Services.Admin
 {
     public class AdminBillService : IAdminBillService
     {
+        private const int MaxPageSize = 200;
         private readonly AppDbContext _db;
         public AdminBillService(AppDbContext db) { _db = db; }
 
         public async Task<PagedResult<AdminBillDto>> GetBillsAsync(int page, int pageSize, long? societyId = null, string? status = null, string? period = null, DateTime? from = null, DateTime? to = null)
         {
+            pageSize = Math.Min(pageSize, MaxPageSize);
             var query = _db.bills
                 .AsNoTracking()
                 .Where(b => !b.is_deleted)

@@ -1,5 +1,6 @@
 using FluentValidation;
 using SocietyLedger.Application.DTOs.Billing;
+using SocietyLedger.Domain.Constants;
 
 namespace SocietyLedger.Application.Validators.Billing
 {
@@ -9,7 +10,7 @@ namespace SocietyLedger.Application.Validators.Billing
         {
             RuleFor(x => x.Period)
                 .NotEmpty().WithMessage("Period is required.")
-                .Matches(@"^\d{4}-\d{2}$").WithMessage("Period must be in YYYY-MM format (e.g. '2026-03').")
+                .Matches(ValidationPatterns.BillingPeriodPattern).WithMessage("Period must be in YYYY-MM format (e.g. '2026-03').")
                 .Must(BeAValidYearMonth).WithMessage("Period must be a valid year and month.");
         }
 

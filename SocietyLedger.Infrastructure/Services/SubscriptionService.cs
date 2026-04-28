@@ -18,6 +18,7 @@ namespace SocietyLedger.Infrastructure.Services
         private readonly IPlanRepository _planRepo;
         private readonly IInvoiceRepository _invoiceRepo;
         private readonly ISubscriptionEventRepository _eventRepo;
+        private readonly ISocietyRepository _societyRepo;
         private readonly AppDbContext _db;
         private readonly ILogger<SubscriptionService> _logger;
 
@@ -26,6 +27,7 @@ namespace SocietyLedger.Infrastructure.Services
             IPlanRepository planRepo,
             IInvoiceRepository invoiceRepo,
             ISubscriptionEventRepository eventRepo,
+            ISocietyRepository societyRepo,
             AppDbContext db,
             ILogger<SubscriptionService> logger)
         {
@@ -33,6 +35,7 @@ namespace SocietyLedger.Infrastructure.Services
             _planRepo = planRepo;
             _invoiceRepo = invoiceRepo;
             _eventRepo = eventRepo;
+            _societyRepo = societyRepo;
             _db = db;
             _logger = logger;
         }
@@ -112,13 +115,11 @@ namespace SocietyLedger.Infrastructure.Services
                 throw new ConflictException("The selected plan is not currently active.");
 
             // Resolve society_id from the authenticated user
-            var userEntity = await _db.users.FindAsync(userId)
+            var societyId = await _societyRepo.GetSocietyIdByUserIdAsync(userId)
                 ?? throw new NotFoundException("User", userId.ToString());
 
-            var societyId = userEntity.society_id;
-
             // Validate society's flat count against the plan's flat limit
-            var flatsCount = await _db.flats.CountAsync(f => f.society_id == societyId && !f.is_deleted);
+            var flatsCount = await _societyRepo.CountActiveFlatsBySocietyAsync(societyId);
             if (flatsCount > plan.MaxFlats)
                 throw new ConflictException(
                     $"Selected plan supports up to {plan.MaxFlats} flats, but your society has {flatsCount} active flats.");
@@ -303,13 +304,11 @@ namespace SocietyLedger.Infrastructure.Services
         /// </summary>
         public async Task CreateTrialSubscriptionAsync(long userId)
         {
-            var userEntity = await _db.users.FindAsync(userId);
-            if (userEntity == null) return;
-
-            var societyId = userEntity.society_id;
+            var societyId = await _societyRepo.GetSocietyIdByUserIdAsync(userId);
+            if (societyId == null) return;
 
             // Check by society_id — only one active/trial sub per society
-            var existingSubscription = await _subscriptionRepo.GetBySocietyIdAsync(societyId);
+            var existingSubscription = await _subscriptionRepo.GetBySocietyIdAsync(societyId.Value);
             if (existingSubscription != null)
                 return;
 
@@ -325,7 +324,7 @@ namespace SocietyLedger.Infrastructure.Services
             {
                 Id = Guid.NewGuid(),
                 UserId = userId,
-                SocietyId = societyId,
+                SocietyId = societyId.Value,
                 PlanId = defaultPlan.Id,
                 Status = SubscriptionStatusCodes.Trial,
                 // Trial subscriptions have zero subscribed_amount until a paid plan is selected
@@ -343,21 +342,19 @@ namespace SocietyLedger.Infrastructure.Services
             }
             catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
             {
-                // Concurrent registration for the same society — another request already created the trial.
                 _logger.LogInformation(
                     "Trial subscription already exists for society {SocietyId} — concurrent creation, skipping",
-                    societyId);
+                    societyId.Value);
                 return;
             }
 
-            // Snapshot plan details so the trial record is self-describing in the audit log
             var eventMeta = JsonSerializer.Serialize(new
             {
                 trial_days = 30,
                 plan_name = defaultPlan.Name,
                 max_flats = defaultPlan.MaxFlats,
                 duration_months = defaultPlan.DurationMonths,
-                society_id = societyId
+                society_id = societyId.Value
             });
 
             await _eventRepo.CreateAsync(new SubscriptionEvent
@@ -365,13 +362,13 @@ namespace SocietyLedger.Infrastructure.Services
                 Id = Guid.NewGuid(),
                 UserId = userId,
                 SubscriptionId = subscription.Id,
-                SocietyId = societyId,
+                SocietyId = societyId.Value,
                 EventType = "trial_started",
                 NewStatus = SubscriptionStatusCodes.Trial,
                 Metadata = eventMeta
             });
 
-            _logger.LogInformation("Created trial subscription for society {SocietyId}", societyId);
+            _logger.LogInformation("Created trial subscription for society {SocietyId}", societyId.Value);
         }
 
         // ──────────────────────────────────────────────────────────────────
@@ -395,29 +392,29 @@ namespace SocietyLedger.Infrastructure.Services
 
         /// <inheritdoc/>
         public async Task<(bool Allowed, string? Message)> CanAddFlatAsync(long userId)
+            => await CanAddFlatsAsync(userId, 1);
+
+        /// <inheritdoc/>
+        public async Task<(bool Allowed, string? Message)> CanAddFlatsAsync(long userId, int count)
         {
             var societyId = await GetSocietyIdAsync(userId);
 
-            // Fetch the subscription once; reuse it for both validation and plan limit check.
             var subscription = await _subscriptionRepo.GetBySocietyIdAsync(societyId);
 
             var (isValid, message) = await ValidateSubscriptionCoreAsync(subscription, societyId);
             if (!isValid)
                 return (false, message);
 
-            // subscription is non-null here because ValidateSubscriptionCoreAsync returned true.
-            // Plan is already eager-loaded by GetBySocietyIdAsync (Include(s => s.plan)).
             var plan = subscription!.Plan ?? await _planRepo.GetByIdAsync(subscription.PlanId);
             if (plan == null)
                 return (false, "Subscription plan not found. Please contact support.");
 
-            // Race-condition-safe: compare (count + 1) against the limit rather than count >= limit,
-            // ensuring that two concurrent requests cannot both slip under the threshold.
-            var currentFlatCount = await _db.flats
-                .CountAsync(f => f.society_id == societyId && !f.is_deleted);
+            var currentFlatCount = await _societyRepo.CountActiveFlatsBySocietyAsync(societyId);
 
-            if (currentFlatCount + 1 > plan.MaxFlats)
-                return (false, $"Flat limit reached ({plan.MaxFlats}). Upgrade your plan to add more flats.");
+            if (currentFlatCount + count > plan.MaxFlats)
+                return (false, count == 1
+                    ? $"Flat limit reached ({plan.MaxFlats}). Upgrade your plan to add more flats."
+                    : $"Adding {count} flat(s) would exceed your plan limit of {plan.MaxFlats} (current: {currentFlatCount}). Upgrade your plan or reduce the batch size.");
 
             return (true, null);
         }
@@ -481,14 +478,9 @@ namespace SocietyLedger.Infrastructure.Services
         /// <summary>Resolves the society_id for the given user_id. Throws if the user does not exist.</summary>
         private async Task<long> GetSocietyIdAsync(long userId)
         {
-            var societyId = await _db.users
-                .Where(u => u.id == userId)
-                .Select(u => (long?)u.society_id)
-                .FirstOrDefaultAsync();
-
+            var societyId = await _societyRepo.GetSocietyIdByUserIdAsync(userId);
             if (societyId == null)
                 throw new NotFoundException("User", userId.ToString());
-
             return societyId.Value;
         }
 

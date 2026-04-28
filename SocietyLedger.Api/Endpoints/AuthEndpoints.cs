@@ -316,16 +316,16 @@ namespace SocietyLedger.Api.Endpoints
                 Summary = "Initiate password reset",
                 Description = "Sends a password reset email to the provided email address. Always returns 200 success (no account enumeration)."
             )]
-            async ([FromBody] ForgotPasswordRequest request, IAuthService authService, HttpContext ctx) =>
+            async ([FromBody] ForgotPasswordRequest request, IAuthService authService, HttpContext ctx, IConfiguration config) =>
             {
                 var ip = ctx.GetClientIp();
                 var traceId = ctx.TraceIdentifier;
 
                 try
                 {
-                    // Build the reset link template: https://app/reset-password?token={0}
-                    // The token will be URL-encoded by string.Format
-                    var resetLinkTemplate = "https://app.example.com/reset-password?token={0}";
+                    // Load reset link template from config so it works across environments.
+                    var resetLinkTemplate = config["Auth:PasswordResetLinkTemplate"]
+                        ?? "https://app.example.com/reset-password?token={0}";
 
                     await authService.ForgotPasswordAsync(request.Email, resetLinkTemplate, ip);
 
@@ -382,12 +382,14 @@ namespace SocietyLedger.Api.Endpoints
                     return Results.Json(errorResponse, statusCode: 500);
                 }
             })
+            .RequireRateLimiting("AuthPolicy")
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)
             .HasApiVersion(version_1_0)
             .WithName("ValidateResetToken")
             .Produces(200)
             .Produces(400)
+            .Produces<ErrorResponse>(429)
             .Produces<ErrorResponse>(500);
 
             // Reset Password

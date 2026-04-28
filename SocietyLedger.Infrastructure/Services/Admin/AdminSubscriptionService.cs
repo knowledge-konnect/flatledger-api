@@ -9,17 +9,14 @@ namespace SocietyLedger.Infrastructure.Services.Admin
 {
     public class AdminSubscriptionService : IAdminSubscriptionService
     {
+        private const int MaxPageSize = 200;
         private readonly AppDbContext _db;
         public AdminSubscriptionService(AppDbContext db) { _db = db; }
 
-        /// <summary>
-        /// Returns a paged list of subscriptions. Can be filtered by status and/or society_id.
-        /// Billing is society-based, so society_id is the primary filter — userId is kept for
-        /// backward compatibility with existing admin queries.
-        /// </summary>
         public async Task<PagedResult<AdminSubscriptionDto>> GetSubscriptionsAsync(
             int page, int pageSize, string? status = null, long? userId = null, long? societyId = null)
         {
+            pageSize = Math.Min(pageSize, MaxPageSize);
             var query = _db.subscriptions
                 .AsNoTracking()
                 .Include(s => s.user)

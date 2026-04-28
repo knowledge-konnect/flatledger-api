@@ -56,7 +56,9 @@ namespace SocietyLedger.Api.Endpoints
             async ([FromBody] VerifyPaymentRequest request, IRazorpayPaymentService paymentService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
-                    var result = await paymentService.VerifyPaymentAsync(request);
+                    if (userId == 0)
+                        return Results.Json(ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, ErrorMessages.UNAUTHORIZED, ctx.TraceIdentifier), statusCode: 401);
+                    var result = await paymentService.VerifyPaymentAsync(request, userId);
                     return Results.Ok(ApiResponse<VerifyPaymentResponse>.Success(result, "Payment verification completed"));
                 })
             .AddEndpointFilter<FluentValidationFilter<VerifyPaymentRequest>>()

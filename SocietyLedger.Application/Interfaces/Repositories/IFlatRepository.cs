@@ -1,4 +1,5 @@
-﻿using SocietyLedger.Domain.Entities;
+﻿using SocietyLedger.Application.DTOs.Dashboard;
+using SocietyLedger.Domain.Entities;
 
 namespace SocietyLedger.Application.Interfaces.Repositories
 {
@@ -16,5 +17,8 @@ namespace SocietyLedger.Application.Interfaces.Repositories
         Task SaveChangesAsync();
         Task<IEnumerable<FlatStatus>> GetAllAsync();
         Task<FlatStatus?> GetByCodeAsync(string code);
+
+        /// <summary>Returns flat occupancy counts for a society (SQL-side aggregation).</summary>
+        Task<FlatSummaryDto> GetFlatSummaryAsync(long societyId, CancellationToken cancellationToken = default);
     }
 }

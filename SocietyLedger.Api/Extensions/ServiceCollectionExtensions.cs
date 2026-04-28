@@ -7,8 +7,7 @@ using SocietyLedger.Application.Interfaces.Services;
 using SocietyLedger.Application.Interfaces.Services.Admin;
 using SocietyLedger.Application.Validators.Auth;
 using SocietyLedger.Infrastructure.Persistence.Contexts;
-using SocietyLedger.Infrastructure.Persistence.Repositories;
-using SocietyLedger.Infrastructure.Services;
+using SocietyLedger.Infrastructure.Persistence.Repositories;using SocietyLedger.Infrastructure.Services;
 using SocietyLedger.Infrastructure.Services.Admin;
 using SocietyLedger.Infrastructure.Services.Common;
 using SocietyLedger.Shared.Jwt;
@@ -70,8 +69,10 @@ namespace SocietyLedger.Api.Extensions
             services.AddDbContext<AppDbContext>(options =>
                 options.UseNpgsql(dataSource, npgsql =>
                 {
-                    // 120s timeout to handle Supabase free-tier cold starts (can take 60-90s to resume).
-                    npgsql.CommandTimeout(120);
+                    // 30s default timeout for normal queries. Cold-start handling is done
+                    // in the startup warmup loop (5 retries × 30s delay), not by inflating
+                    // the command timeout for every query.
+                    npgsql.CommandTimeout(30);
                 }));
 
             // Common infrastructure helpers
@@ -92,6 +93,7 @@ namespace SocietyLedger.Api.Extensions
 
             services.AddScoped<IMaintenanceConfigRepository, MaintenanceConfigRepository>();
             services.AddScoped<INotificationPreferenceRepository, NotificationPreferenceRepository>();
+            services.AddScoped<IBillRepository, BillRepository>();
 
             services.AddSingleton<SocietyLedger.Infrastructure.Data.IDbConnectionFactory, SocietyLedger.Infrastructure.Data.DbConnectionFactory>();
             services.AddScoped<IDapperService, DapperService>();

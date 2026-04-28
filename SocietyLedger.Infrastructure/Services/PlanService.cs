@@ -38,7 +38,7 @@ namespace SocietyLedger.Infrastructure.Services
             });
         }
 
-        public async Task<PlanResponse?> GetPlanByIdAsync(Guid id)
+        public async Task<PlanResponse> GetPlanByIdAsync(Guid id)
         {
             var plan = await _planRepository.GetByIdAsync(id);
             if (plan == null)

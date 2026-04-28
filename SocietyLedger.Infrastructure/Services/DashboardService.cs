@@ -1,9 +1,7 @@
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using SocietyLedger.Application.DTOs.Dashboard;
-using SocietyLedger.Domain.Constants;
-using SocietyLedger.Infrastructure.Persistence.Contexts;
+using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Infrastructure.Persistence.Repositories;
 using SocietyLedger.Infrastructure.Services.Common;
 
@@ -43,23 +41,23 @@ namespace SocietyLedger.Infrastructure.Services
         private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(3);
 
         private readonly IDashboardRepository _dashboardRepository;
+        private readonly IFlatRepository _flatRepo;
         private readonly IUserContext _userContext;
         private readonly IMemoryCache _cache;
         private readonly ILogger<DashboardService> _logger;
-        private readonly AppDbContext _db;
 
         public DashboardService(
             IDashboardRepository dashboardRepository,
+            IFlatRepository flatRepo,
             IUserContext userContext,
             IMemoryCache cache,
-            ILogger<DashboardService> logger,
-            AppDbContext db)
+            ILogger<DashboardService> logger)
         {
             _dashboardRepository = dashboardRepository;
+            _flatRepo = flatRepo;
             _userContext = userContext;
             _cache = cache;
             _logger = logger;
-            _db = db;
         }
 
         public async Task<DashboardResponseDto> GetDashboardDataAsync(
@@ -124,25 +122,8 @@ namespace SocietyLedger.Infrastructure.Services
             }
         }
 
-        /// <summary>
-        /// Computes flat occupancy counts for the society. Not date-range dependent.
-        /// </summary>
-        private async Task<FlatSummaryDto> GetFlatSummaryAsync(long societyId, CancellationToken cancellationToken)
-        {
-            // Use SQL-side aggregation so no flat rows are transferred to the application.
-            return await _db.flats
-                .Where(f => f.society_id == societyId && !f.is_deleted)
-                .GroupBy(_ => 1)
-                .Select(g => new FlatSummaryDto
-                {
-                    Total           = g.Count(),
-                    Occupied        = g.Count(f => f.status != null && f.status.code == FlatStatusCodes.OwnerOccupied),
-                    Vacant          = g.Count(f => f.status != null && f.status.code == FlatStatusCodes.Vacant),
-                    Rented          = g.Count(f => f.status != null && f.status.code == FlatStatusCodes.TenantOccupied),
-                    ZeroAmountCount = g.Count(f => f.maintenance_amount == 0)
-                })
-                .FirstOrDefaultAsync(cancellationToken) ?? new FlatSummaryDto();
-        }
+        private Task<FlatSummaryDto> GetFlatSummaryAsync(long societyId, CancellationToken cancellationToken)
+            => _flatRepo.GetFlatSummaryAsync(societyId, cancellationToken);
 
         /// <inheritdoc />
         public void InvalidateDashboardCache(long societyId)

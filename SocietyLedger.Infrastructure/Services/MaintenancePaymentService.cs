@@ -1,5 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using Serilog;
+using Microsoft.Extensions.Logging;
 using SocietyLedger.Application.DTOs.MaintenancePayment;
 using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Application.Interfaces.Services;
@@ -15,25 +15,31 @@ namespace SocietyLedger.Infrastructure.Services
 
         private readonly IMaintenancePaymentRepository _maintenancePaymentRepo;
         private readonly IPaymentModeRepository _paymentModeRepo;
+        private readonly ISocietyRepository _societyRepo;
         private readonly IUserContext _userContext;
         private readonly AppDbContext _db;
         private readonly IDapperService _dapper;
         private readonly IDashboardService _dashboardService;
+        private readonly ILogger<MaintenancePaymentService> _logger;
 
         public MaintenancePaymentService(
             IMaintenancePaymentRepository maintenancePaymentRepo,
             IPaymentModeRepository paymentModeRepo,
+            ISocietyRepository societyRepo,
             IUserContext userContext,
             AppDbContext db,
             IDapperService dapper,
-            IDashboardService dashboardService)
+            IDashboardService dashboardService,
+            ILogger<MaintenancePaymentService> logger)
         {
             _maintenancePaymentRepo = maintenancePaymentRepo;
             _paymentModeRepo = paymentModeRepo;
+            _societyRepo = societyRepo;
             _userContext = userContext;
             _db = db;
             _dapper = dapper;
             _dashboardService = dashboardService;
+            _logger = logger;
         }
 
         // ------------------------------------------------------------------ //
@@ -122,13 +128,11 @@ namespace SocietyLedger.Infrastructure.Services
                         };
                     }
 
-                    // ── Step 2: Resolve payment mode (EF; outside lock scope) ─────────────
-                    var paymentModeId = await _db.payment_modes
-                        .Where(pm => pm.code == request.PaymentModeCode)
-                        .Select(pm => pm.id)
-                        .FirstOrDefaultAsync();
-                    if (paymentModeId == 0)
+                    // ── Step 2: Resolve payment mode via repository ───────────────────────
+                    var paymentMode = await _paymentModeRepo.GetByCodeAsync(request.PaymentModeCode);
+                    if (paymentMode == null)
                         throw new ValidationException($"Invalid payment mode code: {request.PaymentModeCode}");
+                    var paymentModeId = paymentMode.Id;
 
                     var now = DateTime.UtcNow;
 
@@ -305,7 +309,7 @@ namespace SocietyLedger.Infrastructure.Services
                 catch (Exception ex)
                 {
                     await tx.RollbackAsync();
-                    Log.Error(ex, "Error processing maintenance payment");
+                    _logger.LogError(ex, "Error processing maintenance payment");
                     throw;
                 }
             }
@@ -421,11 +425,9 @@ namespace SocietyLedger.Infrastructure.Services
 
             if (request.PaymentModeCode != null)
             {
-                var mode = await _db.payment_modes
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(pm => pm.code == request.PaymentModeCode)
+                var mode = await _paymentModeRepo.GetByCodeAsync(request.PaymentModeCode)
                     ?? throw new NotFoundException("Payment mode", request.PaymentModeCode);
-                payment.payment_mode_id = mode.id;
+                payment.payment_mode_id = mode.Id;
             }
 
             await _db.SaveChangesAsync();
@@ -538,15 +540,9 @@ namespace SocietyLedger.Infrastructure.Services
         /// </summary>
         private async Task<DateOnly> GetOnboardingDateAsync(long societyId)
         {
-            var date = await _db.societies
-                .AsNoTracking()
-                .Where(s => s.id == societyId && !s.is_deleted)
-                .Select(s => (DateOnly?)s.onboarding_date)
-                .FirstOrDefaultAsync();
-
+            var date = await _societyRepo.GetOnboardingDateAsync(societyId);
             if (date is null)
                 throw new NotFoundException("Society", societyId.ToString());
-
             return date.Value;
         }
 

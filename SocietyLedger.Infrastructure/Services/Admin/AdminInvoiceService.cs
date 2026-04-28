@@ -8,11 +8,13 @@ namespace SocietyLedger.Infrastructure.Services.Admin
 {
     public class AdminInvoiceService : IAdminInvoiceService
     {
+        private const int MaxPageSize = 200;
         private readonly AppDbContext _db;
         public AdminInvoiceService(AppDbContext db) { _db = db; }
 
         public async Task<PagedResult<AdminInvoiceDto>> GetInvoicesAsync(int page, int pageSize, long? userId = null, string? status = null, string? invoiceType = null, DateTime? from = null, DateTime? to = null)
         {
+            pageSize = Math.Min(pageSize, MaxPageSize);
             var query = _db.invoices
                 .AsNoTracking()
                 .Join(_db.users, inv => inv.user_id, u => u.id,

@@ -6,9 +6,9 @@ using Serilog;
 using SocietyLedger.Api.Extensions;
 using SocietyLedger.Api.Filters;
 using SocietyLedger.Application.DTOs.OpeningBalance;
-using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Application.Interfaces.Services;
 using SocietyLedger.Domain.Constants;
+using SocietyLedger.Infrastructure.Services.Common;
 using SocietyLedger.Shared;
 using Swashbuckle.AspNetCore.Annotations;
 
@@ -32,30 +32,12 @@ namespace SocietyLedger.Api.Endpoints
                     Description = "Checks if opening balance has been applied for the society and returns details."
                 )]
             async (IOpeningBalanceService openingBalanceService,
-                   IUserRepository userRepository,
+                   IUserContext userContext,
                    HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
-
-                    if (userId == 0)
-                    {
-                        Log.Warning("Unauthorized opening balance status request - invalid user ID");
-                        var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid or missing authentication token", ctx.TraceIdentifier);
-                        return Results.Json(errorResponse, statusCode: 401);
-                    }
-
-                    // Get user to extract societyId
-                    var user = await userRepository.GetByIdAsync(userId);
-                    if (user == null || !user.IsActive)
-                    {
-                        Log.Warning("Opening balance status request by inactive or non-existent user {UserId}", userId);
-                        var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "User not found or inactive", ctx.TraceIdentifier);
-                        return Results.Json(errorResponse, statusCode: 401);
-                    }
-
-                    var societyId = user.SocietyId;
+                    var societyId = await userContext.GetSocietyIdAsync(userId);
                     var status = await openingBalanceService.GetStatusAsync(societyId);
-
                     return Results.Ok(ApiResponse<OpeningBalanceStatusResponse>.Success(status, "Opening balance status retrieved"));
                 })
             .WithTags(groupName)
@@ -71,33 +53,17 @@ namespace SocietyLedger.Api.Endpoints
                 [Authorize]
             [SwaggerOperation(
                     Summary = "Get opening balance summary",
-                    Description = "Returns applied opening balance summary for a society. Only accessible to financial/admin roles."
+                    Description = "Returns applied opening balance summary for a society."
                 )]
             async (IOpeningBalanceService openingBalanceService,
-                   IUserRepository userRepository,
+                   IUserContext userContext,
                    HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
-                    if (userId == 0)
-                    {
-                        Log.Warning("Unauthorized opening balance summary request - invalid user ID");
-                        var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid or missing authentication token", ctx.TraceIdentifier);
-                        return Results.Json(errorResponse, statusCode: 401);
-                    }
-
-                    // Get user to extract societyId and check role
-                    var user = await userRepository.GetByIdAsync(userId);
-                    if (user == null || !user.IsActive)
-                    {
-                        Log.Warning("Opening balance summary request by inactive or non-existent user {UserId}", userId);
-                        var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "User not found or inactive", ctx.TraceIdentifier);
-                        return Results.Json(errorResponse, statusCode: 401);
-                    }                
-                    var societyId = user.SocietyId;
+                    var societyId = await userContext.GetSocietyIdAsync(userId);
                     var summary = await openingBalanceService.GetSummaryAsync(societyId);
                     if (summary == null)
                     {
-                        Log.Information("Opening balance summary requested but not applied for society {SocietyId}", societyId);
                         var errorResponse = ErrorResponse.Create(ErrorCodes.RESOURCE_NOT_FOUND, "Opening balance not applied for this society", ctx.TraceIdentifier);
                         return Results.Json(errorResponse, statusCode: 404);
                     }
@@ -109,7 +75,6 @@ namespace SocietyLedger.Api.Endpoints
             .WithName("GetOpeningBalanceSummary")
             .Produces<ApiResponse<OpeningBalanceSummaryResponse>>(200)
             .Produces<ErrorResponse>(401)
-            .Produces<ErrorResponse>(403)
             .Produces<ErrorResponse>(404)
             .Produces<ErrorResponse>(500);
 
@@ -118,24 +83,15 @@ namespace SocietyLedger.Api.Endpoints
                 [Authorize]
             [SwaggerOperation(
                     Summary = "Apply opening balance",
-                    Description = "Applies opening balance for a society. Can only be executed once per society. Restricted to Treasurer and Society Admin roles."
+                    Description = "Applies opening balance for a society. Can only be executed once per society. Restricted to Society Admin role."
                 )]
-            async ([FromBody] OpeningBalanceRequest request, 
-                   IOpeningBalanceService openingBalanceService, 
-                   IUserRepository userRepository,
+            async ([FromBody] OpeningBalanceRequest request,
+                   IOpeningBalanceService openingBalanceService,
+                   IUserContext userContext,
                    HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
-
-                    var user = await userRepository.GetByIdAsync(userId);
-                    if (user == null || !user.IsActive)
-                    {
-                        Log.Warning("Opening balance request by inactive or non-existent user {UserId}", userId);
-                        var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "User not found or inactive", ctx.TraceIdentifier);
-                        return Results.Json(errorResponse, statusCode: 401);
-                    }
-
-                    var societyId = user.SocietyId;
+                    var societyId = await userContext.GetSocietyIdAsync(userId);
                     await openingBalanceService.ApplyOpeningBalanceAsync(request, societyId, userId);
                     Log.Information("Opening balance applied successfully for society {SocietyId} by user {UserId}", societyId, userId);
                     return Results.Ok(ApiResponse<EmptyResponse>.Success(new EmptyResponse(), "Opening balance applied successfully"));

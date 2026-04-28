@@ -8,6 +8,13 @@ namespace SocietyLedger.Application.Interfaces.Services
         /// Generates a bill for a single flat for the given month if it does not already exist.
         /// </summary>
         Task GenerateBillForFlatAsync(Guid flatPublicId, long userId, DateTime billingMonth);
+
+        /// <summary>
+        /// Generates a bill for a single flat for the current UTC month.
+        /// Convenience overload so callers don't need to construct the billing month date.
+        /// </summary>
+        Task GenerateBillForFlatCurrentMonthAsync(Guid flatPublicId, long userId);
+
         /// <summary>
         /// Generates one bill per active flat for the given period.
         /// Throws ConflictException if bills already exist for that society + period.
@@ -23,26 +30,9 @@ namespace SocietyLedger.Application.Interfaces.Services
 
         /// <summary>
         /// Generates monthly maintenance bills for ALL active societies in the platform.
-        /// Intended to be called by the Hangfire recurring job (1st of every month at 00:05)
-        /// AND by the manual admin trigger endpoint. Contains all business logic; the caller
-        /// is only responsible for orchestration and logging.
-        ///
-        /// Billing rules applied per society:
-        ///   - Uses the society's active <c>maintenance_plan</c> for amount calculation.
-        ///   - Supports <c>fixed</c> (flat-rate) and <c>per_sqft</c> billing types.
-        ///   - Falls back to <c>flat.maintenance_amount</c> when no active plan is found.
-        ///   - Skips any flat that already has a bill for <paramref name="billingMonth"/> (idempotency).
-        ///   - Wraps each society's bill inserts in a database transaction for consistency.
+        /// Intended to be called by the background service (1st of every month) and the
+        /// manual admin trigger endpoint. Defaults to the current UTC month when no date is given.
         /// </summary>
-        /// <param name="billingMonth">
-        ///   The target month; only year and month components are used
-        ///   (e.g. <c>new DateTime(2026, 3, 1)</c> → period "2026-03").
-        /// </param>
-        /// <returns>
-        ///   A <see cref="BillingResult"/> describing how many bills were created, skipped,
-        ///   and total execution time. Exceptions propagate to the caller; Hangfire will
-        ///   retry automatically on failure.
-        /// </returns>
-        Task<BillingResult> GenerateMonthlyBillsAsync(DateTime billingMonth);
+        Task<BillingResult> GenerateMonthlyBillsAsync(DateTime? billingMonth = null);
     }
 }

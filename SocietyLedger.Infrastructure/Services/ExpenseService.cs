@@ -1,4 +1,4 @@
-using Serilog;
+using Microsoft.Extensions.Logging;
 using SocietyLedger.Application.DTOs.Expense;
 using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Application.Interfaces.Services;
@@ -16,17 +16,20 @@ namespace SocietyLedger.Infrastructure.Services
         private readonly IUserContext _userContext;
         private readonly AppDbContext _db;
         private readonly IDashboardService _dashboardService;
+        private readonly ILogger<ExpenseService> _logger;
 
         public ExpenseService(
             IExpenseRepository expenseRepo,
             IUserContext userContext,
             AppDbContext db,
-            IDashboardService dashboardService)
+            IDashboardService dashboardService,
+            ILogger<ExpenseService> logger)
         {
             _expenseRepo      = expenseRepo ?? throw new ArgumentNullException(nameof(expenseRepo));
             _userContext      = userContext ?? throw new ArgumentNullException(nameof(userContext));
             _db               = db ?? throw new ArgumentNullException(nameof(db));
             _dashboardService = dashboardService ?? throw new ArgumentNullException(nameof(dashboardService));
+            _logger           = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
         public async Task<ExpenseResponse> CreateExpenseAsync(long userId, CreateExpenseRequest request)
@@ -74,7 +77,7 @@ namespace SocietyLedger.Infrastructure.Services
             await _expenseRepo.AddAsync(expenseEntity);
             await _expenseRepo.SaveChangesAsync();
 
-            Log.Information("Expense created successfully by user {UserId} for society {SocietyId}", userId, societyId);
+            _logger.LogInformation("Expense created successfully by user {UserId} for society {SocietyId}", userId, societyId);
             _dashboardService.InvalidateDashboardCache(societyId);
             
             // Reload to get navigation properties
@@ -197,7 +200,7 @@ namespace SocietyLedger.Infrastructure.Services
             await _expenseRepo.SaveChangesAsync();
 
             _dashboardService.InvalidateDashboardCache(societyId);
-            Log.Information("Expense deleted successfully: {PublicId}", publicId);
+            _logger.LogInformation("Expense deleted successfully: {PublicId}", publicId);
         }
 
         private static readonly HashSet<string> AllowedExpenseSortFields = new(StringComparer.OrdinalIgnoreCase)
@@ -233,10 +236,9 @@ namespace SocietyLedger.Infrastructure.Services
 
             if (!string.IsNullOrWhiteSpace(search))
             {
-                var term = search.ToLower();
                 query = query.Where(e =>
-                    (e.vendor != null && e.vendor.ToLower().Contains(term)) ||
-                    (e.description != null && e.description.ToLower().Contains(term)));
+                    (e.vendor      != null && EF.Functions.ILike(e.vendor,      $"%{search}%")) ||
+                    (e.description != null && EF.Functions.ILike(e.description, $"%{search}%")));
             }
 
             query = (sortBy.ToLower(), sortDir.ToLower()) switch

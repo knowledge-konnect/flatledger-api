@@ -5,19 +5,20 @@ using SocietyLedger.Domain.Exceptions;
 using SocietyLedger.Infrastructure.Persistence.Contexts;
 using SocietyLedger.Infrastructure.Persistence.Entities;
 using SocietyLedger.Shared;
-
 namespace SocietyLedger.Infrastructure.Services.Admin
 {
     public class AdminPlanService : IAdminPlanService
     {
+        private const int MaxPageSize = 200;
         private readonly AppDbContext _db;
         public AdminPlanService(AppDbContext db) { _db = db; }
 
         public async Task<PagedResult<AdminPlanDto>> GetPlansAsync(int page, int pageSize, string? search = null, bool? isActive = null)
         {
+            pageSize = Math.Min(pageSize, MaxPageSize);
             var query = _db.plans.AsNoTracking();
             if (!string.IsNullOrWhiteSpace(search))
-                query = query.Where(p => p.name.ToLower().Contains(search.ToLower()));
+                query = query.Where(p => EF.Functions.ILike(p.name, $"%{search}%"));
             if (isActive.HasValue)
                 query = query.Where(p => p.is_active == isActive);
             var total = await query.CountAsync();
@@ -88,7 +89,7 @@ namespace SocietyLedger.Infrastructure.Services.Admin
             };
             _db.plans.Add(plan);
             await _db.SaveChangesAsync();
-            return await GetPlanByIdAsync(plan.id) ?? throw new Exception("Failed to create plan");
+            return await GetPlanByIdAsync(plan.id) ?? throw new AppException("Failed to retrieve plan after creation.");
         }
 
         public async Task<AdminPlanDto> UpdatePlanAsync(Guid id, AdminPlanUpdateRequest request)
@@ -107,7 +108,7 @@ namespace SocietyLedger.Infrastructure.Services.Admin
             plan.discount_percentage = request.DiscountPercentage;
             plan.display_order = request.DisplayOrder;
             await _db.SaveChangesAsync();
-            return await GetPlanByIdAsync(plan.id) ?? throw new Exception("Failed to update plan");
+            return await GetPlanByIdAsync(plan.id) ?? throw new AppException("Failed to retrieve plan after update.");
         }
 
         public async Task DeletePlanAsync(Guid id)

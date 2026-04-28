@@ -8,11 +8,13 @@ namespace SocietyLedger.Infrastructure.Services.Admin
 {
     public class AdminPaymentService : IAdminPaymentService
     {
+        private const int MaxPageSize = 200;
         private readonly AppDbContext _db;
         public AdminPaymentService(AppDbContext db) { _db = db; }
 
         public async Task<PagedResult<AdminPaymentDto>> GetPaymentsAsync(int page, int pageSize, long? societyId = null, string? paymentType = null, DateTime? from = null, DateTime? to = null)
         {
+            pageSize = Math.Min(pageSize, MaxPageSize);
             var query = _db.payments.AsNoTracking().Where(p => !p.is_deleted);
 
             if (societyId.HasValue)

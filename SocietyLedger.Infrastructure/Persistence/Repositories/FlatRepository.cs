@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using SocietyLedger.Application.DTOs.Dashboard;
 using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Domain.Entities;
 using SocietyLedger.Infrastructure.Persistence.Contexts;
@@ -20,7 +21,6 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             var flats = await _db.flats
                 .ForSociety(societyId)
                 .Include(f => f.status)
-                .Include(f => f.society)
                 .AsNoTracking()
                 .ToListAsync();
 
@@ -34,7 +34,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
         {
             var efFlat = await _db.flats
                 .ForSociety(societyId)
-                .Include(f => f.society)
+                .Include(f => f.status)
                 .AsNoTracking()
                 .FirstOrDefaultAsync(f => f.public_id == publicId);
 
@@ -51,7 +51,6 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
 
             var efFlat = await _db.flats
                 .ForSociety(societyId)
-                .Include(f => f.society)
                 .AsNoTracking()
                 .FirstOrDefaultAsync(f => f.flat_no == flatNo);
 
@@ -115,7 +114,8 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
         }
 
         /// <summary>
-        /// Batch adds multiple flats in a single database operation (one SaveChanges call).
+        /// Batch adds multiple flats in a single database operation wrapped in an explicit transaction.
+        /// If any row fails (e.g. unique constraint violation), the entire batch is rolled back.
         /// Returns the created flats with generated IDs and PublicIds.
         /// </summary>
         public async Task<IEnumerable<Flat>> BulkAddAsync(IEnumerable<Flat> flats)
@@ -124,12 +124,22 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                 return Enumerable.Empty<Flat>();
 
             var entities = flats.Select(f => f.ToEntity()).ToList();
-            
-            await _db.flats.AddRangeAsync(entities);
-            await _db.SaveChangesAsync();
+
+            await using var tx = await _db.Database.BeginTransactionAsync();
+            try
+            {
+                await _db.flats.AddRangeAsync(entities);
+                await _db.SaveChangesAsync();
+                await tx.CommitAsync();
+            }
+            catch
+            {
+                await tx.RollbackAsync();
+                throw;
+            }
 
             // Copy generated IDs back to domain models
-            var result = new List<Flat>();
+            var result = new List<Flat>(entities.Count);
             foreach (var entity in entities)
             {
                 var flat = entity.ToDomain();
@@ -190,6 +200,22 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                 .FirstOrDefaultAsync(f => f.contact_mobile == mobile && !f.is_deleted);
 
             return efFlat?.ToDomain();
+        }
+
+        public async Task<FlatSummaryDto> GetFlatSummaryAsync(long societyId, CancellationToken cancellationToken = default)
+        {
+            return await _db.flats
+                .Where(f => f.society_id == societyId && !f.is_deleted)
+                .GroupBy(_ => 1)
+                .Select(g => new FlatSummaryDto
+                {
+                    Total           = g.Count(),
+                    Occupied        = g.Count(f => f.status != null && f.status.code == Domain.Constants.FlatStatusCodes.OwnerOccupied),
+                    Vacant          = g.Count(f => f.status != null && f.status.code == Domain.Constants.FlatStatusCodes.Vacant),
+                    Rented          = g.Count(f => f.status != null && f.status.code == Domain.Constants.FlatStatusCodes.TenantOccupied),
+                    ZeroAmountCount = g.Count(f => f.maintenance_amount == 0)
+                })
+                .FirstOrDefaultAsync(cancellationToken) ?? new FlatSummaryDto();
         }
     }
 }

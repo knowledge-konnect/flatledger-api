@@ -46,11 +46,6 @@ namespace SocietyLedger.Api.Endpoints
             async (Guid id, IPlanService planService, HttpContext ctx) =>
                 {
                     var result = await planService.GetPlanByIdAsync(id);
-                    if (result == null)
-                    {
-                        var errorResponse = ErrorResponse.Create(ErrorCodes.RESOURCE_NOT_FOUND, "Plan not found", ctx.TraceIdentifier);
-                        return Results.Json(errorResponse, statusCode: 404);
-                    }
                     return Results.Ok(ApiResponse<PlanResponse>.Success(result, "Plan retrieved successfully"));
                 })
                 .WithApiVersionSet(versionSet)

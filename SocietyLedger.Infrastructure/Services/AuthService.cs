@@ -124,7 +124,9 @@ namespace SocietyLedger.Infrastructure.Services
 
         /// <summary>
         /// Creates a new Society + SocietyAdmin user inside a single transaction, then issues tokens.
-        /// Trial subscription creation is best-effort — a failure here does not roll back registration.
+        /// Trial subscription creation is included in the transaction — if it fails the entire
+        /// registration is rolled back so users are never left in a state where they can log in
+        /// but have no subscription.
         /// </summary>
         public async Task<RegisterResponse> RegisterAsync(RegisterRequest request, string ipAddress)
         {
@@ -185,19 +187,21 @@ namespace SocietyLedger.Infrastructure.Services
 
             _db.refresh_tokens.Add(refreshEntity);
             await _db.SaveChangesAsync();
-            await tx.CommitAsync();
 
-            // Fix #7: trial creation runs AFTER the transaction commits so a commit failure
-            // cannot leave an orphaned trial row with no user.
-            // Best-effort: registration succeeds even if trial creation fails.
+            // Trial creation is inside the transaction — if it fails the whole registration
+            // rolls back, preventing orphaned users with no subscription.
             try
             {
                 await _subscriptionService.CreateTrialSubscriptionAsync(user.Id);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to create trial subscription for user {UserId}", user.Id);
+                _logger.LogError(ex, "Trial subscription creation failed for user {UserId} — rolling back registration", user.Id);
+                await tx.RollbackAsync();
+                throw new AppException("Registration failed: could not create trial subscription. Please try again.");
             }
+
+            await tx.CommitAsync();
 
             _logger.LogInformation(
                 "New user {UserPublicId} registered new society {SocietyId} from {IP}",
