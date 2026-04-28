@@ -103,6 +103,106 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             await _db.SaveChangesAsync();
         }
 
+        public Task<bool> IsDuplicateRecentAsync(long societyId, DateOnly date, decimal amount, string categoryCode, string vendor, DateTime since) =>
+            _db.expenses.AnyAsync(e =>
+                e.society_id    == societyId
+             && !e.is_deleted
+             && e.date_incurred == date
+             && e.amount        == amount
+             && e.category_code == categoryCode
+             && (e.vendor ?? string.Empty) == (vendor ?? string.Empty)
+             && e.created_at   >= since);
+
+        public async Task<ExpenseEntity?> UpdateFieldsAsync(Guid publicId, long societyId, UpdateExpenseRequest request)
+        {
+            var entity = await _db.expenses
+                .ForSociety(societyId)
+                .FirstOrDefaultAsync(e => e.public_id == publicId);
+
+            if (entity == null)
+                return null;
+
+            if (request.Date.HasValue)        entity.date_incurred  = request.Date.Value;
+            if (request.CategoryCode != null) entity.category_code  = request.CategoryCode;
+            if (request.Vendor       != null) entity.vendor         = request.Vendor;
+            if (request.Description  != null) entity.description    = request.Description;
+            if (request.Amount.HasValue)      entity.amount         = request.Amount.Value;
+
+            await _db.SaveChangesAsync();
+
+            // Reload with navigation properties
+            return await GetByPublicIdAsync(publicId, societyId);
+        }
+
+        public async Task<IReadOnlyList<ExpenseCategoryResponse>> GetCategoriesAsync() =>
+            await _db.expense_categories
+                .AsNoTracking()
+                .OrderBy(c => c.display_name)
+                .Select(c => new ExpenseCategoryResponse { Code = c.code, DisplayName = c.display_name })
+                .ToListAsync();
+
+        private static readonly HashSet<string> AllowedSortFields = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "dateIncurred", "amount", "categoryCode"
+        };
+
+        public async Task<(IReadOnlyList<ExpenseEntity> Items, long TotalCount)> GetPagedAsync(
+            long societyId, DateOnly? startDate, DateOnly? endDate,
+            string? categoryCode, string? search,
+            int page, int size, string sortBy, string sortDir)
+        {
+            var query = _db.expenses
+                .Where(e => e.society_id == societyId && !e.is_deleted)
+                .AsQueryable();
+
+            if (startDate.HasValue)
+                query = query.Where(e => e.date_incurred >= startDate.Value);
+            if (endDate.HasValue)
+                query = query.Where(e => e.date_incurred <= endDate.Value);
+            if (!string.IsNullOrWhiteSpace(categoryCode))
+                query = query.Where(e => e.category_code == categoryCode);
+            if (!string.IsNullOrWhiteSpace(search))
+                query = query.Where(e =>
+                    (e.vendor      != null && EF.Functions.ILike(e.vendor,      $"%{search}%")) ||
+                    (e.description != null && EF.Functions.ILike(e.description, $"%{search}%")));
+
+            query = (sortBy.ToLower(), sortDir.ToLower()) switch
+            {
+                ("dateincurred", "asc")  => query.OrderBy(e => e.date_incurred),
+                ("dateincurred", _)      => query.OrderByDescending(e => e.date_incurred),
+                ("amount", "asc")        => query.OrderBy(e => e.amount),
+                ("amount", _)            => query.OrderByDescending(e => e.amount),
+                ("categorycode", "asc")  => query.OrderBy(e => e.category_code),
+                ("categorycode", _)      => query.OrderByDescending(e => e.category_code),
+                _                        => query.OrderByDescending(e => e.date_incurred),
+            };
+
+            var totalCount = await query.LongCountAsync();
+
+            var items = await query
+                .Skip(page * size)
+                .Take(size)
+                .Select(e => new ExpenseEntity
+                {
+                    PublicId       = e.public_id,
+                    SocietyId      = e.society_id,
+                    DateIncurred   = e.date_incurred,
+                    CategoryCode   = e.category_code,
+                    Vendor         = e.vendor,
+                    Description    = e.description,
+                    Amount         = e.amount,
+                    ApprovedBy     = e.approved_by,
+                    ApprovedByName = e.approved_byNavigation != null ? e.approved_byNavigation.name : null,
+                    CreatedBy      = e.created_by,
+                    CreatedByName  = e.created_byNavigation  != null ? e.created_byNavigation.name  : null,
+                    CreatedAt      = e.created_at
+                })
+                .AsNoTracking()
+                .ToListAsync();
+
+            return (items, totalCount);
+        }
+
         private ExpenseEntity MapToDto(expense entity)
         {
             return new ExpenseEntity

@@ -20,6 +20,8 @@ namespace SocietyLedger.Infrastructure.Services
         private readonly ILogger<FlatService> _logger;
         private readonly IMaintenanceConfigRepository _maintenanceConfigRepo;
         private readonly IBillingService _billingService;
+        private readonly IAdjustmentRepository _adjustmentRepo;
+        private readonly IMaintenancePaymentRepository _mpRepo;
 
         public FlatService(
             IFlatRepository repo,
@@ -28,7 +30,9 @@ namespace SocietyLedger.Infrastructure.Services
             AppDbContext db,
             ILogger<FlatService> logger,
             IMaintenanceConfigRepository maintenanceConfigRepo,
-            IBillingService billingService)
+            IBillingService billingService,
+            IAdjustmentRepository adjustmentRepo,
+            IMaintenancePaymentRepository mpRepo)
         {
             _repo = repo ?? throw new ArgumentNullException(nameof(repo));
             _billRepo = billRepo ?? throw new ArgumentNullException(nameof(billRepo));
@@ -37,6 +41,8 @@ namespace SocietyLedger.Infrastructure.Services
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _maintenanceConfigRepo = maintenanceConfigRepo ?? throw new ArgumentNullException(nameof(maintenanceConfigRepo));
             _billingService = billingService ?? throw new ArgumentNullException(nameof(billingService));
+            _adjustmentRepo = adjustmentRepo ?? throw new ArgumentNullException(nameof(adjustmentRepo));
+            _mpRepo = mpRepo ?? throw new ArgumentNullException(nameof(mpRepo));
         }
 
         /// <summary>
@@ -477,77 +483,47 @@ namespace SocietyLedger.Infrastructure.Services
             var societyId = await _userContext.GetSocietyIdAsync(userId);
 
             // Get flat by publicId and verify it belongs to user's society (exclude soft-deleted)
-            var flat = await _db.flats.FirstOrDefaultAsync(f => f.public_id == publicId && f.society_id == societyId && !f.is_deleted);
+            var flat = await _repo.GetByPublicIdAsync(publicId, societyId);
             if (flat == null)
                 throw new NotFoundException("Flat", publicId.ToString());
 
-            var flatId = flat.id;
+            var flatId = flat.Id;
             var ledgerEntries = new List<FlatLedgerEntryDto>();
 
-            // Get all adjustments for the flat (maintenance charges, opening balance, etc.)
-            var adjustmentsQuery = _db.adjustments
-                .Where(a => a.flat_id == flatId && !a.is_deleted);
-
-            if (startDate.HasValue)
-                adjustmentsQuery = adjustmentsQuery.Where(a => a.created_at >= startDate.Value);
-            // Use exclusive upper bound (< next day) so that records timestamped
-            // anywhere on endDate's calendar day are included, not just at midnight.
-            if (endDate.HasValue)
-                adjustmentsQuery = adjustmentsQuery.Where(a => a.created_at < endDate.Value.Date.AddDays(1));
-
-            var adjustments = await adjustmentsQuery
-                .OrderBy(a => a.created_at)
-                .ToListAsync();
-
-            // Get all payments for the flat
-            var paymentsQuery = _db.maintenance_payments
-                .Where(p => p.flat_id == flatId && !p.is_deleted);
-
-            if (startDate.HasValue)
-                paymentsQuery = paymentsQuery.Where(p => p.payment_date >= startDate.Value);
-            if (endDate.HasValue)
-                paymentsQuery = paymentsQuery.Where(p => p.payment_date < endDate.Value.Date.AddDays(1));
-
-            var payments = await paymentsQuery
-                .OrderBy(p => p.payment_date)
-                .ToListAsync();
+            // Get all adjustments and payments for the flat within the date range
+            var adjustments = await _adjustmentRepo.GetByFlatIdAsync(flatId, startDate, endDate);
+            var payments    = await _mpRepo.GetByFlatIdForLedgerAsync(flatId, startDate, endDate);
 
             // Calculate opening balance (sum of adjustments before startDate minus payments before startDate)
             decimal openingBalance = 0;
             if (startDate.HasValue)
             {
-                var adjustmentsBefore = await _db.adjustments
-                    .Where(a => a.flat_id == flatId && a.created_at < startDate.Value && !a.is_deleted)
-                    .SumAsync(a => (decimal?)a.amount) ?? 0;
-
-                var paymentsBefore = await _db.maintenance_payments
-                    .Where(p => p.flat_id == flatId && p.payment_date < startDate.Value && !p.is_deleted)
-                    .SumAsync(p => (decimal?)p.amount) ?? 0;
-
+                var adjustmentsBefore = await _adjustmentRepo.GetTotalAmountBeforeDateAsync(flatId, startDate.Value);
+                var paymentsBefore    = await _mpRepo.GetTotalAmountBeforeDateAsync(flatId, startDate.Value);
                 openingBalance = adjustmentsBefore - paymentsBefore;
             }
 
             // Add adjustment entries
-            foreach (var adj in adjustments)
+            foreach (var entry in adjustments)
             {
                 // Extract period from reason if it's monthly maintenance
                 string? period = null;
-                if (adj.entry_type == EntryTypeCodes.MonthlyMaintenance && adj.reason != null && adj.reason.Contains(" - "))
+                if (entry.EntryType == EntryTypeCodes.MonthlyMaintenance && entry.Reason != null && entry.Reason.Contains(" - "))
                 {
-                    var parts = adj.reason.Split(" - ");
+                    var parts = entry.Reason.Split(" - ");
                     if (parts.Length > 1)
                         period = parts[1];
                 }
 
                 ledgerEntries.Add(new FlatLedgerEntryDto
                 {
-                    Date = adj.created_at,
+                    Date = entry.CreatedAt,
                     EntryType = "maintenance",
                     Period = period,
-                    Charge = adj.amount,
+                    Charge = entry.Amount,
                     Payment = 0,
                     Balance = 0, // Will be calculated below
-                    Description = adj.reason,
+                    Description = entry.Reason,
                     ReferenceNumber = null
                 });
             }
@@ -557,14 +533,14 @@ namespace SocietyLedger.Infrastructure.Services
             {
                 ledgerEntries.Add(new FlatLedgerEntryDto
                 {
-                    Date = pmt.payment_date,
+                    Date = pmt.PaymentDate,
                     EntryType = "payment",
                     Period = null, // Payments are not linked to specific period
                     Charge = 0,
-                    Payment = pmt.amount,
+                    Payment = pmt.Amount,
                     Balance = 0, // Will be calculated below
-                    Description = $"Payment - {pmt.notes ?? ""}",
-                    ReferenceNumber = pmt.reference_number
+                    Description = $"Payment - {pmt.Notes ?? ""}",
+                    ReferenceNumber = pmt.ReferenceNumber
                 });
             }
 
@@ -582,9 +558,9 @@ namespace SocietyLedger.Infrastructure.Services
 
             return new FlatLedgerResponse
             {
-                FlatPublicId = flat.public_id,
-                FlatNo = flat.flat_no,
-                OwnerName = flat.owner_name,
+                FlatPublicId = flat.PublicId,
+                FlatNo = flat.FlatNo,
+                OwnerName = flat.OwnerName,
                 OpeningBalance = openingBalance,
                 ClosingBalance = runningBalance,
                 Entries = ledgerEntries
@@ -610,30 +586,17 @@ namespace SocietyLedger.Infrastructure.Services
         /// </summary>
         private async Task<FlatFinancialSummaryResponse?> GetFlatFinancialSummaryBySocietyAsync(Guid publicId, long societyId)
         {
-            var flat = await _db.flats
-                .FirstOrDefaultAsync(f => f.public_id == publicId
-                                       && f.society_id == societyId
-                                       && !f.is_deleted);
+            var flat = await _repo.GetByPublicIdAsync(publicId, societyId);
             if (flat == null)
                 return null;
 
-            var openingBalanceRemaining = await _db.adjustments
-                .Where(a => a.flat_id == flat.id && a.entry_type == EntryTypeCodes.OpeningBalance && !a.is_deleted)
-                .SumAsync(a => (decimal?)a.remaining_amount) ?? 0;
+            var openingBalanceRemaining = await _adjustmentRepo.GetOpeningBalanceRemainingAsync(flat.Id);
 
             // Exclude cancelled bills — a cancelled bill is not a real outstanding obligation.
-            var billOutstanding = await _db.bills
-                .Where(b => b.flat_id == flat.id && !b.is_deleted
-                         && b.status_code != BillStatusCodes.Cancelled)
-                .SumAsync(b => (decimal?)(b.amount - b.paid_amount)) ?? 0;
+            var billOutstanding = await _billRepo.GetOutstandingByFlatIdAsync(flat.Id);
 
-            var totalCharges = await _db.bills
-                .Where(b => b.flat_id == flat.id && !b.is_deleted)
-                .SumAsync(b => (decimal?)b.amount) ?? 0;
-
-            var totalPayments = await _db.maintenance_payments
-                .Where(p => p.flat_id == flat.id && !p.is_deleted)
-                .SumAsync(p => (decimal?)p.amount) ?? 0;
+            var totalCharges  = await _billRepo.GetTotalChargesByFlatIdAsync(flat.Id);
+            var totalPayments = await _mpRepo.GetTotalPaidByFlatIdAsync(flat.Id);
 
             return new FlatFinancialSummaryResponse
             {

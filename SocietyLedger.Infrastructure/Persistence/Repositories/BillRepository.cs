@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SocietyLedger.Application.Interfaces.Repositories;
+using SocietyLedger.Domain.Constants;
 using SocietyLedger.Infrastructure.Persistence.Contexts;
 using SocietyLedger.Infrastructure.Persistence.Entities;
 
@@ -51,6 +52,32 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
         }
 
         public Task SaveChangesAsync() => _db.SaveChangesAsync();
+
+        public async Task<ILookup<long, long>> GetExistingFlatIdsForSocietiesAsync(IReadOnlyCollection<long> societyIds, string period)
+        {
+            if (societyIds.Count == 0)
+                return Enumerable.Empty<(long SocietyId, long FlatId)>().ToLookup(x => x.SocietyId, x => x.FlatId);
+
+            var rows = await _db.bills
+                .AsNoTracking()
+                .Where(b => societyIds.Contains(b.society_id) && b.period == period && !b.is_deleted)
+                .Select(b => new { b.society_id, b.flat_id })
+                .ToListAsync();
+
+            return rows.ToLookup(r => r.society_id, r => r.flat_id);
+        }
+
+        public async Task<decimal> GetOutstandingByFlatIdAsync(long flatId) =>
+            await _db.bills
+                .Where(b => b.flat_id == flatId && !b.is_deleted
+                         && b.status_code != BillStatusCodes.Cancelled
+                         && (b.amount - (b.paid_amount ?? 0)) > 0)
+                .SumAsync(b => (decimal?)(b.amount - (b.paid_amount ?? 0))) ?? 0m;
+
+        public async Task<decimal> GetTotalChargesByFlatIdAsync(long flatId) =>
+            await _db.bills
+                .Where(b => b.flat_id == flatId && !b.is_deleted)
+                .SumAsync(b => (decimal?)b.amount) ?? 0m;
 
         private static bill Map(BillAddDto b) => new()
         {

@@ -217,5 +217,17 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                 })
                 .FirstOrDefaultAsync(cancellationToken) ?? new FlatSummaryDto();
         }
+
+        public async Task<IReadOnlyList<FlatBillingInfo>> GetActiveFlatsBySocietyIdsAsync(IReadOnlyCollection<long> societyIds)
+        {
+            if (societyIds.Count == 0)
+                return Array.Empty<FlatBillingInfo>();
+
+            return await _db.flats
+                .AsNoTracking()
+                .Where(f => societyIds.Contains(f.society_id) && !f.is_deleted)
+                .Select(f => new FlatBillingInfo(f.society_id, f.id, f.maintenance_amount))
+                .ToListAsync();
+        }
     }
 }

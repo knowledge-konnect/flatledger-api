@@ -237,5 +237,40 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
         {
             await _db.SaveChangesAsync();
         }
+
+        /// <summary>
+        /// Updates last_login using a targeted bulk UPDATE — avoids a SELECT + track round-trip.
+        /// </summary>
+        public Task UpdateLastLoginAsync(long userId, DateTime loginAt) =>
+            _db.users
+                .Where(u => u.id == userId)
+                .ExecuteUpdateAsync(s => s.SetProperty(u => u.last_login, loginAt));
+
+        /// <summary>
+        /// Finds a non-deleted user by password-reset token hash, including Role and Society navigation.
+        /// </summary>
+        public async Task<User?> GetByPasswordResetTokenHashAsync(string tokenHash)
+        {
+            var efUser = await _db.users
+                .Include(u => u.role)
+                .Include(u => u.society)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => u.password_reset_token_hash == tokenHash && !u.is_deleted);
+
+            return efUser?.ToDomain();
+        }
+
+        /// <summary>
+        /// Updates password hash and clears password-reset token fields atomically via a bulk UPDATE.
+        /// </summary>
+        public Task SetPasswordAndClearResetTokenAsync(long userId, string newPasswordHash) =>
+            _db.users
+                .Where(u => u.id == userId)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(u => u.password_hash, newPasswordHash)
+                    .SetProperty(u => u.password_reset_token_hash, (string?)null)
+                    .SetProperty(u => u.password_reset_expires_at, (DateTime?)null)
+                    .SetProperty(u => u.force_password_change, false)
+                    .SetProperty(u => u.updated_at, DateTime.UtcNow));
     }
 }

@@ -20,5 +20,14 @@ namespace SocietyLedger.Application.Interfaces.Repositories
 
         /// <summary>Returns flat occupancy counts for a society (SQL-side aggregation).</summary>
         Task<FlatSummaryDto> GetFlatSummaryAsync(long societyId, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Returns slim billing projections for all active flats across the given societies.
+        /// Used by the scheduled billing job to avoid per-society queries (N+1).
+        /// </summary>
+        Task<IReadOnlyList<FlatBillingInfo>> GetActiveFlatsBySocietyIdsAsync(IReadOnlyCollection<long> societyIds);
     }
+
+    /// <summary>Slim flat projection used by the billing job.</summary>
+    public record FlatBillingInfo(long SocietyId, long FlatId, decimal MaintenanceAmount);
 }

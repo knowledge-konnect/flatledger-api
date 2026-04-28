@@ -15,6 +15,9 @@ namespace SocietyLedger.Application.Interfaces.Repositories
 
         /// <summary>Persists pending changes (revocations, additions).</summary>
         Task SaveChangesAsync();
+
+        /// <summary>Revokes a token by its hash using a targeted UPDATE. No-ops if not found.</summary>
+        Task RevokeAsync(string tokenHash, DateTime revokedAt);
     }
 
     public sealed class RefreshTokenEntity

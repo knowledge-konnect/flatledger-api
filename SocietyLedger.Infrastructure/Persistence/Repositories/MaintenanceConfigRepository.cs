@@ -118,5 +118,16 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                 GracePeriodDays = config.grace_period_days
             };
         }
+
+        public async Task<IReadOnlyDictionary<long, decimal>> GetDefaultChargesBySocietyIdsAsync(IReadOnlyCollection<long> societyIds)
+        {
+            if (societyIds.Count == 0)
+                return new Dictionary<long, decimal>();
+
+            return await _db.maintenance_configs
+                .AsNoTracking()
+                .Where(c => societyIds.Contains(c.society_id))
+                .ToDictionaryAsync(c => c.society_id, c => c.default_monthly_charge);
+        }
     }
 }

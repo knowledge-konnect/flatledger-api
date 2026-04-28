@@ -45,6 +45,11 @@ namespace SocietyLedger.Application.Interfaces.Repositories
         /// Persists any pending changes in the underlying context.
         /// </summary>
         Task SaveChangesAsync();
+
+        /// <summary>
+        /// Returns the IDs of all non-deleted societies. Used by scheduled billing job.
+        /// </summary>
+        Task<IReadOnlyList<long>> GetAllActiveIdsAsync();
     }
 }
 

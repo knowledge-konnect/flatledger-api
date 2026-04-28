@@ -226,5 +226,31 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                 OutstandingAfterPayment = payment.outstanding_after_payment
             };
         }
+
+        public async Task<IReadOnlyList<PaymentLedgerEntry>> GetByFlatIdForLedgerAsync(long flatId, DateTime? startDate, DateTime? endDate)
+        {
+            var query = _db.maintenance_payments
+                .Where(p => p.flat_id == flatId && !p.is_deleted)
+                .AsQueryable();
+
+            if (startDate.HasValue) query = query.Where(p => p.payment_date >= startDate.Value);
+            if (endDate.HasValue)   query = query.Where(p => p.payment_date < endDate.Value.Date.AddDays(1));
+
+            return await query
+                .OrderBy(p => p.payment_date)
+                .Select(p => new PaymentLedgerEntry(p.payment_date, p.amount, p.notes, p.reference_number))
+                .AsNoTracking()
+                .ToListAsync();
+        }
+
+        public async Task<decimal> GetTotalAmountBeforeDateAsync(long flatId, DateTime before) =>
+            await _db.maintenance_payments
+                .Where(p => p.flat_id == flatId && p.payment_date < before && !p.is_deleted)
+                .SumAsync(p => (decimal?)p.amount) ?? 0m;
+
+        public async Task<decimal> GetTotalPaidByFlatIdAsync(long flatId) =>
+            await _db.maintenance_payments
+                .Where(p => p.flat_id == flatId && !p.is_deleted)
+                .SumAsync(p => (decimal?)p.amount) ?? 0m;
     }
 }

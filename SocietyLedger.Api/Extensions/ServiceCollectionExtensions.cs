@@ -91,6 +91,8 @@ namespace SocietyLedger.Api.Extensions
             services.AddScoped<IPaymentModeRepository, PaymentModeRepository>();
             services.AddScoped<IExpenseRepository, ExpenseRepository>();
 
+            services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
+            services.AddScoped<IAdjustmentRepository, AdjustmentRepository>();
             services.AddScoped<IMaintenanceConfigRepository, MaintenanceConfigRepository>();
             services.AddScoped<INotificationPreferenceRepository, NotificationPreferenceRepository>();
             services.AddScoped<IBillRepository, BillRepository>();

@@ -67,5 +67,11 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             _db.flats.CountAsync(f => f.society_id == societyId && !f.is_deleted);
 
         public async Task SaveChangesAsync() => await _db.SaveChangesAsync();
+
+        public async Task<IReadOnlyList<long>> GetAllActiveIdsAsync() =>
+            await _db.societies
+                .Where(s => !s.is_deleted)
+                .Select(s => s.id)
+                .ToListAsync();
     }
 }

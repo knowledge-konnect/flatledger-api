@@ -30,6 +30,18 @@ namespace SocietyLedger.Application.Interfaces.Repositories
 
         /// <summary>Persists pending changes.</summary>
         Task SaveChangesAsync();
+
+        /// <summary>
+        /// Returns a lookup of societyId → set of flatIds that already have a bill for the given period.
+        /// Used by the scheduled billing job to skip already-billed flats efficiently.
+        /// </summary>
+        Task<ILookup<long, long>> GetExistingFlatIdsForSocietiesAsync(IReadOnlyCollection<long> societyIds, string period);
+
+        /// <summary>Returns the total outstanding amount across all non-deleted bills for a flat.</summary>
+        Task<decimal> GetOutstandingByFlatIdAsync(long flatId);
+
+        /// <summary>Returns the sum of all non-deleted bill amounts for a flat.</summary>
+        Task<decimal> GetTotalChargesByFlatIdAsync(long flatId);
     }
 
     public record BillAddDto(
