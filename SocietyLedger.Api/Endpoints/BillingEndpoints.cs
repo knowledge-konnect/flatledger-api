@@ -7,7 +7,6 @@ using SocietyLedger.Api.Extensions;
 using SocietyLedger.Api.Filters;
 using SocietyLedger.Application.DTOs.Billing;
 using SocietyLedger.Application.Interfaces.Services;
-using SocietyLedger.Domain.Constants;
 using SocietyLedger.Shared;
 using Swashbuckle.AspNetCore.Annotations;
 
@@ -36,7 +35,7 @@ namespace SocietyLedger.Api.Endpoints
                     if (userId == 0)
                     {
                         Log.Warning("Unauthorized billing status request - invalid user ID");
-                        var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid or missing authentication token", ctx.TraceIdentifier);
+                        var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, ErrorMessages.UNAUTHORIZED, ctx.TraceIdentifier);
                         return Results.Json(errorResponse, statusCode: 401);
                     }
 
@@ -52,10 +51,6 @@ namespace SocietyLedger.Api.Endpoints
             .Produces<ErrorResponse>(500);
 
             // POST /billing/generate-monthly
-            // Society admin manually triggers billing for their own society.
-            // Defaults to the current UTC month when BillingMonth is omitted.
-            // The Hangfire background job also calls GenerateBillsAsync per-society
-            // internally, so logic is never duplicated.
             app.MapPost("/generate-monthly",
                 [Authorize]
                 [SwaggerOperation(
@@ -67,18 +62,6 @@ namespace SocietyLedger.Api.Endpoints
                 async ([FromBody] GenerateMonthlyBillsRequest request, IBillingService billingService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
-
-                    if (userId == 0)
-                    {
-                        Log.Warning("Unauthorized /billing/generate-monthly request - invalid user ID");
-                        return Results.Json(
-                            ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid or missing authentication token", ctx.TraceIdentifier),
-                            statusCode: 401);
-                    }
-
-                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
-                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
-
                     var billingMonthDate = request.GetBillingMonthDate();
                     var period           = billingMonthDate.ToString("yyyy-MM");
 
@@ -95,6 +78,8 @@ namespace SocietyLedger.Api.Endpoints
                     return Results.Ok(ApiResponse<GenerateBillsResponse>.Success(
                         result, $"Bills generated successfully for period {period}"));
                 })
+            .AddEndpointFilter<SubscriptionActiveFilter>()
+            .AddEndpointFilter<ViewerForbiddenFilter>()
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)
             .HasApiVersion(version_1_0)
@@ -106,7 +91,6 @@ namespace SocietyLedger.Api.Endpoints
             .Produces<ErrorResponse>(500);
 
             // POST /billing/trigger-monthly-job-now
-            // Admin-only endpoint: manually triggers the same all-societies monthly billing logic used by the background service.
             app.MapPost("/trigger-monthly-job-now",
                 [Authorize("SuperAdmin")]
                 [SwaggerOperation(
@@ -117,29 +101,66 @@ namespace SocietyLedger.Api.Endpoints
                 async (IBillingService billingService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
-                    if (userId == 0)
-                        return Results.Json(
-                            ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid or missing authentication token", ctx.TraceIdentifier),
-                            statusCode: 401);
-
-                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
-                        return Results.Json(
-                            new { error = "Forbidden", message = "You do not have permission to perform this action." },
-                            statusCode: 403);
-
-                    var billingMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+                    var billingMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
                     var result = await billingService.GenerateMonthlyBillsAsync(billingMonth);
 
                     return Results.Ok(ApiResponse<BillingResult>.Success(
                         result,
                         $"Monthly billing job triggered for {billingMonth:yyyy-MM}. Created={result.BillsCreated}, Skipped={result.BillsSkipped}."));
                 })
+            .RequireRateLimiting("AuthPolicy")
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)
             .HasApiVersion(version_1_0)
             .WithName("TriggerMonthlyBillingJobNow")
             .Produces<ApiResponse<BillingResult>>(200)
             .Produces<ErrorResponse>(401)
+            .Produces<ErrorResponse>(500);
+
+            // POST /billing/catchup
+            app.MapPost("/catchup",
+                [Authorize("SuperAdmin")]
+                [SwaggerOperation(
+                    Summary     = "Trigger catch-up billing for a past period (SuperAdmin only)",
+                    Description = "Generates bills for all active societies for the specified past period. " +
+                                  "Defaults to the previous calendar month when period is omitted. " +
+                                  "Returns 400 if the period is in the future or more than 12 months in the past."
+                )]
+                async ([FromBody] CatchupBillingRequest request, IBillingService billingService, HttpContext ctx) =>
+                {
+                    var billingMonth = request.GetBillingMonthDate();
+                    var period = billingMonth.ToString("yyyy-MM");
+                    var currentMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+
+                    if (billingMonth >= currentMonth)
+                    {
+                        var err = ErrorResponse.Create("PERIOD_IN_FUTURE",
+                            $"Period '{period}' is in the future or the current month. Catch-up billing can only target past periods.",
+                            ctx.TraceIdentifier);
+                        return Results.Json(err, statusCode: 400);
+                    }
+
+                    if (billingMonth < currentMonth.AddMonths(-12))
+                    {
+                        var err = ErrorResponse.Create("PERIOD_TOO_OLD",
+                            $"Period '{period}' is more than 12 months in the past. Maximum lookback is 12 months.",
+                            ctx.TraceIdentifier);
+                        return Results.Json(err, statusCode: 400);
+                    }
+
+                    var result = await billingService.GenerateMonthlyBillsAsync(billingMonth, source: "catchup-manual");
+                    return Results.Ok(ApiResponse<BillingResult>.Success(
+                        result, $"Catch-up billing completed for {period}."));
+                })
+            .RequireRateLimiting("AuthPolicy")
+            .WithTags(groupName)
+            .WithApiVersionSet(versionSet)
+            .HasApiVersion(version_1_0)
+            .WithName("TriggerCatchupBilling")
+            .Produces<ApiResponse<BillingResult>>(200)
+            .Produces<ErrorResponse>(400)
+            .Produces<ErrorResponse>(401)
+            .Produces<ErrorResponse>(403)
             .Produces<ErrorResponse>(500);
 
             // POST /billing/generate-for-flat
@@ -153,13 +174,11 @@ namespace SocietyLedger.Api.Endpoints
                 async ([FromBody] GenerateBillForFlatRequest request, IBillingService billingService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
-                    if (userId == 0)
-                        return Results.Json(ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid or missing authentication token", ctx.TraceIdentifier), statusCode: 401);
-
-                    var billingMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+                    var billingMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
                     await billingService.GenerateBillForFlatAsync(request.FlatPublicId, userId, billingMonth);
                     return Results.Ok(ApiResponse<string>.Success(null, $"Bill generated for flat {request.FlatPublicId} for {billingMonth:yyyy-MM} (if not already present)."));
                 })
+            .AddEndpointFilter<SubscriptionActiveFilter>()
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)
             .HasApiVersion(version_1_0)

@@ -37,7 +37,7 @@ namespace SocietyLedger.Api.Endpoints
                 {
                     var userId = ctx.GetUserId();
                     if (userId == 0) return Results.Json(
-                        ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid token", ctx.TraceIdentifier), statusCode: 401);
+                        ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, ErrorMessages.UNAUTHORIZED, ctx.TraceIdentifier), statusCode: 401);
 
                     var result = await reportService.GetCollectionSummaryAsync(userId, startPeriod, endPeriod, ct);
                     return Results.Ok(ApiResponse<CollectionSummaryDto>.Success(result, "Collection summary retrieved successfully"));
@@ -64,7 +64,7 @@ namespace SocietyLedger.Api.Endpoints
                 {
                     var userId = ctx.GetUserId();
                     if (userId == 0) return Results.Json(
-                        ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid token", ctx.TraceIdentifier), statusCode: 401);
+                        ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, ErrorMessages.UNAUTHORIZED, ctx.TraceIdentifier), statusCode: 401);
 
                     var result = await reportService.GetDefaultersReportAsync(userId, minOutstanding, ct);
                     return Results.Ok(ApiResponse<List<DefaulterDto>>.Success(result, "Defaulters report retrieved successfully"));
@@ -92,7 +92,7 @@ namespace SocietyLedger.Api.Endpoints
                 {
                     var userId = ctx.GetUserId();
                     if (userId == 0) return Results.Json(
-                        ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid token", ctx.TraceIdentifier), statusCode: 401);
+                        ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, ErrorMessages.UNAUTHORIZED, ctx.TraceIdentifier), statusCode: 401);
 
                     var result = await reportService.GetIncomeVsExpenseAsync(userId, startDate, endDate, ct);
                     return Results.Ok(ApiResponse<IncomeVsExpenseDto>.Success(result, "Income vs expense report retrieved successfully"));
@@ -120,7 +120,7 @@ namespace SocietyLedger.Api.Endpoints
                 {
                     var userId = ctx.GetUserId();
                     if (userId == 0) return Results.Json(
-                        ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid token", ctx.TraceIdentifier), statusCode: 401);
+                        ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, ErrorMessages.UNAUTHORIZED, ctx.TraceIdentifier), statusCode: 401);
 
                     var result = await reportService.GetFundLedgerAsync(userId, startDate, endDate, ct);
                     return Results.Ok(ApiResponse<FundLedgerReportDto>.Success(result, "Fund ledger retrieved successfully"));
@@ -151,7 +151,7 @@ namespace SocietyLedger.Api.Endpoints
                 {
                     var userId = ctx.GetUserId();
                     if (userId == 0) return Results.Json(
-                        ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid token", ctx.TraceIdentifier), statusCode: 401);
+                        ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, ErrorMessages.UNAUTHORIZED, ctx.TraceIdentifier), statusCode: 401);
 
                     var result = await reportService.GetPaymentRegisterAsync(userId, startDate, endDate, page, pageSize, ct);
                     return Results.Ok(ApiResponse<PagedResult<PaymentRegisterDto>>.Success(result, "Payment register retrieved successfully"));
@@ -163,40 +163,12 @@ namespace SocietyLedger.Api.Endpoints
             .Produces<ErrorResponse>(401)
             .Produces<ErrorResponse>(500);
 
-            // Expense by Category
-            app.MapGet("/expense-by-category",
-                [Authorize]
-                [SwaggerOperation(
-                    Summary = "Expense by Category",
-                    Description = "Total spending broken down by expense category with entry count and date range. Filter by date range."
-                )]
-                async (
-                    IReportService reportService,
-                    HttpContext ctx,
-                    [FromQuery] DateOnly? startDate,
-                    [FromQuery] DateOnly? endDate,
-                    CancellationToken ct) =>
-                {
-                    var userId = ctx.GetUserId();
-                    if (userId == 0) return Results.Json(
-                        ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid token", ctx.TraceIdentifier), statusCode: 401);
-
-                    var result = await reportService.GetExpenseByCategoryAsync(userId, startDate, endDate, ct);
-                    return Results.Ok(ApiResponse<ExpenseByCategoryDto>.Success(result, "Expense by category retrieved successfully"));
-                })
-            .WithTags(groupName)
-            .WithApiVersionSet(versionSet).HasApiVersion(v1)
-            .WithName("GetExpenseByCategory")
-            .Produces<ApiResponse<ExpenseByCategoryDto>>(200)
-            .Produces<ErrorResponse>(401)
-            .Produces<ErrorResponse>(500);
-
             // Download Monthly Report
             app.MapGet("/download/monthly",
                 [Authorize]
                 [SwaggerOperation(
                     Summary = "Download Monthly Report",
-                    Description = "Downloads an Excel report for the given month with fund position, flat payment status, and expenses by category."
+                    Description = "Downloads an Excel report for the given month with fund position, flat payment status, and expenses by category.\n\nAll monetary balances are signed: Positive = member owes the society; Negative = society owes the member (advance)."
                 )]
                 async (
                     IReportService reportService,
@@ -207,13 +179,13 @@ namespace SocietyLedger.Api.Endpoints
                 {
                     var userId = ctx.GetUserId();
                     if (userId == 0) return Results.Json(
-                        ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid token", ctx.TraceIdentifier), statusCode: 401);
+                        ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, ErrorMessages.UNAUTHORIZED, ctx.TraceIdentifier), statusCode: 401);
 
                     if (month < 1 || month > 12) return Results.Json(
-                        ErrorResponse.Create("INVALID_PARAM", "month must be between 1 and 12", ctx.TraceIdentifier), statusCode: 400);
+                        ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, "Month must be between 1 and 12.", ctx.TraceIdentifier), statusCode: 400);
 
                     if (year < 2000 || year > 2100) return Results.Json(
-                        ErrorResponse.Create("INVALID_PARAM", "year must be between 2000 and 2100", ctx.TraceIdentifier), statusCode: 400);
+                        ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, "Year must be between 2000 and 2100.", ctx.TraceIdentifier), statusCode: 400);
 
                     var (bytes, fileName) = await reportService.DownloadMonthlyReportAsync(userId, year, month, ct);
                     return Results.File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
@@ -243,14 +215,14 @@ namespace SocietyLedger.Api.Endpoints
                 {
                     var userId = ctx.GetUserId();
                     if (userId == 0) return Results.Json(
-                        ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid token", ctx.TraceIdentifier), statusCode: 401);
+                        ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, ErrorMessages.UNAUTHORIZED, ctx.TraceIdentifier), statusCode: 401);
 
                     var selectedYear = year ?? DateTime.UtcNow.Year;
                     if (selectedYear < 2000 || selectedYear > 2100) return Results.Json(
-                        ErrorResponse.Create("INVALID_PARAM", "year must be between 2000 and 2100", ctx.TraceIdentifier), statusCode: 400);
+                        ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, "Year must be between 2000 and 2100.", ctx.TraceIdentifier), statusCode: 400);
 
                     if (yearType != "calendar" && yearType != "financial") return Results.Json(
-                        ErrorResponse.Create("INVALID_PARAM", "yearType must be 'calendar' or 'financial'", ctx.TraceIdentifier), statusCode: 400);
+                        ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, "yearType must be 'calendar' or 'financial'.", ctx.TraceIdentifier), statusCode: 400);
 
                     var (bytes, fileName) = await reportService.DownloadYearlyReportAsync(userId, selectedYear, yearType, ct);
                     return Results.File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);

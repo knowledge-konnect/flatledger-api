@@ -9,12 +9,16 @@ namespace SocietyLedger.Infrastructure.Persistence.Entities;
 [Index("status", Name = "idx_subscriptions_status")]
 [Index("trial_end", Name = "idx_subscriptions_trial_end")]
 [Index("user_id", Name = "idx_subscriptions_user_id")]
+[Index("society_id", Name = "idx_subscriptions_society_id")]
 public partial class subscription
 {
     [Key]
     public Guid id { get; set; }
 
     public long user_id { get; set; }
+
+    /// <summary>Society that owns this subscription. Billing is society-based.</summary>
+    public long society_id { get; set; }
 
     public Guid plan_id { get; set; }
 
@@ -54,4 +58,8 @@ public partial class subscription
     [ForeignKey("user_id")]
     [InverseProperty("subscriptions")]
     public virtual user user { get; set; } = null!;
+
+    /// <summary>The society this subscription belongs to. No inverse navigation to keep the society entity lean.</summary>
+    [ForeignKey("society_id")]
+    public virtual society society { get; set; } = null!;
 }

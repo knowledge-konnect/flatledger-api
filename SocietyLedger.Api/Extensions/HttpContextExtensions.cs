@@ -8,9 +8,10 @@ namespace SocietyLedger.Api.Extensions
     public static class HttpContextExtensions
     {
         /// <summary>
-        /// Safely retrieves the real client IP address,
-        /// normalizing IPv6 loopback (::1) to IPv4 (127.0.0.1),
-        /// and handling X-Forwarded-For headers.
+        /// Returns the real client IP address.
+        /// Relies on UseForwardedHeaders middleware (configured in Program.cs) to have already
+        /// resolved X-Forwarded-For into RemoteIpAddress — do NOT re-read the raw header here,
+        /// as that would allow clients to spoof their IP and bypass rate limiting.
         /// </summary>
         public static string GetClientIp(this HttpContext ctx)
         {
@@ -19,34 +20,19 @@ namespace SocietyLedger.Api.Extensions
 
             try
             {
-                string ip = null;
-
-                // Check X-Forwarded-For (proxy headers)
-                var forwarded = ctx.Request.Headers["X-Forwarded-For"].FirstOrDefault();
-                if (!string.IsNullOrWhiteSpace(forwarded))
-                {
-                    // May contain multiple IPs (client, proxy1, proxy2)
-                    ip = forwarded.Split(',', StringSplitOptions.RemoveEmptyEntries)
-                                  .FirstOrDefault()?.Trim();
-                }
-
-                // If still not found, use direct connection IP
-                ip ??= ctx.Connection.RemoteIpAddress?.ToString();
-
-                if (string.IsNullOrWhiteSpace(ip))
+                var address = ctx.Connection.RemoteIpAddress;
+                if (address == null)
                     return "unknown";
 
-                // Normalize IPv6 localhost (::1) to IPv4
-                if (ip == "::1" || ip == "0:0:0:0:0:0:0:1")
-                    ip = "127.0.0.1";
+                // Unwrap IPv4-mapped IPv6 addresses (e.g. ::ffff:192.168.1.10)
+                if (address.IsIPv4MappedToIPv6)
+                    address = address.MapToIPv4();
 
-                // Optional: Remove port if somehow included
-                if (ip.Contains(':') && System.Net.IPAddress.TryParse(ip, out var parsedIp))
-                {
-                    // For mapped IPv6-to-IPv4 (like ::ffff:192.168.1.10)
-                    if (parsedIp.IsIPv4MappedToIPv6)
-                        ip = parsedIp.MapToIPv4().ToString();
-                }
+                var ip = address.ToString();
+
+                // Normalize IPv6 loopback to IPv4 for consistency
+                if (ip == "::1")
+                    ip = "127.0.0.1";
 
                 return ip;
             }

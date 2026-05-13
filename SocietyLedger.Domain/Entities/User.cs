@@ -22,6 +22,11 @@
         /// <summary>BCrypt hash of the user's password. Never returned in API responses.</summary>
         public string? PasswordHash { get; set; }
 
+        /// <summary>Password reset token hash (SHA256 hashed for security). Cleared after use.</summary>
+        public string? PasswordResetTokenHash { get; set; }
+        /// <summary>Expiry time for the password reset token. Single-use: cleared after reset.</summary>
+        public DateTime? PasswordResetExpiresAt { get; set; }
+
         public bool IsActive { get; set; } = true;
         /// <summary>When true, the user must change their password on next login.</summary>
         public bool ForcePasswordChange { get; set; }

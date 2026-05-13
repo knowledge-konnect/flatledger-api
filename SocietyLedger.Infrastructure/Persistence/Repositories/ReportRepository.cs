@@ -111,14 +111,6 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             return new PagedResult<PaymentRegisterDto>(items, totalCount, page, pageSize);
         }
 
-        public async Task<ExpenseByCategoryDto> GetExpenseByCategoryAsync(
-            long societyId, DateOnly? startDate, DateOnly? endDate, CancellationToken ct = default)
-        {
-            const string sql = "SELECT public.get_expense_by_category(@SocietyId, @StartDate::date, @EndDate::date)";
-            var json = await QueryJsonAsync(sql, DateParams(societyId, startDate, endDate), ct);
-            return Deserialize<ExpenseByCategoryDto>(json) ?? new ExpenseByCategoryDto();
-        }
-
         public async Task<MonthlyReportDto> GetMonthlyReportDataAsync(
             long societyId, int year, int month, CancellationToken ct = default)
         {
@@ -149,13 +141,13 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
 
         private async Task<string> QueryJsonAsync(string sql, object parameters, CancellationToken ct)
         {
-            using var connection = _connectionFactory.CreateConnection() as NpgsqlConnection;
-            await connection!.OpenAsync(ct);
+            using var connection = (NpgsqlConnection)_connectionFactory.CreateConnection();
+            await connection.OpenAsync(ct);
             var result = await connection.QueryFirstOrDefaultAsync<string>(sql, parameters, commandTimeout: 30);
             return result ?? "{}";
         }
 
-        private static T? Deserialize<T>(string json)
+        private T? Deserialize<T>(string json)
         {
             if (string.IsNullOrWhiteSpace(json) || json == "{}")
                 return default;
@@ -186,14 +178,16 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
 
                 return JsonSerializer.Deserialize<T>(payload.GetRawText(), options);
             }
-            catch
+            catch (Exception ex)
             {
+                _logger.LogError(ex, "JSON deserialization failed for type {Type}. Retrying with raw JSON.", typeof(T).Name);
                 try
                 {
                     return JsonSerializer.Deserialize<T>(json, options);
                 }
-                catch
+                catch (Exception ex2)
                 {
+                    _logger.LogError(ex2, "JSON deserialization retry also failed for type {Type}.", typeof(T).Name);
                     return default;
                 }
             }

@@ -5,6 +5,12 @@ using System.Threading.Tasks;
 
 namespace SocietyLedger.Api
 {
+    /// <summary>
+    /// Middleware that ensures every request carries a correlation ID.
+    /// If the client provides an X-Correlation-ID header it is reused; otherwise a new GUID is generated.
+    /// The ID is echoed back in the response header and pushed into Serilog's LogContext
+    /// so every log entry within the request scope is tagged with it.
+    /// </summary>
     public class CorrelationIdMiddleware
     {
         private const string CorrelationIdHeader = "X-Correlation-ID";
@@ -25,7 +31,6 @@ namespace SocietyLedger.Api
             }
             context.Response.Headers[CorrelationIdHeader] = correlationId;
 
-            // Push into Serilog LogContext so every log in this request scope carries {CorrelationId}
             using (LogContext.PushProperty("CorrelationId", correlationId))
             {
                 await _next(context);

@@ -1,29 +1,32 @@
-using Serilog;
+using Microsoft.Extensions.Logging;
 using SocietyLedger.Application.DTOs.Expense;
 using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Application.Interfaces.Services;
 using SocietyLedger.Domain.Exceptions;
-using SocietyLedger.Infrastructure.Persistence.Entities;
-using SocietyLedger.Infrastructure.Persistence.Contexts;
 using SocietyLedger.Infrastructure.Services.Common;
-using Microsoft.EntityFrameworkCore;
 
 namespace SocietyLedger.Infrastructure.Services
 {
     public class ExpenseService : IExpenseService
     {
         private readonly IExpenseRepository _expenseRepo;
+        private readonly ISocietyRepository _societyRepo;
         private readonly IUserContext _userContext;
-        private readonly AppDbContext _db;
+        private readonly IDashboardService _dashboardService;
+        private readonly ILogger<ExpenseService> _logger;
 
         public ExpenseService(
             IExpenseRepository expenseRepo,
+            ISocietyRepository societyRepo,
             IUserContext userContext,
-            AppDbContext db)
+            IDashboardService dashboardService,
+            ILogger<ExpenseService> logger)
         {
-            _expenseRepo = expenseRepo ?? throw new ArgumentNullException(nameof(expenseRepo));
-            _userContext = userContext ?? throw new ArgumentNullException(nameof(userContext));
-            _db = db ?? throw new ArgumentNullException(nameof(db));
+            _expenseRepo      = expenseRepo ?? throw new ArgumentNullException(nameof(expenseRepo));
+            _societyRepo      = societyRepo ?? throw new ArgumentNullException(nameof(societyRepo));
+            _userContext      = userContext ?? throw new ArgumentNullException(nameof(userContext));
+            _dashboardService = dashboardService ?? throw new ArgumentNullException(nameof(dashboardService));
+            _logger           = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
         public async Task<ExpenseResponse> CreateExpenseAsync(long userId, CreateExpenseRequest request)
@@ -31,7 +34,6 @@ namespace SocietyLedger.Infrastructure.Services
             var societyId = await _userContext.GetSocietyIdAsync(userId);
 
             // Validate business date against the society's financial epoch.
-            // This must happen in the service layer because it requires a DB round-trip.
             var onboardingDate = await GetOnboardingDateAsync(societyId);
             if (request.Date < onboardingDate)
                 throw new ValidationException(
@@ -40,14 +42,9 @@ namespace SocietyLedger.Infrastructure.Services
 
             // #7 — Near-duplicate detection: same date, amount, category, and vendor within 5 minutes.
             var fiveMinutesAgo = DateTime.UtcNow.AddMinutes(-5);
-            var isDuplicate = await _db.expenses
-                .AnyAsync(e => e.society_id    == societyId
-                            && !e.is_deleted
-                            && e.date_incurred == request.Date
-                            && e.amount        == request.Amount
-                            && e.category_code == request.CategoryCode
-                            && (e.vendor ?? string.Empty) == (request.Vendor ?? string.Empty)
-                            && e.created_at    >= fiveMinutesAgo);
+            var isDuplicate = await _expenseRepo.IsDuplicateRecentAsync(
+                societyId, request.Date, request.Amount, request.CategoryCode,
+                request.Vendor ?? string.Empty, fiveMinutesAgo);
 
             if (isDuplicate)
                 throw new ConflictException(
@@ -55,7 +52,7 @@ namespace SocietyLedger.Infrastructure.Services
                     "If this is intentional, please wait a moment and try again.");
 
             // Create expense with public_id and created_by
-            var expenseEntity = new expense
+            var expenseEntity = new SocietyLedger.Infrastructure.Persistence.Entities.expense
             {
                 public_id = Guid.NewGuid(),
                 society_id = societyId,
@@ -71,7 +68,8 @@ namespace SocietyLedger.Infrastructure.Services
             await _expenseRepo.AddAsync(expenseEntity);
             await _expenseRepo.SaveChangesAsync();
 
-            Log.Information("Expense created successfully by user {UserId} for society {SocietyId}", userId, societyId);
+            _logger.LogInformation("Expense created successfully by user {UserId} for society {SocietyId}", userId, societyId);
+            _dashboardService.InvalidateDashboardCache(societyId);
             
             // Reload to get navigation properties
             var createdExpense = await _expenseRepo.GetByPublicIdAsync(expenseEntity.public_id, societyId);
@@ -118,29 +116,16 @@ namespace SocietyLedger.Infrastructure.Services
 
         public async Task<IEnumerable<ExpenseCategoryResponse>> GetExpenseCategoriesAsync()
         {
-            var categories = await _db.expense_categories
-                .AsNoTracking()
-                .OrderBy(c => c.display_name)
-                .ToListAsync();
-
-            return categories.Select(c => new ExpenseCategoryResponse
-            {
-                Code = c.code,
-                DisplayName = c.display_name
-            });
+            return await _expenseRepo.GetCategoriesAsync();
         }
 
         public async Task<ExpenseResponse> UpdateExpenseAsync(Guid publicId, long userId, UpdateExpenseRequest request)
         {
             var societyId = await _userContext.GetSocietyIdAsync(userId);
 
-            var expenseEntity = await _expenseRepo.GetByPublicIdAsync(publicId, societyId);
-            if (expenseEntity == null)
-                throw new NotFoundException("Expense", publicId.ToString());
-
-            // Get tracked entity for update
-            var trackedExpense = await _db.expenses.FirstOrDefaultAsync(e => e.public_id == publicId && e.society_id == societyId);
-            if (trackedExpense == null)
+            // Check existence before any validation
+            var existing = await _expenseRepo.GetByPublicIdAsync(publicId, societyId);
+            if (existing == null)
                 throw new NotFoundException("Expense", publicId.ToString());
 
             // Validate updated date against the society's financial epoch.
@@ -153,30 +138,12 @@ namespace SocietyLedger.Infrastructure.Services
                         $"the society onboarding date ({onboardingDate:yyyy-MM-dd}).");
             }
 
-            // Update fields if provided
-            if (request.Date.HasValue)
-                trackedExpense.date_incurred = request.Date.Value;
-
-            if (request.CategoryCode != null)
-                trackedExpense.category_code = request.CategoryCode;
-
-            if (request.Vendor != null)
-                trackedExpense.vendor = request.Vendor;
-
-            if (request.Description != null)
-                trackedExpense.description = request.Description;
-
-            if (request.Amount.HasValue)
-                trackedExpense.amount = request.Amount.Value;
-
-            await _expenseRepo.UpdateAsync(trackedExpense);
-            await _expenseRepo.SaveChangesAsync();
-
-            // Reload with navigation properties
-            var updatedExpense = await _expenseRepo.GetByPublicIdAsync(publicId, societyId);
+            var updatedExpense = await _expenseRepo.UpdateFieldsAsync(publicId, societyId, request);
             if (updatedExpense == null)
                 throw new InvalidOperationException("Failed to retrieve updated expense");
-            
+
+            _dashboardService.InvalidateDashboardCache(societyId);
+
             return MapToResponse(updatedExpense);
         }
 
@@ -191,7 +158,36 @@ namespace SocietyLedger.Infrastructure.Services
             await _expenseRepo.DeleteByPublicIdAsync(publicId, societyId);
             await _expenseRepo.SaveChangesAsync();
 
-            Log.Information("Expense deleted successfully: {PublicId}", publicId);
+            _dashboardService.InvalidateDashboardCache(societyId);
+            _logger.LogInformation("Expense deleted successfully: {PublicId}", publicId);
+        }
+
+        public async Task<PagedExpensesResponse> GetPagedAsync(
+            long userId,
+            DateOnly? startDate,
+            DateOnly? endDate,
+            string? categoryCode,
+            string? search,
+            int page,
+            int size,
+            string sortBy,
+            string sortDir)
+        {
+            var societyId = await _userContext.GetSocietyIdAsync(userId);
+
+            var (items, totalCount) = await _expenseRepo.GetPagedAsync(
+                societyId, startDate, endDate, categoryCode, search, page, size, sortBy, sortDir);
+
+            var totalPages = size > 0 ? (int)Math.Ceiling((double)totalCount / size) : 0;
+
+            return new PagedExpensesResponse
+            {
+                Content       = items.Select(MapToResponse).ToList(),
+                TotalElements = totalCount,
+                TotalPages    = totalPages,
+                Page          = page,
+                Size          = size
+            };
         }
 
         private ExpenseResponse MapToResponse(ExpenseEntity entity)
@@ -216,15 +212,10 @@ namespace SocietyLedger.Infrastructure.Services
         /// <summary>
         /// Returns the society's onboarding date. Throws <see cref="NotFoundException"/>
         /// if the society is not found (soft-delete check included).
-        /// Result is used to reject expense dates earlier than the financial epoch.
         /// </summary>
         private async Task<DateOnly> GetOnboardingDateAsync(long societyId)
         {
-            var date = await _db.societies
-                .AsNoTracking()
-                .Where(s => s.id == societyId && !s.is_deleted)
-                .Select(s => (DateOnly?)s.onboarding_date)
-                .FirstOrDefaultAsync();
+            var date = await _societyRepo.GetOnboardingDateAsync(societyId);
 
             if (date is null)
                 throw new NotFoundException("Society", societyId.ToString());

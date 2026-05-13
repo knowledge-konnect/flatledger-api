@@ -6,10 +6,7 @@ using Serilog;
 using SocietyLedger.Api.Extensions;
 using SocietyLedger.Api.Filters;
 using SocietyLedger.Application.DTOs.User;
-using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Application.Interfaces.Services;
-using SocietyLedger.Domain.Constants;
-using SocietyLedger.Domain.Exceptions;
 using SocietyLedger.Shared;
 using Swashbuckle.AspNetCore.Annotations;
 
@@ -35,13 +32,6 @@ namespace SocietyLedger.Api.Endpoints
                     IUserService userService) =>
                 {
                     var authUserId = ctx.GetAuthenticatedUserId();
-                    if (authUserId == 0)
-                    {
-                        Log.Warning("Unauthorized user list request - invalid user ID");
-                        var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, ErrorMessages.UNAUTHORIZED, ctx.TraceIdentifier);
-                        return Results.Json(errorResponse, statusCode: 401);
-                    }
-
                     var users = await userService.GetUsersForAdminAsync(authUserId);
                     Log.Information("Users listed for society by user {UserId}", authUserId);
                     return Results.Ok(ApiResponse<ListUsersResponse>.Success(
@@ -69,13 +59,6 @@ namespace SocietyLedger.Api.Endpoints
                     IUserService userService) =>
                 {
                     var authUserId = ctx.GetAuthenticatedUserId();
-                    if (authUserId == 0)
-                    {
-                        Log.Warning("Unauthorized user get request - invalid user ID");
-                        var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, ErrorMessages.UNAUTHORIZED, ctx.TraceIdentifier);
-                        return Results.Json(errorResponse, statusCode: 401);
-                    }
-
                     var user = await userService.GetUserByPublicIdForAdminAsync(publicId, authUserId);
                     Log.Information("User {PublicId} fetched by {UserId}", publicId, authUserId);
                     return Results.Ok(ApiResponse<UserResponseDto>.Success(user, "User retrieved successfully"));
@@ -102,21 +85,12 @@ namespace SocietyLedger.Api.Endpoints
                     IUserService userService) =>
                 {
                     var authUserId = ctx.GetAuthenticatedUserId();
-                    if (authUserId == 0)
-                    {
-                        Log.Warning("Unauthorized user create request - invalid user ID");
-                        var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, ErrorMessages.UNAUTHORIZED, ctx.TraceIdentifier);
-                        return Results.Json(errorResponse, statusCode: 401);
-                    }
-
-                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
-                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
-
                     var created = await userService.CreateUserForAdminAsync(request, authUserId);
                     Log.Information("User {Email} created by {UserId}", request.Email, authUserId);
                     return Results.Created(string.Empty, ApiResponse<CreateUserResponseDto>.Success(created, "User created successfully"));
                 })
             .AddEndpointFilter<FluentValidationFilter<CreateUserDto>>()
+            .AddEndpointFilter<ViewerForbiddenFilter>()
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)
             .HasApiVersion(version_1_0)
@@ -141,15 +115,6 @@ namespace SocietyLedger.Api.Endpoints
                     IUserService userService) =>
                 {
                     var authUserId = ctx.GetAuthenticatedUserId();
-                    if (authUserId == 0)
-                    {
-                        Log.Warning("Unauthorized user update request - invalid user ID");
-                        var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, ErrorMessages.UNAUTHORIZED, ctx.TraceIdentifier);
-                        return Results.Json(errorResponse, statusCode: 401);
-                    }
-
-                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
-                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
 
                     if (publicId != request.PublicId)
                     {
@@ -163,6 +128,7 @@ namespace SocietyLedger.Api.Endpoints
                     return Results.Ok(ApiResponse<UserResponseDto>.Success(updated, "User updated successfully"));
                 })
             .AddEndpointFilter<FluentValidationFilter<UpdateUserDto>>()
+            .AddEndpointFilter<ViewerForbiddenFilter>()
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)
             .HasApiVersion(version_1_0)
@@ -187,20 +153,11 @@ namespace SocietyLedger.Api.Endpoints
                     IUserService userService) =>
                 {
                     var authUserId = ctx.GetAuthenticatedUserId();
-                    if (authUserId == 0)
-                    {
-                        Log.Warning("Unauthorized user delete request - invalid user ID");
-                        var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, ErrorMessages.UNAUTHORIZED, ctx.TraceIdentifier);
-                        return Results.Json(errorResponse, statusCode: 401);
-                    }
-
-                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
-                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
-
-                    var deleted = await userService.DeleteUserForAdminAsync(publicId, authUserId);
+                    await userService.DeleteUserForAdminAsync(publicId, authUserId);
                     Log.Information("User {PublicId} soft deleted by {UserId}", publicId, authUserId);
                     return Results.Ok(ApiResponse<EmptyResponse>.Success(null, "User deleted successfully"));
                 })
+            .AddEndpointFilter<ViewerForbiddenFilter>()
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)
             .HasApiVersion(version_1_0)

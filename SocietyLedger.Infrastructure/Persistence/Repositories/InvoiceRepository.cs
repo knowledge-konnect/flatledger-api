@@ -47,7 +47,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                 // automatically when the transaction commits or rolls back.
                 var now = DateTime.UtcNow;
                 var lockKey = (long)((uint)now.Year << 12 | (uint)now.Month);
-                await _db.Database.ExecuteSqlRawAsync($"SELECT pg_advisory_xact_lock({lockKey})");
+                await _db.Database.ExecuteSqlAsync($"SELECT pg_advisory_xact_lock({lockKey})");
 
                 // Generate the number inside the lock so the read and the insert are atomic.
                 invoice.InvoiceNumber = await GenerateNextInvoiceNumberAsync(now);
@@ -94,9 +94,18 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
 
         public async Task UpdateAsync(Invoice invoice)
         {
-            var efInvoice = invoice.ToEntity();
-            efInvoice.updated_at = DateTime.UtcNow;
-            _db.invoices.Update(efInvoice);
+            // Fetch the tracked entity and update only the fields that PayInvoiceAsync mutates.
+            // Using _db.invoices.Update(detachedEntity) marks every column dirty and can
+            // overwrite fields (e.g. invoice_number) that were not loaded into the domain model.
+            var efInvoice = await _db.invoices.FirstOrDefaultAsync(i => i.id == invoice.Id);
+            if (efInvoice == null) return;
+
+            efInvoice.status           = invoice.Status;
+            efInvoice.paid_date        = invoice.PaidDate;
+            efInvoice.payment_method   = invoice.PaymentMethod;
+            efInvoice.payment_reference = invoice.PaymentReference;
+            efInvoice.updated_at       = DateTime.UtcNow;
+
             await _db.SaveChangesAsync();
         }
 

@@ -2,13 +2,10 @@ using Asp.Versioning;
 using Asp.Versioning.Builder;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Serilog;
 using SocietyLedger.Api.Extensions;
 using SocietyLedger.Api.Filters;
 using SocietyLedger.Application.DTOs.Subscription;
 using SocietyLedger.Application.Interfaces.Services;
-using SocietyLedger.Domain.Constants;
-using SocietyLedger.Domain.Exceptions;
 using SocietyLedger.Shared;
 using Swashbuckle.AspNetCore.Annotations;
 
@@ -34,7 +31,6 @@ namespace SocietyLedger.Api.Endpoints
                 {
                     var userId = ctx.GetUserId();
                     await subscriptionService.CreateTrialSubscriptionAsync(userId);
-                    // Assuming trial end can be retrieved or calculated; adjust if service returns it
                     var status = await subscriptionService.GetSubscriptionStatusAsync(userId);
                     return Results.Ok(ApiResponse<SubscriptionStatusResponse>.Success(status, "Trial started"));
                 })
@@ -67,6 +63,39 @@ namespace SocietyLedger.Api.Endpoints
             .Produces<ErrorResponse>(400)
             .Produces<ErrorResponse>(500);
 
+            // Get current subscription (society-scoped, used by frontend SubscriptionManagement)
+            // GET /subscriptions/current?societyId=<uuid>
+            // societyId is accepted as a query param for forward-compatibility but is ignored —
+            // society isolation is always enforced via the authenticated user's JWT claim.
+            app.MapGet("/current",
+                [Authorize]
+            [SwaggerOperation(
+                    Summary = "Get current subscription",
+                    Description = "Returns the current subscription for the authenticated user's society. " +
+                                  "The societyId query param is accepted for client compatibility but society " +
+                                  "isolation is always enforced server-side via the JWT claim."
+                )]
+            async (ISubscriptionService subscriptionService, HttpContext ctx,
+                   [FromQuery] string? societyId) =>
+                {
+                    var userId = ctx.GetUserId();
+                    var result = await subscriptionService.GetSubscriptionStatusAsync(userId);
+                    // Return null-equivalent when no subscription exists so the frontend
+                    // can distinguish "no subscription" from an error.
+                    if (result.Status == "none")
+                        return Results.Ok(ApiResponse<SubscriptionStatusResponse>.Success(
+                            new SubscriptionStatusResponse { Status = "none", AccessAllowed = false },
+                            "No active subscription"));
+                    return Results.Ok(ApiResponse<SubscriptionStatusResponse>.Success(result, "Current subscription retrieved successfully"));
+                })
+            .WithTags(groupName)
+            .WithApiVersionSet(versionSet)
+            .HasApiVersion(version_1_0)
+            .WithName("GetCurrentSubscription")
+            .Produces<ApiResponse<SubscriptionStatusResponse>>(200)
+            .Produces<ErrorResponse>(401)
+            .Produces<ErrorResponse>(500);
+
             // Subscribe to a plan
             app.MapPost("/subscribe",
                 [Authorize]
@@ -77,17 +106,16 @@ namespace SocietyLedger.Api.Endpoints
             async ([FromBody] SubscribeRequest request, ISubscriptionService subscriptionService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
-                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
-                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
                     var result = await subscriptionService.SubscribeAsync(userId, request);
-                    return Results.Ok(ApiResponse<SubscribeResponse>.Success(result, "Subscription created successfully"));
+                    return Results.Created("/subscriptions/status", ApiResponse<SubscribeResponse>.Success(result, "Subscription created successfully"));
                 })
             .AddEndpointFilter<FluentValidationFilter<SubscribeRequest>>()
+            .AddEndpointFilter<ViewerForbiddenFilter>()
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)
             .HasApiVersion(version_1_0)
             .WithName("Subscribe")
-            .Produces<ApiResponse<SubscribeResponse>>(200)
+            .Produces<ApiResponse<SubscribeResponse>>(201)
             .Produces<ErrorResponse>(400)
             .Produces<ErrorResponse>(500);
 
@@ -101,12 +129,11 @@ namespace SocietyLedger.Api.Endpoints
             async ([FromBody] CancelSubscriptionRequest request, ISubscriptionService subscriptionService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
-                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
-                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
                     await subscriptionService.CancelSubscriptionAsync(userId, request);
                     return Results.Ok(ApiResponse<EmptyResponse>.Success(null, "Subscription cancelled successfully"));
                 })
             .AddEndpointFilter<FluentValidationFilter<CancelSubscriptionRequest>>()
+            .AddEndpointFilter<ViewerForbiddenFilter>()
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)
             .HasApiVersion(version_1_0)

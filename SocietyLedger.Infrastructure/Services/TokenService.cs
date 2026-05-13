@@ -14,8 +14,7 @@ namespace SocietyLedger.Infrastructure.Services
     public class TokenService : ITokenService
     {
         private readonly JwtSettings _settings;
-        private readonly RandomNumberGenerator _rng = RandomNumberGenerator.Create();
-
+        private static readonly RandomNumberGenerator _rng = RandomNumberGenerator.Create();
 
         public TokenService(IOptions<JwtSettings> options) { _settings = options.Value; }
 
@@ -94,7 +93,7 @@ namespace SocietyLedger.Infrastructure.Services
         public RefreshTokenPair GenerateRefreshToken()
         {
             var tokenBytes = new byte[64];
-            _rng.GetBytes(tokenBytes);
+            RandomNumberGenerator.Fill(tokenBytes);
             var token = Convert.ToBase64String(tokenBytes);
             var expires = DateTime.UtcNow.AddDays(_settings.RefreshTokenExpirationDays);
             return new RefreshTokenPair(token, expires);

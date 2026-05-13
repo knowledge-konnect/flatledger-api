@@ -20,7 +20,10 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
         {
             var efPayment = await _db.payments
                 .AsNoTracking()
-                .Where(p => p.payment_type == PaymentTypeCodes.Subscription && p.razorpay_payment_id == null && p.society_id == userId && !p.is_deleted)
+                .Where(p => p.payment_type == PaymentTypeCodes.Subscription
+                         && p.razorpay_payment_id == null
+                         && p.recorded_by == userId   // was incorrectly p.society_id == userId
+                         && !p.is_deleted)
                 .OrderByDescending(p => p.created_at)
                 .FirstOrDefaultAsync();
             return efPayment?.ToDomain();
@@ -58,6 +61,23 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
         public async Task SaveChangesAsync()
         {
             await _db.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// Acquires a session-level PostgreSQL advisory lock, runs the action, then releases it.
+        /// Serialises concurrent VerifyPaymentAsync + ProcessWebhookAsync calls for the same order.
+        /// </summary>
+        public async Task ExecuteWithAdvisoryLockAsync(long lockKey, Func<Task> action)
+        {
+            await _db.Database.ExecuteSqlAsync($"SELECT pg_advisory_lock({lockKey})");
+            try
+            {
+                await action();
+            }
+            finally
+            {
+                await _db.Database.ExecuteSqlAsync($"SELECT pg_advisory_unlock({lockKey})");
+            }
         }
     }
 }

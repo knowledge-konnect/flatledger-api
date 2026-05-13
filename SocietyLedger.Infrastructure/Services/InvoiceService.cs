@@ -6,6 +6,8 @@ using SocietyLedger.Domain.Constants;
 using SocietyLedger.Domain.Entities;
 using SocietyLedger.Domain.Exceptions;
 using SocietyLedger.Infrastructure.Persistence.Entities;
+using SocietyLedger.Infrastructure.Services.Common;
+using System.Text.Json;
 
 namespace SocietyLedger.Infrastructure.Services
 {
@@ -13,15 +15,18 @@ namespace SocietyLedger.Infrastructure.Services
     {
         private readonly IInvoiceRepository _invoiceRepo;
         private readonly ISubscriptionEventRepository _eventRepo;
+        private readonly IUserContext _userContext;
         private readonly ILogger<InvoiceService> _logger;
 
         public InvoiceService(
             IInvoiceRepository invoiceRepo,
             ISubscriptionEventRepository eventRepo,
+            IUserContext userContext,
             ILogger<InvoiceService> logger)
         {
             _invoiceRepo = invoiceRepo;
             _eventRepo = eventRepo;
+            _userContext = userContext;
             _logger = logger;
         }
 
@@ -55,8 +60,11 @@ namespace SocietyLedger.Infrastructure.Services
             if (invoice == null)
                 throw new NotFoundException("Invoice", invoiceId.ToString());
 
-            // IDOR guard: ensure the caller owns this invoice.
-            if (invoice.UserId != userId)
+            // Society-scoped ownership: any admin of the same society can pay an invoice,
+            // not just the specific user who created the subscription.
+            var callerSocietyId = await _userContext.GetSocietyIdAsync(userId);
+            var ownerSocietyId  = await _userContext.GetSocietyIdAsync(invoice.UserId);
+            if (callerSocietyId != ownerSocietyId)
                 throw new AuthorizationException("You do not have permission to pay this invoice.");
 
             if (invoice.Status == InvoiceStatusCodes.Paid)
@@ -80,6 +88,13 @@ namespace SocietyLedger.Infrastructure.Services
             // Create subscription event if this is a subscription invoice
             if (invoice.SubscriptionId.HasValue)
             {
+                // Use JsonSerializer — never interpolate user-supplied values into JSON strings.
+                var eventMeta = JsonSerializer.Serialize(new
+                {
+                    invoice_id = invoiceId,
+                    payment_method = request.PaymentMethod
+                });
+
                 await _eventRepo.CreateAsync(new SubscriptionEvent
                 {
                     Id = Guid.NewGuid(),
@@ -87,7 +102,7 @@ namespace SocietyLedger.Infrastructure.Services
                     SubscriptionId = invoice.SubscriptionId,
                     EventType = "payment_received",
                     Amount = amount,
-                    Metadata = $"{{\"invoice_id\":\"{invoiceId}\",\"payment_method\":\"{request.PaymentMethod}\"}}"
+                    Metadata = eventMeta
                 });
             }
 

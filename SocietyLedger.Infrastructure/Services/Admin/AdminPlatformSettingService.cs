@@ -10,6 +10,7 @@ namespace SocietyLedger.Infrastructure.Services.Admin
 {
     public class AdminPlatformSettingService : IAdminPlatformSettingService
     {
+        private const int MaxPageSize = 200;
         private readonly AppDbContext _db;
         public AdminPlatformSettingService(AppDbContext db) { _db = db; }
 
@@ -22,6 +23,7 @@ namespace SocietyLedger.Infrastructure.Services.Admin
 
         public async Task<PagedResult<PlatformSettingDto>> GetSettingsAsync(int page, int pageSize, string? search = null)
         {
+            pageSize = Math.Min(pageSize, MaxPageSize);
             var query = _db.platform_settings.AsNoTracking();
             if (!string.IsNullOrWhiteSpace(search))
                 query = query.Where(s => s.key.Contains(search));

@@ -9,20 +9,28 @@ namespace SocietyLedger.Infrastructure.Services.Admin
 {
     public class AdminSubscriptionService : IAdminSubscriptionService
     {
+        private const int MaxPageSize = 200;
         private readonly AppDbContext _db;
         public AdminSubscriptionService(AppDbContext db) { _db = db; }
 
-        public async Task<PagedResult<AdminSubscriptionDto>> GetSubscriptionsAsync(int page, int pageSize, string? status = null, long? userId = null)
+        public async Task<PagedResult<AdminSubscriptionDto>> GetSubscriptionsAsync(
+            int page, int pageSize, string? status = null, long? userId = null, long? societyId = null)
         {
+            pageSize = Math.Min(pageSize, MaxPageSize);
             var query = _db.subscriptions
                 .AsNoTracking()
                 .Include(s => s.user)
                 .Include(s => s.plan)
+                .Include(s => s.society)
                 .AsQueryable();
 
             if (!string.IsNullOrWhiteSpace(status))
                 query = query.Where(s => s.status == status);
-            if (userId.HasValue)
+
+            // Prefer society_id filter; fall back to user_id for legacy callers
+            if (societyId.HasValue)
+                query = query.Where(s => s.society_id == societyId);
+            else if (userId.HasValue)
                 query = query.Where(s => s.user_id == userId);
 
             var total = await query.CountAsync();
@@ -36,9 +44,12 @@ namespace SocietyLedger.Infrastructure.Services.Admin
                     UserId = s.user_id,
                     UserName = s.user.name,
                     UserEmail = s.user.email,
+                    SocietyId = s.society_id,
+                    SocietyName = s.society.name,
                     PlanId = s.plan_id,
                     PlanName = s.plan.name,
                     Status = s.status,
+                    // SubscribedAmount is the canonical billing amount—never read plan.price here
                     SubscribedAmount = s.subscribed_amount,
                     Currency = s.currency,
                     CurrentPeriodStart = s.current_period_start,
@@ -60,6 +71,7 @@ namespace SocietyLedger.Infrastructure.Services.Admin
                 .AsNoTracking()
                 .Include(s => s.user)
                 .Include(s => s.plan)
+                .Include(s => s.society)
                 .Where(s => s.id == id)
                 .Select(s => new AdminSubscriptionDto
                 {
@@ -67,6 +79,8 @@ namespace SocietyLedger.Infrastructure.Services.Admin
                     UserId = s.user_id,
                     UserName = s.user.name,
                     UserEmail = s.user.email,
+                    SocietyId = s.society_id,
+                    SocietyName = s.society.name,
                     PlanId = s.plan_id,
                     PlanName = s.plan.name,
                     Status = s.status,

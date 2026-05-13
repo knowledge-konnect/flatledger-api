@@ -28,6 +28,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
         {
             var efPlans = await _db.plans
                 .Where(p => p.is_active == true)
+                .OrderBy(p => p.display_order)
                 .AsNoTracking()
                 .ToListAsync();
 

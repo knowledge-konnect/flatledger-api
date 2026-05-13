@@ -6,13 +6,10 @@ using Serilog;
 using SocietyLedger.Api.Extensions;
 using SocietyLedger.Api.Filters;
 using SocietyLedger.Application.DTOs.MaintenancePayment;
-using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Application.Interfaces.Services;
 using SocietyLedger.Domain.Constants;
-using SocietyLedger.Domain.Exceptions;
 using SocietyLedger.Shared;
 using Swashbuckle.AspNetCore.Annotations;
-using System.Text.RegularExpressions;
 
 namespace SocietyLedger.Api.Endpoints
 {
@@ -31,21 +28,12 @@ namespace SocietyLedger.Api.Endpoints
             [SwaggerOperation(
                     Summary = "Create maintenance payment",
                     Description = """
-                        Records a maintenance payment and allocates it to the outstanding bills for the flat (current month first). Idempotency is enforced via the Idempotency-Key header (checked in maintenance_payments). Duplicate keys return the original result without writing new data. Entire allocation is transaction-safe. Any unallocated amount is reported as remainingAdvance. Payment date must be in the current month or future.
+                        Records a maintenance payment and allocates it to the outstanding bills for the flat (current month first). Idempotency is enforced via the Idempotency-Key header (checked in maintenance_payments). Duplicate keys return the original result without writing new data. Entire allocation is transaction-safe. Any unallocated amount is reported as remainingAdvance. Payment date must be within the current financial year (on or after 1 Apr of the current FY) and not before the society onboarding date.
                         """
                 )]
             async ([FromBody] MaintenancePaymentRequest request, IMaintenancePaymentService paymentService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
-                    if (userId == 0)
-                    {
-                        Log.Warning("Unauthorized maintenance payment create request - invalid user ID");
-                        var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid or missing authentication token", ctx.TraceIdentifier);
-                        return Results.Json(errorResponse, statusCode: 401);
-                    }
-
-                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
-                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
 
                     if (request == null)
                     {
@@ -58,48 +46,33 @@ namespace SocietyLedger.Api.Endpoints
                         return Results.Json(errorResponse, statusCode: 400);
                     }
 
-                    // Validate payment date is not in previous months
-                    var currentMonthStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-                    if (request.PaymentDate < currentMonthStart)
+                    // Payments cannot be backdated before the start of the current financial year (India FY: Apr 1 – Mar 31).
+                    var utcNow = DateTime.UtcNow;
+                    var fyStartYear = utcNow.Month >= 4 ? utcNow.Year : utcNow.Year - 1;
+                    var fyStart = new DateTime(fyStartYear, 4, 1, 0, 0, 0, DateTimeKind.Utc);
+                    if (request.PaymentDate < fyStart)
                     {
-                        var errorResponse = ErrorResponse.Create(ErrorCodes.VALIDATION_FAILED, "Payment date cannot be in a previous month", ctx.TraceIdentifier);
+                        var errorResponse = ErrorResponse.Create(ErrorCodes.VALIDATION_FAILED,
+                            $"Payment date cannot be before the start of the current financial year ({fyStart:dd MMM yyyy}).",
+                            ctx.TraceIdentifier);
                         return Results.Json(errorResponse, statusCode: 400);
                     }
 
-                    // Resolve idempotency key: header → body → auto-generated
+                    // Prefer the Idempotency-Key header; fall back to the body field; generate one if absent.
                     var idempotencyKey =
                         ctx.Request.Headers["Idempotency-Key"].FirstOrDefault()
                         ?? request.IdempotencyKey
                         ?? Guid.NewGuid().ToString();
 
                     var effectiveRequest = request with { IdempotencyKey = idempotencyKey };
-                    try
-                    {
-                        var result = await paymentService.ProcessPaymentAsync(effectiveRequest, userId);
-                        Log.Information(
-                            "Maintenance payment processed: userId={UserId} flat={FlatId} totalPaid={TotalPaid} advance={Advance}",
-                            userId, request.FlatPublicId, result.TotalPaid, result.RemainingAdvance);
-                        return Results.Ok(ApiResponse<MaintenancePaymentResponse>.Success(result, "Maintenance payment processed successfully"));
-                    }
-                    catch (NotFoundException ex)
-                    {
-                        Log.Warning(ex, "Maintenance payment error: not found");
-                        var errorResponse = ErrorResponse.Create(ErrorCodes.RESOURCE_NOT_FOUND, ex.Message, ctx.TraceIdentifier);
-                        return Results.Json(errorResponse, statusCode: 404);
-                    }
-                    catch (ValidationException ex)
-                    {
-                        Log.Warning(ex, "Maintenance payment validation error");
-                        var errorResponse = ErrorResponse.Create(ErrorCodes.VALIDATION_FAILED, ex.Message, ctx.TraceIdentifier);
-                        return Results.Json(errorResponse, statusCode: 400);
-                    }
-                    catch (Exception ex)
-                    {
-                        Log.Error(ex, "Maintenance payment processing failed");
-                        var errorResponse = ErrorResponse.Create(ErrorCodes.INTERNAL_SERVER_ERROR, "An error occurred while processing the payment", ctx.TraceIdentifier);
-                        return Results.Json(errorResponse, statusCode: 500);
-                    }
+                    var result = await paymentService.ProcessPaymentAsync(effectiveRequest, userId);
+                    Log.Information(
+                        "Maintenance payment processed: userId={UserId} flat={FlatId} totalPaid={TotalPaid} advance={Advance}",
+                        userId, request.FlatPublicId, result.TotalPaid, result.RemainingAdvance);
+                    return Results.Ok(ApiResponse<MaintenancePaymentResponse>.Success(result, "Maintenance payment processed successfully"));
                 })
+            .AddEndpointFilter<SubscriptionActiveFilter>()
+            .AddEndpointFilter<ViewerForbiddenFilter>()
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)
             .HasApiVersion(version_1_0)
@@ -115,20 +88,19 @@ namespace SocietyLedger.Api.Endpoints
                 [Authorize]
             [SwaggerOperation(
                     Summary = "Get maintenance payments",
-                    Description = "Retrieves all maintenance payments for the society. Optionally filter by period (YYYY-MM)."
+                    Description = "Retrieves maintenance payments for the society. Optionally filter by period (YYYY-MM). Paginated — defaults: page=1, pageSize=50, max pageSize=200."
                 )]
-            async ([FromQuery] string? period, IMaintenancePaymentService paymentService, HttpContext ctx) =>
+            async ([FromQuery] string? period, [FromQuery] int page, [FromQuery] int pageSize,
+                   IMaintenancePaymentService paymentService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
-                    if (!string.IsNullOrEmpty(period))
-                    {
-                        if (!Regex.IsMatch(period, @"^\d{4}-\d{2}$"))
-                        {
-                            return Results.BadRequest("Invalid period format. Use YYYY-MM");
-                        }
-                    }
+                    if (!string.IsNullOrEmpty(period) && !ValidationPatterns.BillingPeriod.IsMatch(period))
+                        return Results.BadRequest("Invalid period format. Use YYYY-MM");
 
-                    var result = await paymentService.GetMaintenancePaymentsBySocietyAsync(userId, period);
+                    var result = await paymentService.GetMaintenancePaymentsBySocietyAsync(
+                        userId, period,
+                        page < 1 ? 1 : page,
+                        pageSize < 1 ? 50 : pageSize);
 
                     return Results.Ok(ApiResponse<ListMaintenancePaymentsResponse>.Success(
                         new ListMaintenancePaymentsResponse(result.ToList()),
@@ -191,21 +163,22 @@ namespace SocietyLedger.Api.Endpoints
                 [Authorize]
             [SwaggerOperation(
                     Summary = "Update maintenance payment",
-                    Description = "Updates an existing maintenance payment. If PaymentDate is provided, it must be in the current month or future."
+                    Description = "Updates an existing maintenance payment. If PaymentDate is provided, it must be within the current financial year (on or after 1 Apr of the current FY)."
                 )]
             async (Guid publicId, [FromBody] UpdateMaintenancePaymentRequest request, IMaintenancePaymentService paymentService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
-                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
-                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
 
-                    // Validate payment date if provided
                     if (request.PaymentDate.HasValue)
                     {
-                        var currentMonthStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-                        if (request.PaymentDate.Value < currentMonthStart)
+                        var utcNow = DateTime.UtcNow;
+                        var fyStartYear = utcNow.Month >= 4 ? utcNow.Year : utcNow.Year - 1;
+                        var fyStart = new DateTime(fyStartYear, 4, 1, 0, 0, 0, DateTimeKind.Utc);
+                        if (request.PaymentDate.Value < fyStart)
                         {
-                            var errorResponse = ErrorResponse.Create(ErrorCodes.VALIDATION_FAILED, "Payment date cannot be in a previous month", ctx.TraceIdentifier);
+                            var errorResponse = ErrorResponse.Create(ErrorCodes.VALIDATION_FAILED,
+                                $"Payment date cannot be before the start of the current financial year ({fyStart:dd MMM yyyy}).",
+                                ctx.TraceIdentifier);
                             return Results.Json(errorResponse, statusCode: 400);
                         }
                     }
@@ -214,6 +187,8 @@ namespace SocietyLedger.Api.Endpoints
                     return Results.Ok(ApiResponse<MaintenancePaymentResponse>.Success(result, "Maintenance payment updated successfully"));
                 })
             .AddEndpointFilter<FluentValidationFilter<UpdateMaintenancePaymentRequest>>()
+            .AddEndpointFilter<SubscriptionActiveFilter>()
+            .AddEndpointFilter<ViewerForbiddenFilter>()
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)
             .HasApiVersion(version_1_0)
@@ -232,11 +207,11 @@ namespace SocietyLedger.Api.Endpoints
             async (Guid publicId, IMaintenancePaymentService paymentService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
-                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
-                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
                     await paymentService.DeleteMaintenancePaymentAsync(publicId, userId);
                     return Results.Ok(ApiResponse<EmptyResponse>.Success(null, "Maintenance payment deleted successfully"));
                 })
+            .AddEndpointFilter<SubscriptionActiveFilter>()
+            .AddEndpointFilter<ViewerForbiddenFilter>()
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)
             .HasApiVersion(version_1_0)
@@ -258,7 +233,7 @@ namespace SocietyLedger.Api.Endpoints
 
                     if (userId == 0)
                     {
-                        var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid or missing authentication token", ctx.TraceIdentifier);
+                        var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, ErrorMessages.UNAUTHORIZED, ctx.TraceIdentifier);
                         return Results.Json(errorResponse, statusCode: 401);
                     }
 

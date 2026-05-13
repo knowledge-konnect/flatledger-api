@@ -9,6 +9,13 @@ namespace SocietyLedger.Application.Interfaces.Services
 {
     public interface IFlatService
     {
+        /// <summary>
+        /// Get all flats for the society that the given user belongs to.
+        /// The service resolves societyId internally — callers only need userId.
+        /// </summary>
+        Task<IEnumerable<FlatResponseDto>> GetBySocietyAsync(long userId);
+
+        // Legacy overload used by internal service-to-service calls that already have societyId.
         Task<IEnumerable<FlatResponseDto>> GetBySocietyIdAsync(long societyId);
         /// <summary>
         /// Get a flat by its public UUID with tenant isolation.
@@ -19,6 +26,13 @@ namespace SocietyLedger.Application.Interfaces.Services
         /// Create a new flat and return the created flat DTO.
         /// </summary>
         Task<FlatResponseDto> CreateAsync(CreateFlatDto dto, long userId);
+
+        /// <summary>
+        /// Bulk create multiple flats in a single operation with transactional integrity.
+        /// Validates all items, batch inserts them, and generates bills in parallel (unless skipBilling=true).
+        /// Returns succeeded and failed results with individual error messages.
+        /// </summary>
+        Task<BulkCreateFlatsResponse> BulkCreateAsync(BulkCreateFlatsRequest request, long userId, bool skipBilling = false);
 
         /// <summary>
         /// Update an existing flat with tenant isolation.
@@ -46,5 +60,25 @@ namespace SocietyLedger.Application.Interfaces.Services
         /// Get flat financial summary with balances and charges.
         /// </summary>
         Task<FlatFinancialSummaryResponse> GetFlatFinancialSummaryAsync(Guid publicId, long userId);
+
+        /// <summary>
+        /// Get financial summaries for multiple flats in a single call.
+        /// Only returns summaries for flats belonging to the user's society.
+        /// Unknown or cross-society IDs are silently skipped.
+        /// </summary>
+        Task<BulkFinancialSummaryResponse> GetBulkFinancialSummaryAsync(IEnumerable<Guid> flatPublicIds, long userId);
+
+        /// <summary>
+        /// Returns a paginated, filtered, and sorted list of flats for the user's society.
+        /// All parameters are optional — omitting them returns the first page of all flats.
+        /// </summary>
+        Task<PagedFlatsResponse> GetPagedAsync(
+            long userId,
+            string? search,
+            string? statusCode,
+            int page,
+            int size,
+            string sortBy,
+            string sortDir);
     }
 }

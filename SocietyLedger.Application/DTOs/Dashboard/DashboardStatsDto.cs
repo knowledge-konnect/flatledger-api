@@ -11,6 +11,9 @@ namespace SocietyLedger.Application.DTOs.Dashboard
         [JsonPropertyName("total_flats")]
         public int TotalFlats { get; set; }
 
+        [JsonPropertyName("pending_flats_count")]
+        public int PendingFlatsCount { get; set; }
+
         [JsonPropertyName("bank_balance")]
         public decimal BankBalance { get; set; }
 

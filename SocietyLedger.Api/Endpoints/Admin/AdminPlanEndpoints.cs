@@ -12,6 +12,10 @@ namespace SocietyLedger.Api.Endpoints.Admin
 {
     public static class AdminPlanEndpoints
     {
+        /// <summary>
+        /// Maps admin plan routes: list, get, create, update, and delete subscription plans.
+        /// Requires the SuperAdmin policy.
+        /// </summary>
         public static void MapAdminPlanRoutes(this RouteGroupBuilder app, string groupName, ApiVersionSet versionSet)
         {
             var version_1_0 = new ApiVersion(ApiConstants.API_VERSION_1_0);
@@ -22,7 +26,7 @@ namespace SocietyLedger.Api.Endpoints.Admin
                 async ([FromQuery] int page, [FromQuery] int pageSize, [FromQuery] string? search, [FromQuery] bool? isActive, IAdminPlanService service) =>
                 {
                     var result = await service.GetPlansAsync(page < 1 ? 1 : page, pageSize < 1 ? 20 : pageSize, search, isActive);
-                    return Results.Ok(ApiResponse<PagedResult<AdminPlanDto>>.Success(result));
+                    return Results.Ok(ApiResponse<PagedResult<AdminPlanDto>>.Success(result, "Plans retrieved successfully"));
                 })
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)
@@ -35,8 +39,8 @@ namespace SocietyLedger.Api.Endpoints.Admin
                 async (Guid id, IAdminPlanService service) =>
                 {
                     var plan = await service.GetPlanByIdAsync(id);
-                    return plan == null ? Results.NotFound(ErrorResponse.Create("NOT_FOUND", "Plan not found"))
-                                        : Results.Ok(ApiResponse<AdminPlanDto>.Success(plan));
+                    return plan == null ? Results.NotFound(ErrorResponse.Create(ErrorCodes.RESOURCE_NOT_FOUND, "Plan not found"))
+                                        : Results.Ok(ApiResponse<AdminPlanDto>.Success(plan, "Plan retrieved successfully"));
                 })
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)
@@ -49,7 +53,7 @@ namespace SocietyLedger.Api.Endpoints.Admin
                 async ([FromBody] AdminPlanCreateRequest req, IAdminPlanService service) =>
                 {
                     var plan = await service.CreatePlanAsync(req);
-                    return Results.Ok(ApiResponse<AdminPlanDto>.Success(plan, "Plan created successfully"));
+                    return Results.Created($"/api/admin/plans/{plan.Id}", ApiResponse<AdminPlanDto>.Success(plan, "Plan created successfully"));
                 })
             .AddEndpointFilter<FluentValidationFilter<AdminPlanCreateRequest>>()
             .WithTags(groupName)
@@ -77,7 +81,7 @@ namespace SocietyLedger.Api.Endpoints.Admin
                 async (Guid id, IAdminPlanService service) =>
                 {
                     await service.DeletePlanAsync(id);
-                    return Results.Ok(ApiResponse<string>.Success("Plan deleted successfully"));
+                    return Results.Ok(ApiResponse<EmptyResponse>.Success(null, "Plan deleted successfully"));
                 })
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)

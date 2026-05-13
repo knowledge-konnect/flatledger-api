@@ -71,18 +71,13 @@ namespace SocietyLedger.Infrastructure.Services
             return await _reportRepo.GetPaymentRegisterAsync(societyId, startDate, endDate, page, pageSize, ct);
         }
 
-        public async Task<ExpenseByCategoryDto> GetExpenseByCategoryAsync(
-            long userId, DateOnly? startDate, DateOnly? endDate, CancellationToken ct = default)
-        {
-            var societyId = await _userContext.GetSocietyIdAsync(userId);
-            return await _reportRepo.GetExpenseByCategoryAsync(societyId, startDate, endDate, ct);
-        }
-
         public async Task<(byte[] Bytes, string FileName)> DownloadMonthlyReportAsync(
             long userId, int year, int month, CancellationToken ct = default)
         {
             var societyId = await _userContext.GetSocietyIdAsync(userId);
             var data = await _reportRepo.GetMonthlyReportDataAsync(societyId, year, month, ct);
+            if (string.IsNullOrWhiteSpace(data.SocietyName))
+                throw new SocietyLedger.Domain.Exceptions.NotFoundException("Society", societyId.ToString());
             var bytes = _exportService.GenerateMonthlyReport(data);
             var monthName = new DateTime(year, month, 1).ToString("MMMM");
             var safeName = SanitizeFileName(data.SocietyName);
@@ -95,6 +90,8 @@ namespace SocietyLedger.Infrastructure.Services
         {
             var societyId = await _userContext.GetSocietyIdAsync(userId);
             var data = await _reportRepo.GetYearlyReportDataAsync(societyId, year, yearType, ct);
+            if (string.IsNullOrWhiteSpace(data.SocietyName))
+                throw new SocietyLedger.Domain.Exceptions.NotFoundException("Society", societyId.ToString());
             var bytes = _exportService.GenerateYearlyReport(data);
             var label = yearType == "financial"
                 ? $"FY_{year - 1}-{year % 100:D2}"

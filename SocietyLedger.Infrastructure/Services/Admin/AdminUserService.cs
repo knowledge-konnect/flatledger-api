@@ -8,11 +8,13 @@ namespace SocietyLedger.Infrastructure.Services.Admin
 {
     public class AdminUserService : IAdminUserService
     {
+        private const int MaxPageSize = 200;
         private readonly AppDbContext _db;
         public AdminUserService(AppDbContext db) { _db = db; }
 
         public async Task<PagedResult<AdminUserDto>> GetUsersAsync(int page, int pageSize, long? societyId = null, string? search = null, bool? isActive = null, bool? isDeleted = null)
         {
+            pageSize = Math.Min(pageSize, MaxPageSize);
             var query = _db.users
                 .AsNoTracking()
                 .Join(_db.societies, u => u.society_id, s => s.id,
@@ -21,8 +23,8 @@ namespace SocietyLedger.Infrastructure.Services.Admin
             if (societyId.HasValue)
                 query = query.Where(x => x.u.society_id == societyId);
             if (!string.IsNullOrWhiteSpace(search))
-                query = query.Where(x => x.u.name.ToLower().Contains(search.ToLower())
-                                      || (x.u.email != null && x.u.email.ToLower().Contains(search.ToLower()))
+                query = query.Where(x => EF.Functions.ILike(x.u.name, $"%{search}%")
+                                      || (x.u.email != null && EF.Functions.ILike(x.u.email, $"%{search}%"))
                                       || (x.u.mobile != null && x.u.mobile.Contains(search)));
             if (isActive.HasValue)
                 query = query.Where(x => x.u.is_active == isActive.Value);
@@ -52,7 +54,8 @@ namespace SocietyLedger.Infrastructure.Services.Admin
                     LastLogin = x.u.last_login,
                     CreatedAt = x.u.created_at,
                     SubscriptionStatus = x.u.subscription_status,
-                    SubscriptionPlan = x.u.subscription_plan,
+                    // subscription_plan is deprecated — use subscriptions table for plan data
+                    SubscriptionPlan = null,
                     TrialEndsDate = x.u.trial_ends_date,
                     NextBillingDate = x.u.next_billing_date
                 })
@@ -83,7 +86,8 @@ namespace SocietyLedger.Infrastructure.Services.Admin
                           LastLogin = u.last_login,
                           CreatedAt = u.created_at,
                           SubscriptionStatus = u.subscription_status,
-                          SubscriptionPlan = u.subscription_plan,
+                          // subscription_plan is deprecated — use subscriptions table for plan data
+                          SubscriptionPlan = null,
                           TrialEndsDate = u.trial_ends_date,
                           NextBillingDate = u.next_billing_date
                       })

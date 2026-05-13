@@ -27,9 +27,35 @@ namespace SocietyLedger.Application.Interfaces.Repositories
         Task<Society?> GetByIdAsync(long id);
 
         /// <summary>
+        /// Returns the onboarding date for a society. Returns null if not found.
+        /// </summary>
+        Task<DateOnly?> GetOnboardingDateAsync(long societyId);
+
+        /// <summary>
+        /// Returns the society_id for a given user_id. Returns null if user not found.
+        /// </summary>
+        Task<long?> GetSocietyIdByUserIdAsync(long userId);
+
+        /// <summary>
+        /// Returns the count of active (non-deleted) flats for a society.
+        /// </summary>
+        Task<int> CountActiveFlatsBySocietyAsync(long societyId);
+
+        /// <summary>
         /// Persists any pending changes in the underlying context.
         /// </summary>
         Task SaveChangesAsync();
+
+        /// <summary>
+        /// Returns the IDs of all non-deleted societies. Used by scheduled billing job.
+        /// </summary>
+        Task<IReadOnlyList<long>> GetAllActiveIdsAsync();
+
+        /// <summary>
+        /// Returns a dictionary of societyId → onboarding_date for all non-deleted societies.
+        /// Used by BillingCatchupService to skip periods that predate a society's registration.
+        /// </summary>
+        Task<IReadOnlyDictionary<long, DateOnly>> GetAllActiveOnboardingDatesAsync();
     }
 }
 

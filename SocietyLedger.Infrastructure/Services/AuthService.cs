@@ -8,8 +8,6 @@ using SocietyLedger.Domain.Constants;
 using SocietyLedger.Domain.Entities;
 using SocietyLedger.Domain.Exceptions;
 using SocietyLedger.Infrastructure.Persistence.Contexts;
-using SocietyLedger.Infrastructure.Persistence.Entities;
-using SocietyLedger.Infrastructure.Persistence.Repositories;
 using SocietyLedger.Shared;
 
 namespace SocietyLedger.Infrastructure.Services
@@ -21,9 +19,11 @@ namespace SocietyLedger.Infrastructure.Services
         private readonly ISocietyRepository _societyRepo;
         private readonly ITokenService _tokenService;
         private readonly ISubscriptionService _subscriptionService;
+        private readonly IEmailService _emailService;
         private readonly PasswordHasher _hasher;
         private readonly ILogger<AuthService> _logger;
         private readonly AppDbContext _db;
+        private readonly IRefreshTokenRepository _refreshTokenRepo;
 
         public AuthService(
             IUserRepository userRepo,
@@ -31,18 +31,22 @@ namespace SocietyLedger.Infrastructure.Services
             ISocietyRepository societyRepo,
             ITokenService tokenService,
             ISubscriptionService subscriptionService,
+            IEmailService emailService,
             PasswordHasher hasher,
             ILogger<AuthService> logger,
-            AppDbContext db)
+            AppDbContext db,
+            IRefreshTokenRepository refreshTokenRepo)
         {
             _userRepo = userRepo;
             _roleRepo = roleRepo;
             _societyRepo = societyRepo;
             _tokenService = tokenService;
             _subscriptionService = subscriptionService;
+            _emailService = emailService;
             _hasher = hasher;
             _logger = logger;
             _db = db;
+            _refreshTokenRepo = refreshTokenRepo;
         }
 
         /// <summary>
@@ -78,28 +82,26 @@ namespace SocietyLedger.Infrastructure.Services
             var accessToken = _tokenService.GenerateAccessToken(tokenClaims, out var accessExpires);
             var refreshPair = _tokenService.GenerateRefreshToken();
 
-            var refreshEntity = new refresh_token
+            var refreshEntity = new RefreshTokenEntity
             {
-                user_id = user.Id,
-                token_hash = _tokenService.HashToken(refreshPair.Token),
-                jwt_id = Guid.NewGuid().ToString(),
-                expires_at = refreshPair.ExpiresAt,
-                created_at = DateTime.UtcNow,
-                created_by_ip = ipAddress,
-                is_revoked = false
+                UserId        = user.Id,
+                TokenHash     = _tokenService.HashToken(refreshPair.Token),
+                JwtId         = Guid.NewGuid().ToString(),
+                ExpiresAt     = refreshPair.ExpiresAt,
+                CreatedAt     = DateTime.UtcNow,
+                CreatedByIp   = ipAddress,
+                IsRevoked     = false
             };
 
             var now = DateTime.UtcNow;
 
             // Direct UPDATE avoids a SELECT inside a transaction that can time out on pgBouncer.
-            await _db.users
-                .Where(u => u.id == user.Id)
-                .ExecuteUpdateAsync(s => s.SetProperty(u => u.last_login, now));
+            await _userRepo.UpdateLastLoginAsync(user.Id, now);
 
-            _db.refresh_tokens.Add(refreshEntity);
-            await _db.SaveChangesAsync();
+            await _refreshTokenRepo.AddAsync(refreshEntity);
+            await _refreshTokenRepo.SaveChangesAsync();
 
-            _logger.LogInformation("User {UserId} logged in successfully from IP {IP}", user.Id, ipAddress);
+            _logger.LogInformation("User {UserPublicId} logged in from {IP}", user.PublicId, ipAddress);
 
             return new LoginResponse
             {
@@ -121,7 +123,9 @@ namespace SocietyLedger.Infrastructure.Services
 
         /// <summary>
         /// Creates a new Society + SocietyAdmin user inside a single transaction, then issues tokens.
-        /// Trial subscription creation is best-effort — a failure here does not roll back registration.
+        /// Trial subscription creation is included in the transaction — if it fails the entire
+        /// registration is rolled back so users are never left in a state where they can log in
+        /// but have no subscription.
         /// </summary>
         public async Task<RegisterResponse> RegisterAsync(RegisterRequest request, string ipAddress)
         {
@@ -169,35 +173,38 @@ namespace SocietyLedger.Infrastructure.Services
             var accessToken = _tokenService.GenerateAccessToken(tokenClaimsReg, out var accessExpires);
             var refreshPair = _tokenService.GenerateRefreshToken();
 
-            var refreshEntity = new refresh_token
+            var refreshEntity = new RefreshTokenEntity
             {
-                user_id = user.Id,
-                token_hash = _tokenService.HashToken(refreshPair.Token),
-                jwt_id = Guid.NewGuid().ToString(),
-                expires_at = refreshPair.ExpiresAt,
-                created_at = DateTime.UtcNow,
-                created_by_ip = ipAddress,
-                is_revoked = false
+                UserId        = user.Id,
+                TokenHash     = _tokenService.HashToken(refreshPair.Token),
+                JwtId         = Guid.NewGuid().ToString(),
+                ExpiresAt     = refreshPair.ExpiresAt,
+                CreatedAt     = DateTime.UtcNow,
+                CreatedByIp   = ipAddress,
+                IsRevoked     = false
             };
 
-            _db.refresh_tokens.Add(refreshEntity);
+            await _refreshTokenRepo.AddAsync(refreshEntity);
             await _db.SaveChangesAsync();
 
-            // Trial subscription is best-effort — registration succeeds even if this fails.
+            // Trial creation is inside the transaction — if it fails the whole registration
+            // rolls back, preventing orphaned users with no subscription.
             try
             {
                 await _subscriptionService.CreateTrialSubscriptionAsync(user.Id);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to create trial subscription for user {UserId}", user.Id);
+                _logger.LogError(ex, "Trial subscription creation failed for user {UserId} — rolling back registration", user.Id);
+                await tx.RollbackAsync();
+                throw new AppException("Registration failed: could not create trial subscription. Please try again.");
             }
 
             await tx.CommitAsync();
 
             _logger.LogInformation(
-                "New user {UserId} registered new society {SocietyId} from {IP}",
-                user.Id, society.Id, ipAddress);
+                "New user {UserPublicId} registered new society {SocietyId} from {IP}",
+                user.PublicId, society.Id, ipAddress);
 
             return new RegisterResponse
             {
@@ -226,28 +233,23 @@ namespace SocietyLedger.Infrastructure.Services
         {
             var hashed = _tokenService.HashToken(token);
 
-            var rt = await _db.refresh_tokens
-                .Include(r => r.user)
-                .ThenInclude(u => u.role)
-                .Include(r => r.user)
-                .ThenInclude(u => u.society)
-                .FirstOrDefaultAsync(r => r.token_hash == hashed);
+            var rt = await _refreshTokenRepo.GetByHashAsync(hashed);
 
-            if (rt == null || rt.is_revoked || rt.expires_at <= DateTime.UtcNow)
+            if (rt == null || rt.IsRevoked || rt.ExpiresAt <= DateTime.UtcNow)
                 throw new AuthenticationException("Invalid or expired refresh token");
 
             var newPair = _tokenService.GenerateRefreshToken();
 
-            var newRt = new refresh_token
+            var newRt = new RefreshTokenEntity
             {
-                user_id = rt.user_id,
-                token_hash = _tokenService.HashToken(newPair.Token),
-                jwt_id = Guid.NewGuid().ToString(),
-                expires_at = newPair.ExpiresAt,
-                created_at = DateTime.UtcNow,
-                created_by_ip = ipAddress,
-                is_revoked = false,
-                replaced_by_token_hash = rt.token_hash
+                UserId              = rt.UserId,
+                TokenHash           = _tokenService.HashToken(newPair.Token),
+                JwtId               = Guid.NewGuid().ToString(),
+                ExpiresAt           = newPair.ExpiresAt,
+                CreatedAt           = DateTime.UtcNow,
+                CreatedByIp         = ipAddress,
+                IsRevoked           = false,
+                ReplacedByTokenHash = rt.TokenHash
             };
 
             // Atomically revoke the old token and persist the new one.
@@ -255,11 +257,9 @@ namespace SocietyLedger.Infrastructure.Services
 
             try
             {
-                rt.is_revoked = true;
-                rt.revoked_at = DateTime.UtcNow;
-
-                _db.refresh_tokens.Add(newRt);
-                await _db.SaveChangesAsync();
+                await _refreshTokenRepo.RevokeAsync(hashed, DateTime.UtcNow);
+                await _refreshTokenRepo.AddAsync(newRt);
+                await _refreshTokenRepo.SaveChangesAsync();
 
                 await transaction.CommitAsync();
             }
@@ -269,19 +269,19 @@ namespace SocietyLedger.Infrastructure.Services
                 throw;
             }
 
-            var refreshRole = rt.user?.role;
+            var refreshRole = rt.User;
             var tokenClaimsRefresh = new TokenClaims(
-                UserId: rt.user_id,
-                UserPublicId: rt.user?.public_id ?? Guid.Empty,
-                Email: rt.user?.email ?? string.Empty,
-                Name: rt.user?.name ?? string.Empty,
-                SocietyPublicId: rt.user?.society?.public_id ?? Guid.Empty,
-                RoleId: (short)(refreshRole?.id ?? 0),
-                RoleCode: refreshRole?.code ?? string.Empty,
-                RoleDisplayName: refreshRole?.display_name ?? string.Empty);
+                UserId: rt.UserId,
+                UserPublicId: rt.User?.PublicId ?? Guid.Empty,
+                Email: rt.User?.Email ?? string.Empty,
+                Name: rt.User?.Name ?? string.Empty,
+                SocietyPublicId: rt.User?.SocietyPublicId ?? Guid.Empty,
+                RoleId: rt.User?.RoleId ?? 0,
+                RoleCode: rt.User?.RoleCode ?? string.Empty,
+                RoleDisplayName: rt.User?.RoleDisplayName ?? string.Empty);
             var accessToken = _tokenService.GenerateAccessToken(tokenClaimsRefresh, out var accessExpires);
 
-            _logger.LogInformation("Refresh token rotated for user {UserId} from {Ip}", rt.user_id, ipAddress);
+            _logger.LogInformation("Refresh token rotated for user {UserId} from {Ip}", rt.UserId, ipAddress);
 
             return new LoginResponse
             {
@@ -289,16 +289,16 @@ namespace SocietyLedger.Infrastructure.Services
                 AccessTokenExpiresAt = accessExpires,
                 RefreshToken = newPair.Token,
                 RefreshTokenExpiresAt = newPair.ExpiresAt,
-                Roles = refreshRole != null
-                    ? new[] { new RoleDto { Id = refreshRole.id, Code = refreshRole.code, DisplayName = refreshRole.display_name } }
+                Roles = rt.User != null
+                    ? new[] { new RoleDto { Id = rt.User.RoleId, Code = rt.User.RoleCode ?? string.Empty, DisplayName = rt.User.RoleDisplayName ?? string.Empty } }
                     : Enumerable.Empty<RoleDto>(),
-                UserPublicId = rt.user?.public_id ?? Guid.Empty,
-                UserName = rt.user?.name ?? string.Empty,
-                Role = refreshRole?.code,
-                RoleDisplayName = refreshRole?.display_name,
-                SocietyPublicId = rt.user?.society?.public_id ?? Guid.Empty,
-                SocietyName = rt.user?.society?.name ?? string.Empty,
-                ForcePasswordChange = rt.user?.force_password_change ?? false
+                UserPublicId = rt.User?.PublicId ?? Guid.Empty,
+                UserName = rt.User?.Name ?? string.Empty,
+                Role = rt.User?.RoleCode,
+                RoleDisplayName = rt.User?.RoleDisplayName,
+                SocietyPublicId = rt.User?.SocietyPublicId ?? Guid.Empty,
+                SocietyName = rt.User?.SocietyName ?? string.Empty,
+                ForcePasswordChange = rt.User?.ForcePasswordChange ?? false
             };
         }
 
@@ -308,16 +308,8 @@ namespace SocietyLedger.Infrastructure.Services
         public async Task RevokeRefreshTokenAsync(string token, string ipAddress)
         {
             var hashed = _tokenService.HashToken(token);
-            var rt = await _db.refresh_tokens.FirstOrDefaultAsync(r => r.token_hash == hashed);
-            if (rt == null)
-                return;
-
-            rt.is_revoked = true;
-            rt.revoked_at = DateTime.UtcNow;
-
-            await _db.SaveChangesAsync();
-
-            _logger.LogInformation("Refresh token revoked for user {UserId} from {Ip}", rt.user_id, ipAddress);
+            await _refreshTokenRepo.RevokeAsync(hashed, DateTime.UtcNow);
+            _logger.LogInformation("Refresh token revoked from {Ip}", ipAddress);
         }
 
         /// <summary>
@@ -357,6 +349,80 @@ namespace SocietyLedger.Infrastructure.Services
             {
                 Message = "Password changed successfully.",
                 ForcePasswordChange = false
+            };
+        }
+
+        /// <summary>
+        /// Checks whether an email address belongs to an active, non-deleted user.
+        /// Used by the direct password reset flow so the frontend can show step 2
+        /// only when the email is valid — without leaking whether the account exists
+        /// to unauthenticated callers (rate-limited at the endpoint level).
+        /// </summary>
+        public async Task<bool> CheckEmailExistsAsync(string email)
+        {
+            if (string.IsNullOrWhiteSpace(email))
+                return false;
+
+            var user = await _userRepo.GetByEmailAsync(email);
+            return user != null && user.IsActive;
+        }
+
+        /// <summary>
+        /// Resets a user's password directly by email — no token or email delivery required.
+        /// Validates the email exists and is active, hashes the new password, persists it,
+        /// and returns a JWT access token so the frontend can auto-login the user.
+        /// </summary>
+        public async Task<PasswordResetResponse> ResetPasswordDirectAsync(
+            ResetPasswordDirectRequest request, string ipAddress)
+        {
+            if (request == null)
+                throw new ArgumentNullException(nameof(request));
+
+            var user = await _userRepo.GetByEmailAsync(request.Email);
+
+            if (user == null || !user.IsActive)
+                throw new ValidationException(
+                    ErrorMessages.VALIDATION_FAILED,
+                    new Dictionary<string, string[]>
+                    {
+                        ["email"] = ["No active account found with this email address."]
+                    });
+
+            var newPasswordHash = _hasher.Hash(request.NewPassword);
+            await _userRepo.SetPasswordAndClearResetTokenAsync(user.Id, newPasswordHash);
+
+            _logger.LogInformation(
+                "Password reset directly for user {UserId} from {IP}", user.Id, ipAddress);
+
+            // Issue a fresh access token so the frontend can auto-login after reset.
+            var role = user.Role;
+            if (role != null)
+            {
+                var tokenClaims = new TokenClaims(
+                    UserId: user.Id,
+                    UserPublicId: user.PublicId,
+                    Email: user.Email ?? string.Empty,
+                    Name: user.Name,
+                    SocietyPublicId: user.SocietyPublicId,
+                    RoleId: role.Id,
+                    RoleCode: role.Code,
+                    RoleDisplayName: role.DisplayName);
+
+                var accessToken = _tokenService.GenerateAccessToken(tokenClaims, out var accessExpires);
+
+                return new PasswordResetResponse
+                {
+                    Ok = true,
+                    Message = "Password reset successfully.",
+                    AccessToken = accessToken,
+                    AccessTokenExpiresAt = accessExpires
+                };
+            }
+
+            return new PasswordResetResponse
+            {
+                Ok = true,
+                Message = "Password reset successfully."
             };
         }
     }

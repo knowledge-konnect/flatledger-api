@@ -67,5 +67,21 @@ namespace SocietyLedger.Application.Interfaces.Repositories
         /// Persists pending changes in the underlying context.
         /// </summary>
         Task SaveChangesAsync();
+
+        /// <summary>
+        /// Updates the last_login timestamp without loading the full entity.
+        /// </summary>
+        Task UpdateLastLoginAsync(long userId, DateTime loginAt);
+
+        /// <summary>
+        /// Finds a non-deleted user by their password-reset token hash (includes Role and Society navigation).
+        /// Returns null when not found.
+        /// </summary>
+        Task<User?> GetByPasswordResetTokenHashAsync(string tokenHash);
+
+        /// <summary>
+        /// Sets a new password hash and clears the password-reset token fields atomically.
+        /// </summary>
+        Task SetPasswordAndClearResetTokenAsync(long userId, string newPasswordHash);
     }
 }

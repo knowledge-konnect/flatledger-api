@@ -27,6 +27,8 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                 RoleId = src.role_id,
                 Role = src.role?.ToDomain(),
                 PasswordHash = src.password_hash ?? string.Empty,
+                PasswordResetTokenHash = src.password_reset_token_hash,
+                PasswordResetExpiresAt = src.password_reset_expires_at,
                 IsActive = src.is_active,
                 ForcePasswordChange = src.force_password_change,
                 LastLogin = src.last_login,
@@ -50,6 +52,8 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                 mobile = src.Mobile,
                 role_id = src.RoleId,
                 password_hash = src.PasswordHash,
+                password_reset_token_hash = src.PasswordResetTokenHash,
+                password_reset_expires_at = src.PasswordResetExpiresAt,
                 is_active = src.IsActive,
                 force_password_change = src.ForcePasswordChange,
                 last_login = src.LastLogin,
@@ -68,6 +72,8 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             target.mobile = src.Mobile;
             target.role_id = src.RoleId;
             target.password_hash = src.PasswordHash;
+            target.password_reset_token_hash = src.PasswordResetTokenHash;
+            target.password_reset_expires_at = src.PasswordResetExpiresAt;
             target.is_active = src.IsActive;
             target.force_password_change = src.ForcePasswordChange;
             target.last_login = src.LastLogin;
@@ -88,7 +94,8 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                 city: src.city,
                 state: src.state,
                 country: null,
-                pincode: src.pincode
+                pincode: src.pincode,
+                onboardingDate: src.onboarding_date
             );
 
             // Use reflection to set protected properties from BaseEntity
@@ -112,6 +119,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                 name = src.Name,
                 address = src.Address,
                 //is_active = src.IsActive,
+                onboarding_date = src.OnboardingDate,
                 created_at = src.CreatedAt,
                 updated_at = src.UpdatedAt
             };
@@ -217,6 +225,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             {
                 Id = src.id,
                 UserId = src.user_id,
+                SocietyId = src.society_id,
                 PlanId = src.plan_id,
                 Status = src.status,
                 SubscribedAmount = src.subscribed_amount,
@@ -240,6 +249,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             {
                 id = src.Id,
                 user_id = src.UserId,
+                society_id = src.SocietyId,
                 plan_id = src.PlanId,
                 status = src.Status,
                 subscribed_amount = src.SubscribedAmount,
@@ -266,10 +276,17 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             {
                 Id = src.id,
                 Name = src.name,
-                MonthlyAmount = src.monthly_amount,
+                Price = src.price,
                 Currency = src.currency,
                 IsActive = src.is_active,
-                CreatedAt = src.created_at
+                CreatedAt = src.created_at,
+                MaxFlats = src.max_flats,
+                DisplayOrder = src.display_order,
+                IsPopular = src.is_popular,
+                Description = src.description,
+                DiscountPercentage = src.discount_percentage,
+                PlanGroup = src.plan_group,
+                DurationMonths = src.duration_months
             };
         }
 
@@ -281,10 +298,17 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             {
                 id = src.Id,
                 name = src.Name,
-                monthly_amount = src.MonthlyAmount,
+                price = src.Price,
+                max_flats = src.MaxFlats,
+                display_order = src.DisplayOrder,
+                is_popular = src.IsPopular,
+                description = src.Description,
+                discount_percentage = src.DiscountPercentage,
+                plan_group = src.PlanGroup,
                 currency = src.Currency,
                 is_active = src.IsActive,
-                created_at = src.CreatedAt
+                created_at = src.CreatedAt,
+                duration_months = src.DurationMonths
             };
         }
 
@@ -380,6 +404,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             {
                 id = src.Id,
                 user_id = src.UserId,
+                society_id = src.SocietyId,
                 subscription_id = src.SubscriptionId,
                 event_type = src.EventType,
                 old_status = src.OldStatus,
