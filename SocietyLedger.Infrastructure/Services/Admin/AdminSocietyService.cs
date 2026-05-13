@@ -73,6 +73,7 @@ namespace SocietyLedger.Infrastructure.Services.Admin
 
             var activeSub = await _db.subscriptions
                 .AsNoTracking()
+                .Include(sub => sub.plan)
                 .Where(sub => sub.society_id == id
                            && (sub.status == "active" || sub.status == "trial"))
                 .OrderByDescending(sub => sub.created_at)

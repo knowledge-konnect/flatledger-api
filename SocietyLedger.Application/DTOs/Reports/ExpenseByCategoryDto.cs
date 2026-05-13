@@ -30,5 +30,8 @@ namespace SocietyLedger.Application.DTOs.Reports
 
         [JsonPropertyName("last_expense_date")]
         public string? LastExpenseDate { get; set; }
+
+        [JsonPropertyName("color")]
+        public string? Color { get; set; }
     }
 }

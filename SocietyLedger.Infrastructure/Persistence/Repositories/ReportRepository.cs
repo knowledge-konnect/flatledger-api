@@ -111,14 +111,6 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             return new PagedResult<PaymentRegisterDto>(items, totalCount, page, pageSize);
         }
 
-        public async Task<ExpenseByCategoryDto> GetExpenseByCategoryAsync(
-            long societyId, DateOnly? startDate, DateOnly? endDate, CancellationToken ct = default)
-        {
-            const string sql = "SELECT public.get_expense_by_category(@SocietyId, @StartDate::date, @EndDate::date)";
-            var json = await QueryJsonAsync(sql, DateParams(societyId, startDate, endDate), ct);
-            return Deserialize<ExpenseByCategoryDto>(json) ?? new ExpenseByCategoryDto();
-        }
-
         public async Task<MonthlyReportDto> GetMonthlyReportDataAsync(
             long societyId, int year, int month, CancellationToken ct = default)
         {

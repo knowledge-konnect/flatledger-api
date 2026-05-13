@@ -56,6 +56,11 @@ namespace SocietyLedger.Api.BackgroundServices
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Error in trial expiration check");
+                    // LogCritical so log drains can alert on repeated failures
+                    if (ex is not OperationCanceledException)
+                        _logger.LogCritical(ex,
+                            "ALERT: Trial expiration check failed. " +
+                            "Expired trials may still have access. Manual review required.");
                     try { await Task.Delay(_retryDelay, stoppingToken); }
                     catch (OperationCanceledException) { break; }
                 }

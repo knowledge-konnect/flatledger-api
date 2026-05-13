@@ -43,6 +43,7 @@ namespace SocietyLedger.Api.Endpoints
             .WithName("GetUserInvoices")
             .Produces<ApiResponse<ListInvoicesResponse>>(200)
             .Produces<ErrorResponse>(400)
+            .Produces<ErrorResponse>(401)
             .Produces<ErrorResponse>(500);
 
             // Pay invoice
@@ -65,6 +66,7 @@ namespace SocietyLedger.Api.Endpoints
             .WithName("PayInvoice")
             .Produces<ApiResponse<InvoiceResponse>>(200)
             .Produces<ErrorResponse>(400)
+            .Produces<ErrorResponse>(401)
             .Produces<ErrorResponse>(500);
         }
     }

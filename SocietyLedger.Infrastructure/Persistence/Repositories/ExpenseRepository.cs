@@ -138,7 +138,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             await _db.expense_categories
                 .AsNoTracking()
                 .OrderBy(c => c.display_name)
-                .Select(c => new ExpenseCategoryResponse { Code = c.code, DisplayName = c.display_name })
+                .Select(c => new ExpenseCategoryResponse { Code = c.code, DisplayName = c.display_name, Color = c.color })
                 .ToListAsync();
 
         private static readonly HashSet<string> AllowedSortFields = new(StringComparer.OrdinalIgnoreCase)

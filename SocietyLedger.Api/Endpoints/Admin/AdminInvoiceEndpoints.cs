@@ -29,7 +29,7 @@ namespace SocietyLedger.Api.Endpoints.Admin
                 {
                     var result = await service.GetInvoicesAsync(page < 1 ? 1 : page, pageSize < 1 ? 20 : pageSize,
                                                                 userId, status, invoiceType, from, to);
-                    return Results.Ok(ApiResponse<PagedResult<AdminInvoiceDto>>.Success(result));
+                    return Results.Ok(ApiResponse<PagedResult<AdminInvoiceDto>>.Success(result, "Invoices retrieved successfully"));
                 })
             .WithTags(groupName).WithApiVersionSet(versionSet).HasApiVersion(v1).WithName("AdminListInvoices");
         }

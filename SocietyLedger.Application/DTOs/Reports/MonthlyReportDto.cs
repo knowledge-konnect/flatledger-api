@@ -180,6 +180,10 @@ namespace SocietyLedger.Application.DTOs.Reports
         [STJJsonPropertyName("pending_months")]
         public int PendingMonths { get; set; }
 
+        [JsonProperty("total_months")]
+        [STJJsonPropertyName("total_months")]
+        public int TotalMonths { get; set; }
+
         [JsonProperty("oldest_due_period")]
         [STJJsonPropertyName("oldest_due_period")]
         public string? OldestDuePeriod { get; set; }

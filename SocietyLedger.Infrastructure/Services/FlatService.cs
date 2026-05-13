@@ -147,6 +147,12 @@ namespace SocietyLedger.Infrastructure.Services
             var maintenanceConfig = await _maintenanceConfigRepo.GetBySocietyIdAsync(societyId);
             var defaultMaintenanceAmount = maintenanceConfig?.DefaultMonthlyCharge ?? 0m;
 
+           
+            var societyPublicId = await _db.societies
+                .Where(s => s.id == societyId)
+                .Select(s => s.public_id)
+                .FirstOrDefaultAsync();
+
             _logger.LogInformation("Bulk create started: {Count} items, societyId={SocietyId}, skipBilling={SkipBilling}",
                 request.Flats.Count, societyId, skipBilling);
 
@@ -279,6 +285,7 @@ namespace SocietyLedger.Infrastructure.Services
                     {
                         PublicId          = Guid.NewGuid(),
                         SocietyId         = societyId,
+                        SocietyPublicId   = societyPublicId,
                         FlatNo            = item.FlatNo,
                         OwnerName         = item.OwnerName,
                         ContactMobile     = item.ContactMobile,
@@ -309,7 +316,11 @@ namespace SocietyLedger.Infrastructure.Services
 
                     succeeded.AddRange(createdList.Select(f => MapToDto(f)));
 
-                    // ── Phase 3: Bill generation ──────────────────────────────────────────
+                    foreach (var trackedFlat in _db.ChangeTracker.Entries<SocietyLedger.Infrastructure.Persistence.Entities.flat>()
+                                                    .Where(e => e.State == Microsoft.EntityFrameworkCore.EntityState.Unchanged)
+                                                    .ToList())
+                        trackedFlat.State = Microsoft.EntityFrameworkCore.EntityState.Detached;
+
                     if (skipBilling)
                     {
                         _logger.LogInformation("Bulk flat create: skipBilling=true, skipping bill generation for {Count} flats", createdList.Count);
@@ -317,26 +328,31 @@ namespace SocietyLedger.Infrastructure.Services
                     else
                     {
                         var currentMonth = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-                        var billingFailed = 0;
+                        var period       = currentMonth.ToString("yyyy-MM");
 
-                        // Sequential to avoid DbContext concurrency errors (DbContext is not thread-safe).
-                        foreach (var flat in createdList)
+                        var billNow = DateTime.UtcNow;
+
+                        var bills = createdList.Select(flat => new BillAddDto(
+                            SocietyId:   societyId,
+                            FlatId:      flat.Id,
+                            Period:      period,
+                            Amount:      flat.MaintenanceAmount > 0 ? flat.MaintenanceAmount : defaultMaintenanceAmount,
+                            StatusCode:  BillStatusCodes.Unpaid,
+                            GeneratedBy: null,
+                            GeneratedAt: billNow,
+                            CreatedAt:   billNow,
+                            Source:      "flat-create"
+                        )).ToList();
+
+                        try
                         {
-                            try
-                            {
-                                await _billingService.GenerateBillForFlatAsync(flat.PublicId, userId, currentMonth);
-                            }
-                            catch (Exception ex)
-                            {
-                                billingFailed++;
-                                _logger.LogWarning(ex, "Bill generation failed for flat {PublicId} during bulk create (non-fatal)", flat.PublicId);
-                            }
+                            await _billRepo.AddRangeAsync(bills);
+                            _logger.LogInformation("Bulk flat create: bills generated for {Count} flats", bills.Count);
                         }
-
-                        if (billingFailed > 0)
-                            _logger.LogWarning("Bulk flat create: bill generation failed for {Failed}/{Total} flats", billingFailed, createdList.Count);
-                        else
-                            _logger.LogInformation("Bulk flat create: bills generated for {Count} flats", createdList.Count);
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Bulk flat create: batch bill generation failed (non-fatal), {Count} bills not created", bills.Count);
+                        }
                     }
                 }
                 catch (Exception batchEx)
@@ -417,7 +433,7 @@ namespace SocietyLedger.Infrastructure.Services
                 if (status.Code == FlatStatusCodes.Vacant)
                 {
                     var hasUnpaid = await _billRepo.HasUnpaidBillsExcludingStatusAsync(
-                        existing.Id, BillStatusCodes.Paid, BillStatusCodes.Cancelled);
+                        existing.Id, societyId, BillStatusCodes.Paid, BillStatusCodes.Cancelled);
 
                     if (hasUnpaid)
                         throw new ConflictException(
@@ -453,7 +469,7 @@ namespace SocietyLedger.Infrastructure.Services
                 throw new NotFoundException("Flat", publicId.ToString());
 
             // #3 — Block deletion when the flat has outstanding unpaid bills.
-            var unpaidBills = (await _billRepo.GetUnpaidBillAmountsAsync(existing.Id)).ToList();
+            var unpaidBills = (await _billRepo.GetUnpaidBillAmountsAsync(existing.Id, societyId)).ToList();
 
             if (unpaidBills.Any())
             {
@@ -491,15 +507,15 @@ namespace SocietyLedger.Infrastructure.Services
             var ledgerEntries = new List<FlatLedgerEntryDto>();
 
             // Get all adjustments and payments for the flat within the date range
-            var adjustments = await _adjustmentRepo.GetByFlatIdAsync(flatId, startDate, endDate);
-            var payments    = await _mpRepo.GetByFlatIdForLedgerAsync(flatId, startDate, endDate);
+            var adjustments = await _adjustmentRepo.GetByFlatIdAsync(flatId, societyId, startDate, endDate);
+            var payments    = await _mpRepo.GetByFlatIdForLedgerAsync(flatId, societyId, startDate, endDate);
 
             // Calculate opening balance (sum of adjustments before startDate minus payments before startDate)
             decimal openingBalance = 0;
             if (startDate.HasValue)
             {
-                var adjustmentsBefore = await _adjustmentRepo.GetTotalAmountBeforeDateAsync(flatId, startDate.Value);
-                var paymentsBefore    = await _mpRepo.GetTotalAmountBeforeDateAsync(flatId, startDate.Value);
+                var adjustmentsBefore = await _adjustmentRepo.GetTotalAmountBeforeDateAsync(flatId, societyId, startDate.Value);
+                var paymentsBefore    = await _mpRepo.GetTotalAmountBeforeDateAsync(flatId, societyId, startDate.Value);
                 openingBalance = adjustmentsBefore - paymentsBefore;
             }
 
@@ -554,16 +570,48 @@ namespace SocietyLedger.Infrastructure.Services
                 entry.Balance = runningBalance;
             }
 
+            // Bills — all non-cancelled bills for the flat so the frontend can detect status changes.
+            var bills = await _db.bills
+                .Where(b => b.flat_id == flatId && b.society_id == societyId
+                         && !b.is_deleted && b.status_code != BillStatusCodes.Cancelled)
+                .OrderBy(b => b.period)
+                .Select(b => new FlatLedgerBillDto
+                {
+                    BillPublicId  = b.public_id,
+                    Period        = b.period,
+                    Amount        = b.amount,
+                    PaidAmount    = b.paid_amount ?? 0m,
+                    BalanceAmount = b.amount - (b.paid_amount ?? 0m),
+                    StatusCode    = b.status_code
+                })
+                .ToListAsync();
+
+            var totalAdvance = await _db.maintenance_payments
+                .Where(p => p.flat_id == flatId && p.society_id == societyId
+                         && !p.is_deleted && p.bill_id == null && p.adjustment_id == null)
+                .SumAsync(p => (decimal?)p.amount) ?? 0m;
+
+            var obRemaining = await _db.adjustments
+                .Where(a => a.flat_id == flatId && a.society_id == societyId
+                         && a.entry_type == EntryTypeCodes.OpeningBalance && !a.is_deleted)
+                .SumAsync(a => (decimal?)a.remaining_amount) ?? 0m;
+
+            var billOutstanding = bills.Sum(b => b.BalanceAmount);
+            var totalOutstanding = obRemaining + billOutstanding - totalAdvance;
+
             _logger.LogInformation("Flat ledger retrieved for flat {PublicId}", publicId);
 
             return new FlatLedgerResponse
             {
-                FlatPublicId = flat.PublicId,
-                FlatNo = flat.FlatNo,
-                OwnerName = flat.OwnerName,
-                OpeningBalance = openingBalance,
-                ClosingBalance = runningBalance,
-                Entries = ledgerEntries
+                FlatPublicId    = flat.PublicId,
+                FlatNo          = flat.FlatNo,
+                OwnerName       = flat.OwnerName,
+                OpeningBalance  = openingBalance,
+                ClosingBalance  = runningBalance,
+                Entries         = ledgerEntries,
+                Bills           = bills,
+                TotalOutstanding = totalOutstanding,
+                TotalAdvance    = totalAdvance
             };
         }
 
@@ -590,13 +638,13 @@ namespace SocietyLedger.Infrastructure.Services
             if (flat == null)
                 return null;
 
-            var openingBalanceRemaining = await _adjustmentRepo.GetOpeningBalanceRemainingAsync(flat.Id);
+            var openingBalanceRemaining = await _adjustmentRepo.GetOpeningBalanceRemainingAsync(flat.Id, societyId);
 
             // Exclude cancelled bills — a cancelled bill is not a real outstanding obligation.
-            var billOutstanding = await _billRepo.GetOutstandingByFlatIdAsync(flat.Id);
+            var billOutstanding = await _billRepo.GetOutstandingByFlatIdAsync(flat.Id, societyId);
 
-            var totalCharges  = await _billRepo.GetTotalChargesByFlatIdAsync(flat.Id);
-            var totalPayments = await _mpRepo.GetTotalPaidByFlatIdAsync(flat.Id);
+            var totalCharges  = await _billRepo.GetTotalChargesByFlatIdAsync(flat.Id, societyId);
+            var totalPayments = await _mpRepo.GetTotalPaidByFlatIdAsync(flat.Id, societyId);
 
             return new FlatFinancialSummaryResponse
             {
@@ -651,9 +699,19 @@ namespace SocietyLedger.Infrastructure.Services
                 .Select(g => new { FlatId = g.Key, TotalPayments = g.Sum(p => (decimal?)p.amount) ?? 0 })
                 .ToListAsync();
 
+            // Advance credit: payments with no bill_id and no adjustment_id are unallocated advance.
+            // Subtract from outstanding to avoid overstating dues when a payment preceded bill generation.
+            var advanceCreditData = await _db.maintenance_payments
+                .Where(p => flatIds.Contains(p.flat_id) && !p.is_deleted
+                         && p.bill_id == null && p.adjustment_id == null)
+                .GroupBy(p => p.flat_id)
+                .Select(g => new { FlatId = g.Key, Advance = g.Sum(p => (decimal?)p.amount) ?? 0 })
+                .ToListAsync();
+
             var obLookup = openingBalances.ToDictionary(x => x.FlatId, x => x.Remaining);
             var billLookup = billData.ToDictionary(x => x.FlatId, x => x);
             var payLookup = paymentData.ToDictionary(x => x.FlatId, x => x.TotalPayments);
+            var advanceLookup = advanceCreditData.ToDictionary(x => x.FlatId, x => x.Advance);
 
             var result = new BulkFinancialSummaryResponse();
             foreach (var flat in flatMap)
@@ -662,12 +720,13 @@ namespace SocietyLedger.Infrastructure.Services
                 var billOutstanding = billLookup.TryGetValue(flat.id, out var bd) ? bd.Outstanding : 0;
                 var totalCharges = billLookup.TryGetValue(flat.id, out var bd2) ? bd2.TotalCharges : 0;
                 var totalPayments = payLookup.GetValueOrDefault(flat.id, 0);
+                var advance = advanceLookup.GetValueOrDefault(flat.id, 0);
 
                 result.Summaries[flat.public_id.ToString()] = new FlatFinancialSummaryResponse
                 {
                     OpeningBalanceRemaining = ob,
                     BillOutstanding = billOutstanding,
-                    TotalOutstanding = ob + billOutstanding,
+                    TotalOutstanding = ob + billOutstanding - advance,
                     TotalCharges = totalCharges,
                     TotalPayments = totalPayments
                 };
@@ -814,9 +873,22 @@ namespace SocietyLedger.Infrastructure.Services
                 .Select(g => new { FlatId = g.Key, Outstanding = g.Sum(b => (decimal?)(b.amount - b.paid_amount)) ?? 0 })
                 .ToDictionaryAsync(x => x.FlatId, x => x.Outstanding);
 
+            // Advance payments: maintenance_payments rows with no bill and no adjustment linked.
+            // These represent credit already paid but not yet allocated to a bill (e.g. payment made
+            // before the month's bill was generated). Subtracting them prevents double-counting when
+            // bills are later generated and the advance has not yet been re-allocated.
+            var advanceCredit = await _db.maintenance_payments
+                .Where(p => flatIds.Contains(p.flat_id) && !p.is_deleted
+                         && p.bill_id == null && p.adjustment_id == null)
+                .GroupBy(p => p.flat_id)
+                .Select(g => new { FlatId = g.Key, Advance = g.Sum(p => (decimal?)p.amount) ?? 0 })
+                .ToDictionaryAsync(x => x.FlatId, x => x.Advance);
+
             return flatIds.ToDictionary(
                 id => id,
-                id => obRemaining.GetValueOrDefault(id, 0m) + billOutstanding.GetValueOrDefault(id, 0m));
+                id => obRemaining.GetValueOrDefault(id, 0m)
+                    + billOutstanding.GetValueOrDefault(id, 0m)
+                    - advanceCredit.GetValueOrDefault(id, 0m));
         }
 
         #endregion

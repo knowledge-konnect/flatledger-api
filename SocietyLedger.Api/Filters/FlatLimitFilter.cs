@@ -7,10 +7,7 @@ namespace SocietyLedger.Api.Filters
 {
     /// <summary>
     /// Endpoint filter that blocks flat creation when the society's plan flat limit would be exceeded.
-    /// Also validates the subscription itself — a missing or expired subscription is rejected first.
-    /// Apply to both single and bulk flat creation endpoints.
-    /// For bulk requests, checks whether adding ALL requested flats would exceed the plan limit.
-    /// Returns a consistent 400 ApiResponse on failure; continues the pipeline on success.
+    /// Returns 403 Forbidden so the frontend can show an upgrade prompt rather than a generic error.
     /// </summary>
     public class FlatLimitFilter : IEndpointFilter
     {
@@ -25,15 +22,19 @@ namespace SocietyLedger.Api.Filters
         {
             var userId = ctx.HttpContext.GetUserId();
 
-            // For bulk requests, count how many flats are being added so the limit check
-            // accounts for the full batch, not just a single slot.
             var bulkRequest = ctx.Arguments.OfType<BulkCreateFlatsRequest>().FirstOrDefault();
             var countToAdd = bulkRequest?.Flats?.Count ?? 1;
 
             var (allowed, message) = await _subscriptionService.CanAddFlatsAsync(userId, countToAdd);
 
             if (!allowed)
-                return Results.BadRequest(ApiResponse<object>.Fail(message!));
+            {
+                var error = ErrorResponse.Create(
+                    ErrorCodes.FORBIDDEN,
+                    message ?? "Flat limit reached. Please upgrade your plan to add more flats.",
+                    ctx.HttpContext.TraceIdentifier);
+                return Results.Json(error, statusCode: 403);
+            }
 
             return await next(ctx);
         }

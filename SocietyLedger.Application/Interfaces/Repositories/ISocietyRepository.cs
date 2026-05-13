@@ -50,6 +50,12 @@ namespace SocietyLedger.Application.Interfaces.Repositories
         /// Returns the IDs of all non-deleted societies. Used by scheduled billing job.
         /// </summary>
         Task<IReadOnlyList<long>> GetAllActiveIdsAsync();
+
+        /// <summary>
+        /// Returns a dictionary of societyId → onboarding_date for all non-deleted societies.
+        /// Used by BillingCatchupService to skip periods that predate a society's registration.
+        /// </summary>
+        Task<IReadOnlyDictionary<long, DateOnly>> GetAllActiveOnboardingDatesAsync();
     }
 }
 

@@ -40,7 +40,12 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             var efSubscription = await _db.subscriptions
                 .Include(s => s.plan)
                 .AsNoTracking()
-                .FirstOrDefaultAsync(s => s.user_id == userId);
+                .Where(s => s.user_id == userId
+                         && (s.status == SubscriptionStatusCodes.Active
+                          || s.status == SubscriptionStatusCodes.Trial
+                          || s.status == SubscriptionStatusCodes.Cancelled))
+                .OrderByDescending(s => s.created_at)
+                .FirstOrDefaultAsync();
 
             return efSubscription?.ToDomain();
         }

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using SocietyLedger.Application.DTOs.Subscription;
 using SocietyLedger.Application.Interfaces.Repositories;
@@ -20,6 +21,7 @@ namespace SocietyLedger.Infrastructure.Services
         private readonly ISubscriptionEventRepository _eventRepo;
         private readonly ISocietyRepository _societyRepo;
         private readonly AppDbContext _db;
+        private readonly IMemoryCache _cache;
         private readonly ILogger<SubscriptionService> _logger;
 
         public SubscriptionService(
@@ -29,6 +31,7 @@ namespace SocietyLedger.Infrastructure.Services
             ISubscriptionEventRepository eventRepo,
             ISocietyRepository societyRepo,
             AppDbContext db,
+            IMemoryCache cache,
             ILogger<SubscriptionService> logger)
         {
             _subscriptionRepo = subscriptionRepo;
@@ -37,6 +40,7 @@ namespace SocietyLedger.Infrastructure.Services
             _eventRepo = eventRepo;
             _societyRepo = societyRepo;
             _db = db;
+            _cache = cache;
             _logger = logger;
         }
 
@@ -89,7 +93,8 @@ namespace SocietyLedger.Infrastructure.Services
                 PlanName = subscription.Plan?.Name,
                 // Rule #1: always use subscribed_amount, never plan.price
                 MonthlyAmount = subscription.SubscribedAmount,
-                Currency = subscription.Currency ?? "INR"
+                Currency = subscription.Currency ?? "INR",
+                CurrentPeriodEnd = subscription.CurrentPeriodEnd ?? subscription.TrialEnd
             };
         }
 
@@ -106,6 +111,11 @@ namespace SocietyLedger.Infrastructure.Services
         /// </summary>
         public async Task<SubscribeResponse> SubscribeAsync(long userId, SubscribeRequest request)
         {
+            // Default to razorpay when the frontend omits the field (online payment flow).
+            var paymentMethod = string.IsNullOrWhiteSpace(request.PaymentMethod)
+                ? PaymentModeCodes.Razorpay
+                : request.PaymentMethod.ToLower();
+
             var plan = await _planRepo.GetByIdAsync(request.PlanId);
             if (plan == null)
                 throw new NotFoundException("Plan", request.PlanId.ToString());
@@ -195,13 +205,13 @@ namespace SocietyLedger.Infrastructure.Services
                     Amount = subscription.SubscribedAmount,
                     TotalAmount = subscription.SubscribedAmount,
                     Currency = subscription.Currency,
-                    Status = request.PaymentMethod.Equals(PaymentModeCodes.Razorpay, StringComparison.OrdinalIgnoreCase)
+                    Status = paymentMethod.Equals(PaymentModeCodes.Razorpay, StringComparison.OrdinalIgnoreCase)
                         ? InvoiceStatusCodes.Pending
                         : InvoiceStatusCodes.Paid,
                     DueDate = DateOnly.FromDateTime(now.AddDays(30)),
                     PeriodStart = DateOnly.FromDateTime(now),
                     PeriodEnd = DateOnly.FromDateTime(now.AddMonths(plan.DurationMonths)),
-                    PaymentMethod = request.PaymentMethod,
+                    PaymentMethod = paymentMethod,
                     PaymentReference = request.PaymentReference,
                     Description = $"Subscription to {plan.Name} plan"
                 };
@@ -214,7 +224,7 @@ namespace SocietyLedger.Infrastructure.Services
                     plan_name = plan.Name,
                     max_flats = plan.MaxFlats,
                     duration_months = plan.DurationMonths,
-                    payment_method = request.PaymentMethod,
+                    payment_method = paymentMethod,
                     society_id = societyId
                 });
 
@@ -222,6 +232,7 @@ namespace SocietyLedger.Infrastructure.Services
                 {
                     Id = Guid.NewGuid(),
                     UserId = userId,
+                    SocietyId = societyId,
                     SubscriptionId = subscription.Id,
                     EventType = eventType,
                     NewStatus = SubscriptionStatusCodes.Active,
@@ -231,6 +242,7 @@ namespace SocietyLedger.Infrastructure.Services
 
                 await tx.CommitAsync();
 
+                InvalidateSubscriptionCache(userId);
                 _logger.LogInformation(
                     "Society {SocietyId} subscribed to plan {PlanId} (event: {EventType})",
                     societyId, request.PlanId, eventType);
@@ -287,6 +299,7 @@ namespace SocietyLedger.Infrastructure.Services
             {
                 Id = Guid.NewGuid(),
                 UserId = userId,
+                SocietyId = societyId,
                 SubscriptionId = subscription.Id,
                 EventType = "cancelled",
                 OldStatus = oldStatus,
@@ -295,6 +308,7 @@ namespace SocietyLedger.Infrastructure.Services
             });
 
             _logger.LogInformation("Society {SocietyId} cancelled subscription", societyId);
+            InvalidateSubscriptionCache(userId);
         }
 
         /// <summary>
@@ -482,6 +496,16 @@ namespace SocietyLedger.Infrastructure.Services
             if (societyId == null)
                 throw new NotFoundException("User", userId.ToString());
             return societyId.Value;
+        }
+
+        /// <summary>
+        /// Removes the subscription-active cache entry for a user so the next request
+        /// re-evaluates from the DB. Call after any subscription status change.
+        /// </summary>
+        private void InvalidateSubscriptionCache(long userId)
+        {
+            _cache.Remove($"sub_active_{userId}");
+            _logger.LogDebug("Subscription cache invalidated for userId={UserId}", userId);
         }
 
         private static bool IsUniqueConstraintViolation(DbUpdateException ex)

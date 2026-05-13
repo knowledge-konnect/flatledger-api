@@ -29,10 +29,11 @@ namespace SocietyLedger.Application.Interfaces.Services
         Task<BillingStatusResponse> GetBillingStatusAsync(long userId);
 
         /// <summary>
-        /// Generates monthly maintenance bills for ALL active societies in the platform.
-        /// Intended to be called by the background service (1st of every month) and the
-        /// manual admin trigger endpoint. Defaults to the current UTC month when no date is given.
+        /// Generates monthly maintenance bills for ALL active societies.
+        /// The <paramref name="source"/> value is stamped on every created bill.
+        /// Accepted values: "scheduled", "catchup-startup", "catchup-manual".
+        /// Existing callers that omit <paramref name="source"/> continue to use "scheduled".
         /// </summary>
-        Task<BillingResult> GenerateMonthlyBillsAsync(DateTime? billingMonth = null);
+        Task<BillingResult> GenerateMonthlyBillsAsync(DateTime? billingMonth = null, string source = "scheduled");
     }
 }

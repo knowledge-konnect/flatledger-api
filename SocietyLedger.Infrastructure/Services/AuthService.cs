@@ -353,103 +353,49 @@ namespace SocietyLedger.Infrastructure.Services
         }
 
         /// <summary>
-        /// Initiates forgot password flow: generates a cryptographically-secure token, hashes it, stores on user,
-        /// and sends reset email. Always succeeds (returns 200) to avoid account enumeration.
+        /// Checks whether an email address belongs to an active, non-deleted user.
+        /// Used by the direct password reset flow so the frontend can show step 2
+        /// only when the email is valid — without leaking whether the account exists
+        /// to unauthenticated callers (rate-limited at the endpoint level).
         /// </summary>
-        public async Task ForgotPasswordAsync(string email, string resetLinkTemplate, string ipAddress)
+        public async Task<bool> CheckEmailExistsAsync(string email)
         {
             if (string.IsNullOrWhiteSpace(email))
-                throw new ArgumentNullException(nameof(email));
+                return false;
 
             var user = await _userRepo.GetByEmailAsync(email);
-            if (user == null)
-            {
-                // Security: do not reveal if user exists. Just return success.
-                _logger.LogInformation("Forgot password request for non-existent user {Email} from {IP}", email, ipAddress);
-                return;
-            }
-
-            if (!user.IsActive)
-            {
-                _logger.LogInformation("Forgot password request for inactive user {UserId} from {IP}", user.Id, ipAddress);
-                return;
-            }
-
-            // Generate a secure random token (same method as refresh tokens).
-            var tokenPair = _tokenService.GenerateRefreshToken();
-            var token = tokenPair.Token;
-
-            // Hash the token (only store hash in DB).
-            var tokenHash = _tokenService.HashToken(token);
-
-            // Store hash and expiry on user entity. Token expires in 15 minutes.
-            user.PasswordResetTokenHash = tokenHash;
-            user.PasswordResetExpiresAt = DateTime.UtcNow.AddMinutes(15);
-            user.UpdatedAt = DateTime.UtcNow;
-
-            await _userRepo.UpdateAsync(user);
-            await _userRepo.SaveChangesAsync();
-
-            // Send email with the unhashed token (the user needs to use this token).
-            var resetLink = string.Format(resetLinkTemplate, Uri.EscapeDataString(token));
-            try
-            {
-                await _emailService.SendPasswordResetEmailAsync(user.Email ?? "", user.Name, resetLink);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to send password reset email to {Email}", email);
-                // Don't throw; ForgotPassword always returns 200 success for security.
-            }
-
-            _logger.LogInformation("Password reset token generated for user {UserId} (email: {Email}) from {IP}", user.Id, email, ipAddress);
+            return user != null && user.IsActive;
         }
 
         /// <summary>
-        /// Validates a password reset token: checks hash match, expiry, and existence.
-        /// Throws if invalid or expired.
+        /// Resets a user's password directly by email — no token or email delivery required.
+        /// Validates the email exists and is active, hashes the new password, persists it,
+        /// and returns a JWT access token so the frontend can auto-login the user.
         /// </summary>
-        public async Task ValidatePasswordResetTokenAsync(string token)
+        public async Task<PasswordResetResponse> ResetPasswordDirectAsync(
+            ResetPasswordDirectRequest request, string ipAddress)
         {
-            if (string.IsNullOrWhiteSpace(token))
-                throw new ValidationException("Invalid or expired token.");
+            if (request == null)
+                throw new ArgumentNullException(nameof(request));
 
-            var tokenHash = _tokenService.HashToken(token);
+            var user = await _userRepo.GetByEmailAsync(request.Email);
 
-            var user = await _userRepo.GetByPasswordResetTokenHashAsync(tokenHash);
+            if (user == null || !user.IsActive)
+                throw new ValidationException(
+                    ErrorMessages.VALIDATION_FAILED,
+                    new Dictionary<string, string[]>
+                    {
+                        ["email"] = ["No active account found with this email address."]
+                    });
 
-            if (user == null)
-                throw new ValidationException("Invalid or expired token.");
-
-            if (user.PasswordResetExpiresAt == null || user.PasswordResetExpiresAt < DateTime.UtcNow)
-                throw new ValidationException("Invalid or expired token.");
-
-            _logger.LogInformation("Password reset token validated for user {UserId}", user.Id);
-        }
-
-        /// <summary>
-        /// Resets password using token: validates token, hashes new password, clears the token (single-use),
-        /// and optionally returns JWT for auto-login.
-        /// </summary>
-        public async Task<PasswordResetResponse> ResetPasswordAsync(string token, string newPassword, string ipAddress)
-        {
-            if (string.IsNullOrWhiteSpace(token))
-                throw new ValidationException("Token is required.");
-
-            var tokenHash = _tokenService.HashToken(token);
-
-            var user = await _userRepo.GetByPasswordResetTokenHashAsync(tokenHash);
-
-            if (user == null || user.PasswordResetExpiresAt == null || user.PasswordResetExpiresAt < DateTime.UtcNow)
-                throw new ValidationException("Invalid or expired token.");
-
-            var newPasswordHash = _hasher.Hash(newPassword);
+            var newPasswordHash = _hasher.Hash(request.NewPassword);
             await _userRepo.SetPasswordAndClearResetTokenAsync(user.Id, newPasswordHash);
 
-            _logger.LogInformation("Password reset successfully for user {UserId} from {IP}", user.Id, ipAddress);
+            _logger.LogInformation(
+                "Password reset directly for user {UserId} from {IP}", user.Id, ipAddress);
 
+            // Issue a fresh access token so the frontend can auto-login after reset.
             var role = user.Role;
-
             if (role != null)
             {
                 var tokenClaims = new TokenClaims(

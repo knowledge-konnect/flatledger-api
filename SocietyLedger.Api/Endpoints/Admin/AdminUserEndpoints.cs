@@ -28,7 +28,7 @@ namespace SocietyLedger.Api.Endpoints.Admin
                 {
                     var result = await service.GetUsersAsync(page < 1 ? 1 : page, pageSize < 1 ? 20 : pageSize,
                                                              societyId, search, isActive, isDeleted);
-                    return Results.Ok(ApiResponse<PagedResult<AdminUserDto>>.Success(result));
+                    return Results.Ok(ApiResponse<PagedResult<AdminUserDto>>.Success(result, "Users retrieved successfully"));
                 })
             .WithTags(groupName).WithApiVersionSet(versionSet).HasApiVersion(v1).WithName("AdminListUsers");
 
@@ -39,8 +39,8 @@ namespace SocietyLedger.Api.Endpoints.Admin
                 {
                     var user = await service.GetUserByIdAsync(id);
                     return user == null
-                        ? Results.NotFound(ErrorResponse.Create("NOT_FOUND", "User not found"))
-                        : Results.Ok(ApiResponse<AdminUserDto>.Success(user));
+                        ? Results.NotFound(ErrorResponse.Create(ErrorCodes.RESOURCE_NOT_FOUND, "User not found"))
+                        : Results.Ok(ApiResponse<AdminUserDto>.Success(user, "User retrieved successfully"));
                 })
             .WithTags(groupName).WithApiVersionSet(versionSet).HasApiVersion(v1).WithName("AdminGetUser");
         }

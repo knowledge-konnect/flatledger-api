@@ -37,7 +37,7 @@ namespace SocietyLedger.Api.Endpoints
                 var userId = ctx.GetUserId();
                 var result = await service.CreateAsync(request, userId);
                 Log.Information("Flat created successfully for FlatNo {FlatNo}", request.FlatNo);
-                return Results.Ok(ApiResponse<FlatResponseDto>.Success(result, "Flat created successfully"));
+                return Results.Created($"/flats/{result.PublicId}", ApiResponse<FlatResponseDto>.Success(result, "Flat created successfully"));
             })
             .AddEndpointFilter<FluentValidationFilter<CreateFlatDto>>()
             .AddEndpointFilter<FlatLimitFilter>()
@@ -71,11 +71,11 @@ namespace SocietyLedger.Api.Endpoints
                 var allowedSortBy = new[] { "flatNo", "ownerName", "maintenanceAmount", "createdAt" };
                 var resolvedSortBy = sortBy ?? "createdAt";
                 if (!allowedSortBy.Contains(resolvedSortBy, StringComparer.OrdinalIgnoreCase))
-                    return Results.BadRequest(ApiResponse<object>.Fail($"Invalid sortBy value '{resolvedSortBy}'. Allowed: {string.Join(", ", allowedSortBy)}"));
+                    return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, $"Invalid sort field '{resolvedSortBy}'. Allowed values: {string.Join(", ", allowedSortBy)}.", ctx.TraceIdentifier));
 
                 var resolvedSortDir = sortDir ?? "asc";
                 if (!new[] { "asc", "desc" }.Contains(resolvedSortDir, StringComparer.OrdinalIgnoreCase))
-                    return Results.BadRequest(ApiResponse<object>.Fail("Invalid sortDir value. Allowed: asc, desc"));
+                    return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, "Invalid sort direction. Use 'asc' or 'desc'.", ctx.TraceIdentifier));
 
                 // If no pagination params provided, return the full unpaginated list
                 // to preserve backward compatibility with existing clients.
@@ -92,9 +92,9 @@ namespace SocietyLedger.Api.Endpoints
                 var resolvedSize = Math.Min(size ?? 10, 100);
 
                 if (resolvedPage < 1)
-                    return Results.BadRequest(ApiResponse<object>.Fail("page must be >= 1"));
+                    return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, "Page number must be 1 or greater.", ctx.TraceIdentifier));
                 if (resolvedSize <= 0)
-                    return Results.BadRequest(ApiResponse<object>.Fail("size must be > 0"));
+                    return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, "Page size must be greater than 0.", ctx.TraceIdentifier));
 
                 var result = await service.GetPagedAsync(userId, search, statusCode, resolvedPage, resolvedSize, resolvedSortBy, resolvedSortDir);
                 Log.Information("Fetched paginated flats page={Page} size={Size} for user {UserId}", resolvedPage, resolvedSize, userId);
@@ -219,7 +219,7 @@ namespace SocietyLedger.Api.Endpoints
                 if (userId == 0)
                 {
                     Log.Warning("Unauthorized flat ledger request - invalid user ID");
-                    var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid or missing authentication token", ctx.TraceIdentifier);
+                    var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, ErrorMessages.UNAUTHORIZED, ctx.TraceIdentifier);
                     return Results.Json(errorResponse, statusCode: 401);
                 }
 
@@ -248,7 +248,7 @@ namespace SocietyLedger.Api.Endpoints
                 if (userId == 0)
                 {
                     Log.Warning("Unauthorized flat financial summary request - invalid user ID");
-                    var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid or missing authentication token", ctx.TraceIdentifier);
+                    var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, ErrorMessages.UNAUTHORIZED, ctx.TraceIdentifier);
                     return Results.Json(errorResponse, statusCode: 401);
                 }
 
@@ -275,15 +275,15 @@ namespace SocietyLedger.Api.Endpoints
                 var userId = ctx.GetUserId();
                 if (userId == 0)
                 {
-                    var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid or missing authentication token", ctx.TraceIdentifier);
+                    var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, ErrorMessages.UNAUTHORIZED, ctx.TraceIdentifier);
                     return Results.Json(errorResponse, statusCode: 401);
                 }
 
                 if (request?.FlatPublicIds == null || request.FlatPublicIds.Count == 0)
-                    return Results.BadRequest(ApiResponse<object>.Fail("flatPublicIds must not be empty"));
+                    return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, "At least one flat ID is required.", ctx.TraceIdentifier));
 
                 if (request.FlatPublicIds.Count > 500)
-                    return Results.BadRequest(ApiResponse<object>.Fail("flatPublicIds is limited to 500 entries per request"));
+                    return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, "A maximum of 500 flat IDs can be requested at once.", ctx.TraceIdentifier));
 
                 var result = await service.GetBulkFinancialSummaryAsync(request.FlatPublicIds, userId);
                 Log.Information("Bulk financial summary returned {Count} entries for user {UserId}", result.Summaries.Count, userId);
@@ -299,6 +299,7 @@ namespace SocietyLedger.Api.Endpoints
             .Produces<ErrorResponse>(500);
 
             app.MapGet("/statuses",
+            [Authorize]
             [SwaggerOperation(
                     Summary = "Get flat statuses",
                     Description = "Returns all flat statuses for use in dropdowns (code + display name)."
@@ -340,7 +341,7 @@ namespace SocietyLedger.Api.Endpoints
                 if (userId == 0)
                 {
                     Log.Warning("Unauthorized bulk flat create request - invalid user ID");
-                    var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid or missing authentication token", ctx.TraceIdentifier);
+                    var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, ErrorMessages.UNAUTHORIZED, ctx.TraceIdentifier);
                     return Results.Json(errorResponse, statusCode: 401);
                 }
 

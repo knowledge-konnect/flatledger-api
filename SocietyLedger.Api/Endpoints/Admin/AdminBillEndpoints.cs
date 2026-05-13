@@ -29,7 +29,7 @@ namespace SocietyLedger.Api.Endpoints.Admin
                 {
                     var result = await service.GetBillsAsync(page < 1 ? 1 : page, pageSize < 1 ? 20 : pageSize,
                                                              societyId, status, period, from, to);
-                    return Results.Ok(ApiResponse<PagedResult<AdminBillDto>>.Success(result));
+                    return Results.Ok(ApiResponse<PagedResult<AdminBillDto>>.Success(result, "Bills retrieved successfully"));
                 })
             .WithTags(groupName).WithApiVersionSet(versionSet).HasApiVersion(v1).WithName("AdminListBills");
         }

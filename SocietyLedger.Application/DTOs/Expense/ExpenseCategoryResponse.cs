@@ -4,5 +4,6 @@ namespace SocietyLedger.Application.DTOs.Expense
     {
         public string Code { get; set; } = null!;
         public string DisplayName { get; set; } = null!;
+        public string? Color { get; set; }
     }
 }

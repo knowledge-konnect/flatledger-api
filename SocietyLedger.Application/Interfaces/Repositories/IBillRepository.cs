@@ -9,21 +9,24 @@ namespace SocietyLedger.Application.Interfaces.Repositories
         Task<int> CountForPeriodAsync(long societyId, string period);
 
         /// <summary>Returns true if a non-deleted bill exists for the given flat and period.</summary>
-        Task<bool> ExistsForFlatAndPeriodAsync(long flatId, string period);
+        Task<bool> ExistsForFlatAndPeriodAsync(long flatId, long societyId, string period);
 
         /// <summary>Returns true if the flat has any unpaid (non-paid, non-cancelled) bills.</summary>
-        Task<bool> HasUnpaidBillsAsync(long flatId);
+        Task<bool> HasUnpaidBillsAsync(long flatId, long societyId);
 
         /// <summary>
         /// Returns unpaid bill amounts for a flat (for outstanding calculation on delete).
         /// </summary>
-        Task<IEnumerable<(decimal Amount, decimal PaidAmount)>> GetUnpaidBillAmountsAsync(long flatId);
+        Task<IEnumerable<(decimal Amount, decimal PaidAmount)>> GetUnpaidBillAmountsAsync(long flatId, long societyId);
 
         /// <summary>Returns true if the flat has any unpaid bills (excluding paid and cancelled).</summary>
-        Task<bool> HasUnpaidBillsExcludingStatusAsync(long flatId, string excludeStatus1, string excludeStatus2);
+        Task<bool> HasUnpaidBillsExcludingStatusAsync(long flatId, long societyId, string excludeStatus1, string excludeStatus2);
 
         /// <summary>Adds a range of bill entities and saves.</summary>
         Task AddRangeAsync(IEnumerable<BillAddDto> bills);
+
+        /// <summary>Adds a range of bills, saves, and returns (FlatId, BillId) pairs for the inserted rows.</summary>
+        Task<IReadOnlyList<(long FlatId, long BillId)>> AddRangeAndReturnAsync(IEnumerable<BillAddDto> bills);
 
         /// <summary>Adds a single bill entity and saves.</summary>
         Task AddAsync(BillAddDto bill);
@@ -38,10 +41,10 @@ namespace SocietyLedger.Application.Interfaces.Repositories
         Task<ILookup<long, long>> GetExistingFlatIdsForSocietiesAsync(IReadOnlyCollection<long> societyIds, string period);
 
         /// <summary>Returns the total outstanding amount across all non-deleted bills for a flat.</summary>
-        Task<decimal> GetOutstandingByFlatIdAsync(long flatId);
+        Task<decimal> GetOutstandingByFlatIdAsync(long flatId, long societyId);
 
         /// <summary>Returns the sum of all non-deleted bill amounts for a flat.</summary>
-        Task<decimal> GetTotalChargesByFlatIdAsync(long flatId);
+        Task<decimal> GetTotalChargesByFlatIdAsync(long flatId, long societyId);
     }
 
     public record BillAddDto(

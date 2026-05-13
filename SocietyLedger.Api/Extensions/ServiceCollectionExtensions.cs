@@ -8,8 +8,7 @@ using SocietyLedger.Application.Interfaces.Services.Admin;
 using SocietyLedger.Application.Validators.Auth;
 using SocietyLedger.Infrastructure.Persistence.Contexts;
 using SocietyLedger.Infrastructure.Persistence.Repositories;using SocietyLedger.Infrastructure.Services;
-using SocietyLedger.Infrastructure.Services.Admin;
-using SocietyLedger.Infrastructure.Services.Common;
+using SocietyLedger.Infrastructure.Services.Admin;using SocietyLedger.Infrastructure.Services.Common;
 using SocietyLedger.Shared.Jwt;
 namespace SocietyLedger.Api.Extensions
 {
@@ -27,6 +26,7 @@ namespace SocietyLedger.Api.Extensions
             services.AddScoped<IEmailService, EmailService>();
             services.AddScoped<IFlatService, FlatService>();
             services.AddScoped<IUserService, UserService>();
+            services.AddScoped<ISocietyService, SocietyService>();
             services.AddScoped<ISubscriptionService, SubscriptionService>();
             services.AddScoped<IInvoiceService, InvoiceService>();
             services.AddScoped<IPlanService, PlanService>();

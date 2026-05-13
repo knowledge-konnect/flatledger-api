@@ -206,6 +206,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
         {
             return await _db.flats
                 .Where(f => f.society_id == societyId && !f.is_deleted)
+                .Include(f => f.status)
                 .GroupBy(_ => 1)
                 .Select(g => new FlatSummaryDto
                 {

@@ -27,7 +27,7 @@ namespace SocietyLedger.Api.Endpoints.Admin
                        IAdminPaymentService service) =>
                 {
                     var result = await service.GetPaymentsAsync(page < 1 ? 1 : page, pageSize < 1 ? 20 : pageSize, societyId, paymentType, from, to);
-                    return Results.Ok(ApiResponse<PagedResult<AdminPaymentDto>>.Success(result));
+                    return Results.Ok(ApiResponse<PagedResult<AdminPaymentDto>>.Success(result, "Payments retrieved successfully"));
                 })
             .WithTags(groupName).WithApiVersionSet(versionSet).HasApiVersion(v1).WithName("AdminListPayments");
 

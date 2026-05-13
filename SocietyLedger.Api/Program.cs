@@ -191,6 +191,31 @@ if (System.Text.Encoding.UTF8.GetByteCount(key) < 32)
 var issuer = jwtSettings["Issuer"];
 var audience = jwtSettings["Audience"];
 
+
+if (builder.Environment.IsProduction())
+{
+    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+    if (string.IsNullOrWhiteSpace(connectionString))
+        throw new InvalidOperationException(
+            "ConnectionStrings:DefaultConnection is missing. Set the ConnectionStrings__DefaultConnection environment variable.");
+
+    var razorpayKeyId = builder.Configuration["Razorpay:KeyId"];
+    var razorpayKeySecret = builder.Configuration["Razorpay:KeySecret"];
+    var razorpayWebhookSecret = builder.Configuration["Razorpay:WebhookSecret"];
+
+    if (string.IsNullOrWhiteSpace(razorpayKeyId))
+        throw new InvalidOperationException(
+            "Razorpay:KeyId is missing. Set the Razorpay__KeyId environment variable.");
+    if (string.IsNullOrWhiteSpace(razorpayKeySecret))
+        throw new InvalidOperationException(
+            "Razorpay:KeySecret is missing. Set the Razorpay__KeySecret environment variable.");
+    if (string.IsNullOrWhiteSpace(razorpayWebhookSecret))
+        throw new InvalidOperationException(
+            "Razorpay:WebhookSecret is missing. Webhook signature verification will fail without it. " +
+            "Set the Razorpay__WebhookSecret environment variable.");
+}
+
+
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -234,6 +259,7 @@ builder.Services.AddSharedServices();
 // Hangfire was removed in favour of these lightweight hosted services for the MVP.
 builder.Services.AddHostedService<MonthlyBillGenerationService>();
 builder.Services.AddHostedService<TrialExpirationService>();
+builder.Services.AddHostedService<BillingCatchupService>();
 
 // Trust Render's SSL-terminating load balancer so that Request.Scheme is "https"
 // and X-Forwarded-For is populated correctly. Clearing known networks/proxies

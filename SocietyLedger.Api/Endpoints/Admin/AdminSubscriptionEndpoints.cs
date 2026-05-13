@@ -29,7 +29,7 @@ namespace SocietyLedger.Api.Endpoints.Admin
                 {
                     var result = await service.GetSubscriptionsAsync(
                         page < 1 ? 1 : page, pageSize < 1 ? 20 : pageSize, status, userId, societyId);
-                    return Results.Ok(ApiResponse<PagedResult<AdminSubscriptionDto>>.Success(result));
+                    return Results.Ok(ApiResponse<PagedResult<AdminSubscriptionDto>>.Success(result, "Subscriptions retrieved successfully"));
                 })
             .WithTags(groupName).WithApiVersionSet(versionSet).HasApiVersion(v1).WithName("AdminListSubscriptions");
 
@@ -39,8 +39,8 @@ namespace SocietyLedger.Api.Endpoints.Admin
                 async (Guid id, IAdminSubscriptionService service) =>
                 {
                     var sub = await service.GetSubscriptionByIdAsync(id);
-                    return sub == null ? Results.NotFound(ErrorResponse.Create("NOT_FOUND", "Subscription not found"))
-                                      : Results.Ok(ApiResponse<AdminSubscriptionDto>.Success(sub));
+                    return sub == null ? Results.NotFound(ErrorResponse.Create(ErrorCodes.RESOURCE_NOT_FOUND, "Subscription not found"))
+                                      : Results.Ok(ApiResponse<AdminSubscriptionDto>.Success(sub, "Subscription retrieved successfully"));
                 })
             .WithTags(groupName).WithApiVersionSet(versionSet).HasApiVersion(v1).WithName("AdminGetSubscription");
         }

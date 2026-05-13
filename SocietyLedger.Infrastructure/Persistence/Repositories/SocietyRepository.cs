@@ -73,5 +73,13 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                 .Where(s => !s.is_deleted)
                 .Select(s => s.id)
                 .ToListAsync();
+
+        public async Task<IReadOnlyDictionary<long, DateOnly>> GetAllActiveOnboardingDatesAsync() =>
+            (await _db.societies
+                .AsNoTracking()
+                .Where(s => !s.is_deleted)
+                .Select(s => new { s.id, s.onboarding_date })
+                .ToListAsync())
+            .ToDictionary(s => s.id, s => s.onboarding_date);
     }
 }

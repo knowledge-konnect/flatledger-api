@@ -69,17 +69,17 @@ namespace SocietyLedger.Api.Endpoints
 
                     // Validate date range
                     if (startDate.HasValue && endDate.HasValue && startDate > endDate)
-                        return Results.BadRequest(ApiResponse<object>.Fail("startDate must be before or equal to endDate"));
+                        return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, "Start date must be on or before end date.", ctx.TraceIdentifier));
 
                     // Validate sortBy
                     var allowedSortBy = new[] { "dateIncurred", "amount", "categoryCode" };
                     var resolvedSortBy = sortBy ?? "dateIncurred";
                     if (!allowedSortBy.Contains(resolvedSortBy, StringComparer.OrdinalIgnoreCase))
-                        return Results.BadRequest(ApiResponse<object>.Fail($"Invalid sortBy value '{resolvedSortBy}'. Allowed: {string.Join(", ", allowedSortBy)}"));
+                        return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, $"Invalid sort field '{resolvedSortBy}'. Allowed values: {string.Join(", ", allowedSortBy)}.", ctx.TraceIdentifier));
 
                     var resolvedSortDir = sortDir ?? "desc";
                     if (!new[] { "asc", "desc" }.Contains(resolvedSortDir, StringComparer.OrdinalIgnoreCase))
-                        return Results.BadRequest(ApiResponse<object>.Fail("Invalid sortDir value. Allowed: asc, desc"));
+                        return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, "Invalid sort direction. Use 'asc' or 'desc'.", ctx.TraceIdentifier));
 
                     // If no pagination/filter params are provided, return the full unpaginated list
                     // to preserve backward compatibility with existing clients.
@@ -95,9 +95,9 @@ namespace SocietyLedger.Api.Endpoints
                     var resolvedSize = Math.Min(size ?? 25, 100);
 
                     if (resolvedPage < 0)
-                        return Results.BadRequest(ApiResponse<object>.Fail("page must be >= 0"));
+                        return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, "Page number must be 0 or greater.", ctx.TraceIdentifier));
                     if (resolvedSize <= 0)
-                        return Results.BadRequest(ApiResponse<object>.Fail("size must be > 0"));
+                        return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, "Page size must be greater than 0.", ctx.TraceIdentifier));
 
                     var result = await expenseService.GetPagedAsync(
                         userId, startDate, endDate, categoryCode, search,

@@ -28,7 +28,7 @@ namespace SocietyLedger.Api.Endpoints
             [SwaggerOperation(
                     Summary = "Create maintenance payment",
                     Description = """
-                        Records a maintenance payment and allocates it to the outstanding bills for the flat (current month first). Idempotency is enforced via the Idempotency-Key header (checked in maintenance_payments). Duplicate keys return the original result without writing new data. Entire allocation is transaction-safe. Any unallocated amount is reported as remainingAdvance. Payment date must be in the current month or future.
+                        Records a maintenance payment and allocates it to the outstanding bills for the flat (current month first). Idempotency is enforced via the Idempotency-Key header (checked in maintenance_payments). Duplicate keys return the original result without writing new data. Entire allocation is transaction-safe. Any unallocated amount is reported as remainingAdvance. Payment date must be within the current financial year (on or after 1 Apr of the current FY) and not before the society onboarding date.
                         """
                 )]
             async ([FromBody] MaintenancePaymentRequest request, IMaintenancePaymentService paymentService, HttpContext ctx) =>
@@ -46,11 +46,15 @@ namespace SocietyLedger.Api.Endpoints
                         return Results.Json(errorResponse, statusCode: 400);
                     }
 
-                    // Payments cannot be backdated to a previous month to prevent retroactive ledger manipulation.
-                    var currentMonthStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-                    if (request.PaymentDate < currentMonthStart)
+                    // Payments cannot be backdated before the start of the current financial year (India FY: Apr 1 – Mar 31).
+                    var utcNow = DateTime.UtcNow;
+                    var fyStartYear = utcNow.Month >= 4 ? utcNow.Year : utcNow.Year - 1;
+                    var fyStart = new DateTime(fyStartYear, 4, 1, 0, 0, 0, DateTimeKind.Utc);
+                    if (request.PaymentDate < fyStart)
                     {
-                        var errorResponse = ErrorResponse.Create(ErrorCodes.VALIDATION_FAILED, "Payment date cannot be in a previous month", ctx.TraceIdentifier);
+                        var errorResponse = ErrorResponse.Create(ErrorCodes.VALIDATION_FAILED,
+                            $"Payment date cannot be before the start of the current financial year ({fyStart:dd MMM yyyy}).",
+                            ctx.TraceIdentifier);
                         return Results.Json(errorResponse, statusCode: 400);
                     }
 
@@ -159,7 +163,7 @@ namespace SocietyLedger.Api.Endpoints
                 [Authorize]
             [SwaggerOperation(
                     Summary = "Update maintenance payment",
-                    Description = "Updates an existing maintenance payment. If PaymentDate is provided, it must be in the current month or future."
+                    Description = "Updates an existing maintenance payment. If PaymentDate is provided, it must be within the current financial year (on or after 1 Apr of the current FY)."
                 )]
             async (Guid publicId, [FromBody] UpdateMaintenancePaymentRequest request, IMaintenancePaymentService paymentService, HttpContext ctx) =>
                 {
@@ -167,10 +171,14 @@ namespace SocietyLedger.Api.Endpoints
 
                     if (request.PaymentDate.HasValue)
                     {
-                        var currentMonthStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-                        if (request.PaymentDate.Value < currentMonthStart)
+                        var utcNow = DateTime.UtcNow;
+                        var fyStartYear = utcNow.Month >= 4 ? utcNow.Year : utcNow.Year - 1;
+                        var fyStart = new DateTime(fyStartYear, 4, 1, 0, 0, 0, DateTimeKind.Utc);
+                        if (request.PaymentDate.Value < fyStart)
                         {
-                            var errorResponse = ErrorResponse.Create(ErrorCodes.VALIDATION_FAILED, "Payment date cannot be in a previous month", ctx.TraceIdentifier);
+                            var errorResponse = ErrorResponse.Create(ErrorCodes.VALIDATION_FAILED,
+                                $"Payment date cannot be before the start of the current financial year ({fyStart:dd MMM yyyy}).",
+                                ctx.TraceIdentifier);
                             return Results.Json(errorResponse, statusCode: 400);
                         }
                     }
@@ -225,7 +233,7 @@ namespace SocietyLedger.Api.Endpoints
 
                     if (userId == 0)
                     {
-                        var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid or missing authentication token", ctx.TraceIdentifier);
+                        var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, ErrorMessages.UNAUTHORIZED, ctx.TraceIdentifier);
                         return Results.Json(errorResponse, statusCode: 401);
                     }
 

@@ -17,8 +17,8 @@ namespace SocietyLedger.Infrastructure.Services.Admin
             pageSize = Math.Min(pageSize, MaxPageSize);
             var query = _db.invoices
                 .AsNoTracking()
-                .Join(_db.users, inv => inv.user_id, u => u.id,
-                      (inv, u) => new { inv, UserName = u.name });
+                .GroupJoin(_db.users, inv => inv.user_id, u => u.id, (inv, users) => new { inv, Users = users })
+                .SelectMany(x => x.Users.DefaultIfEmpty(), (x, u) => new { x.inv, UserName = u != null ? u.name : null });
 
             if (userId.HasValue)
                 query = query.Where(x => x.inv.user_id == userId);

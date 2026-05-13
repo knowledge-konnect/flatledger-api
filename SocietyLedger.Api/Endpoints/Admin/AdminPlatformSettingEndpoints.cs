@@ -27,7 +27,7 @@ namespace SocietyLedger.Api.Endpoints.Admin
                        IAdminPlatformSettingService service) =>
                 {
                     var result = await service.GetSettingsAsync(page < 1 ? 1 : page, pageSize < 1 ? 50 : pageSize, search);
-                    return Results.Ok(ApiResponse<PagedResult<PlatformSettingDto>>.Success(result));
+                    return Results.Ok(ApiResponse<PagedResult<PlatformSettingDto>>.Success(result, "Settings retrieved successfully"));
                 })
             .WithTags(groupName).WithApiVersionSet(versionSet).HasApiVersion(v1).WithName("AdminListSettings");
 
@@ -37,8 +37,8 @@ namespace SocietyLedger.Api.Endpoints.Admin
                 async (string key, IAdminPlatformSettingService service) =>
                 {
                     var setting = await service.GetSettingByKeyAsync(key);
-                    return setting == null ? Results.NotFound(ErrorResponse.Create("NOT_FOUND", "Setting not found"))
-                                          : Results.Ok(ApiResponse<PlatformSettingDto>.Success(setting));
+                    return setting == null ? Results.NotFound(ErrorResponse.Create(ErrorCodes.RESOURCE_NOT_FOUND, "Setting not found"))
+                                          : Results.Ok(ApiResponse<PlatformSettingDto>.Success(setting, "Setting retrieved successfully"));
                 })
             .WithTags(groupName).WithApiVersionSet(versionSet).HasApiVersion(v1).WithName("AdminGetSetting");
 
@@ -59,7 +59,7 @@ namespace SocietyLedger.Api.Endpoints.Admin
                 async (string key, IAdminPlatformSettingService service) =>
                 {
                     await service.DeleteSettingAsync(key);
-                    return Results.Ok(ApiResponse<string>.Success("Setting deleted successfully"));
+                    return Results.Ok(ApiResponse<EmptyResponse>.Success(null, "Setting deleted successfully"));
                 })
             .WithTags(groupName).WithApiVersionSet(versionSet).HasApiVersion(v1).WithName("AdminDeleteSetting");
         }

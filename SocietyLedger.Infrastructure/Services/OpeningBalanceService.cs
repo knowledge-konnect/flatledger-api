@@ -15,17 +15,20 @@ namespace SocietyLedger.Infrastructure.Services
         private readonly AppDbContext _db;
         private readonly ISocietyRepository _societyRepo;
         private readonly IUserRepository _userRepo;
+        private readonly IDashboardService _dashboardService;
         private readonly ILogger<OpeningBalanceService> _logger;
 
         public OpeningBalanceService(
             AppDbContext db,
             ISocietyRepository societyRepo,
             IUserRepository userRepo,
+            IDashboardService dashboardService,
             ILogger<OpeningBalanceService> logger)
         {
             _db          = db;
             _societyRepo = societyRepo;
             _userRepo    = userRepo;
+            _dashboardService = dashboardService;
             _logger      = logger;
         }
 
@@ -239,6 +242,7 @@ namespace SocietyLedger.Infrastructure.Services
                 await _db.SaveChangesAsync();
                 await transaction.CommitAsync();
 
+                _dashboardService.InvalidateDashboardCache(societyId);
                 _logger.LogInformation(
                     "Opening balance applied for society {SocietyId}. " +
                     "TransactionDate: {TxDate}, Items: {ItemCount}, SocietyFund: {Amount}",

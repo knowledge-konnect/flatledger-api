@@ -26,7 +26,7 @@ namespace SocietyLedger.Api.Endpoints.Admin
                 async ([FromQuery] int page, [FromQuery] int pageSize, [FromQuery] string? search, IAdminSocietyService service) =>
                 {
                     var result = await service.GetSocietiesAsync(page < 1 ? 1 : page, pageSize < 1 ? 20 : pageSize, search);
-                    return Results.Ok(ApiResponse<PagedResult<AdminSocietyDto>>.Success(result));
+                    return Results.Ok(ApiResponse<PagedResult<AdminSocietyDto>>.Success(result, "Societies retrieved successfully"));
                 })
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)
@@ -39,8 +39,8 @@ namespace SocietyLedger.Api.Endpoints.Admin
                 async (long id, IAdminSocietyService service) =>
                 {
                     var society = await service.GetSocietyByIdAsync(id);
-                    return society == null ? Results.NotFound(ErrorResponse.Create("NOT_FOUND", "Society not found"))
-                                          : Results.Ok(ApiResponse<AdminSocietyDto>.Success(society));
+                    return society == null ? Results.NotFound(ErrorResponse.Create(ErrorCodes.RESOURCE_NOT_FOUND, "Society not found"))
+                                          : Results.Ok(ApiResponse<AdminSocietyDto>.Success(society, "Society retrieved successfully"));
                 })
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)

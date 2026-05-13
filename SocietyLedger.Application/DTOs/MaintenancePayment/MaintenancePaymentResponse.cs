@@ -82,6 +82,11 @@ namespace SocietyLedger.Application.DTOs.MaintenancePayment
         public List<MaintenancePaymentAllocation> Allocations     { get; init; } = [];
         public decimal                           RemainingAdvance { get; init; }
         /// <summary>
+        /// Status of the linked bill after this payment was applied (e.g. "unpaid", "partial", "paid").
+        /// Null for advance or opening-balance rows that are not linked to a bill.
+        /// </summary>
+        public string?                           BillStatus       { get; init; }
+        /// <summary>
         /// Informational message when all dues are already settled and the payment
         /// was recorded as advance credit, or any other notable allocation outcome.
         /// </summary>
@@ -175,6 +180,7 @@ namespace SocietyLedger.Application.DTOs.MaintenancePayment
         // Bill info — null for advance / opening-balance rows
         public Guid?    BillPublicId    { get; init; }
         public string?  Period          { get; init; }
+        public string?  BillStatus      { get; init; }
         // Snapshotted flat outstanding after this payment was applied; null for pre-migration rows
         public decimal? OutstandingAfterPayment { get; init; }
     }

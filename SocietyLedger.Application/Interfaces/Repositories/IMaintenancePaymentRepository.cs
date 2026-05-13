@@ -12,13 +12,13 @@ namespace SocietyLedger.Application.Interfaces.Repositories
         Task DeleteByPublicIdAsync(Guid publicId, long societyId);
 
         /// <summary>Returns payment rows for a flat suitable for rendering the flat ledger.</summary>
-        Task<IReadOnlyList<PaymentLedgerEntry>> GetByFlatIdForLedgerAsync(long flatId, DateTime? startDate, DateTime? endDate);
+        Task<IReadOnlyList<PaymentLedgerEntry>> GetByFlatIdForLedgerAsync(long flatId, long societyId, DateTime? startDate, DateTime? endDate);
 
         /// <summary>Returns the SUM of payment amounts for a flat with payment_date &lt; <paramref name="before"/>.</summary>
-        Task<decimal> GetTotalAmountBeforeDateAsync(long flatId, DateTime before);
+        Task<decimal> GetTotalAmountBeforeDateAsync(long flatId, long societyId, DateTime before);
 
         /// <summary>Returns the SUM of all payment amounts for a flat (for financial summary).</summary>
-        Task<decimal> GetTotalPaidByFlatIdAsync(long flatId);
+        Task<decimal> GetTotalPaidByFlatIdAsync(long flatId, long societyId);
     }
 
     /// <summary>Flat ledger projection for payment rows.</summary>

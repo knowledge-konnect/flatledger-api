@@ -65,6 +65,7 @@ namespace SocietyLedger.Infrastructure.Services
             int row = 1;
 
             row = WriteReportTitle(ws, row, ColStart, colEnd, data.SocietyName, $"Monthly Report - {data.PeriodLabel}");
+            ws.SheetView.FreezeRows(2); // freeze branded title rows 1-2
 
             // Legend: explain sign semantics for balances (positive = member owes, negative = society owes)
             ws.Range(row, ColStart, row, colEnd).Merge();
@@ -87,7 +88,11 @@ namespace SocietyLedger.Infrastructure.Services
             row = WriteSectionHeader(ws, row, ColStart, colEnd, "Payment Summary");
             row = WriteKvRow(ws, row, ColStart, "Total Flats", ps.TotalFlats);
             row = WriteKvRow(ws, row, ColStart, "Paid",        ps.Paid,    valueColor: ColourPaidText);
-            row = WriteKvRow(ws, row, ColStart, "Pending",     ps.Pending, valueColor: ps.Pending > 0 ? ColourPendingText : null);
+            row = WriteKvRow(ws, row, ColStart, "Pending",           ps.Pending,                 valueColor: ps.Pending > 0 ? ColourPendingText : null);
+            row = WriteKvRow(ws, row, ColStart, "Total Billed",       ps.TotalBilled,             isAmount: true);
+            row = WriteKvRow(ws, row, ColStart, "Total Collected",    ps.TotalCollected,          isAmount: true, valueColor: ColourPaidText);
+            row = WriteKvRow(ws, row, ColStart, "Pending Amount",     ps.PendingAmount,           isAmount: true, valueColor: ps.PendingAmount > 0 ? ColourPendingText : null);
+            row = WriteKvRow(ws, row, ColStart, "Collection Efficiency", $"{ps.CollectionEfficiency}%");
             row++;
 
             // Alerts
@@ -149,6 +154,7 @@ namespace SocietyLedger.Infrastructure.Services
                 "Outstanding",
                 "Status"
             });
+            ws.SheetView.FreezeRows(row); // freeze through table header row
             row++;
 
             int dataStart = row;
@@ -196,16 +202,17 @@ namespace SocietyLedger.Infrastructure.Services
 
             if (dataEnd >= dataStart)
             {
+                // Previous Balance (col+2) and Total Due (col+4) are not additive across flats — omit from totals.
                 ApplyTotalRow(ws, row, ColStart, colEnd, new Dictionary<int, string>
                 {
-                    [ColStart + 2] = $"SUM({ws.Cell(dataStart, ColStart + 2).Address}:{ws.Cell(dataEnd, ColStart + 2).Address})",
                     [ColStart + 3] = $"SUM({ws.Cell(dataStart, ColStart + 3).Address}:{ws.Cell(dataEnd, ColStart + 3).Address})",
-                    [ColStart + 4] = $"SUM({ws.Cell(dataStart, ColStart + 4).Address}:{ws.Cell(dataEnd, ColStart + 4).Address})",
                     [ColStart + 5] = $"SUM({ws.Cell(dataStart, ColStart + 5).Address}:{ws.Cell(dataEnd, ColStart + 5).Address})",
                     [ColStart + 6] = $"SUM({ws.Cell(dataStart, ColStart + 6).Address}:{ws.Cell(dataEnd, ColStart + 6).Address})",
                 });
-                ws.Range(row, ColStart + 2, row, ColStart + 6).Style.NumberFormat.Format = AmountFormat;
-                ws.Range(row, ColStart + 2, row, ColStart + 6).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+                ws.Range(row, ColStart + 3, row, ColStart + 3).Style.NumberFormat.Format = AmountFormat;
+                ws.Range(row, ColStart + 3, row, ColStart + 3).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+                ws.Range(row, ColStart + 5, row, ColStart + 6).Style.NumberFormat.Format = AmountFormat;
+                ws.Range(row, ColStart + 5, row, ColStart + 6).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
                 row++;
             }
 
@@ -249,9 +256,12 @@ namespace SocietyLedger.Infrastructure.Services
             row = WriteReportTitle(ws, row, ColStart, colEnd, data.SocietyName, $"Expenses - {data.PeriodLabel}");
 
             WriteTableHeader(ws, row, ColStart, new[] { "Category", "Amount" });
+            ws.SheetView.FreezeRows(row); // freeze through table header row
             row++;
 
-            var expenses = data.Expenses ?? new List<ExpenseDto>();
+            var expenses = (data.Expenses ?? new List<ExpenseDto>())
+                .OrderByDescending(e => e.TotalAmount)
+                .ToList();
             int dataStart = row;
             foreach (var exp in expenses)
             {
@@ -295,12 +305,14 @@ namespace SocietyLedger.Infrastructure.Services
             int row = 1;
 
             row = WriteReportTitle(ws, row, ColStart, colEnd, data.SocietyName, $"Annual Report - {data.YearLabel}");
+            ws.SheetView.FreezeRows(2); // freeze branded title rows 1-2
 
             // Fund Position
             row = WriteSectionHeader(ws, row, ColStart, colEnd, "Fund Position");
             row = WriteKvRow(ws, row, ColStart, "Opening Balance", data.FundPosition.OpeningBalance,  isAmount: true);
-            row = WriteKvRow(ws, row, ColStart, "Collected",       data.FundPosition.TotalCollected,  isAmount: true);
-            row = WriteKvRow(ws, row, ColStart, "Expenses",        data.FundPosition.TotalExpenses,   isAmount: true);
+            row = WriteKvRow(ws, row, ColStart, "Total Billed",    data.FundPosition.TotalBilled,     isAmount: true);
+            row = WriteKvRow(ws, row, ColStart, "Total Collected", data.FundPosition.TotalCollected,  isAmount: true, valueColor: ColourPaidText);
+            row = WriteKvRow(ws, row, ColStart, "Total Expenses",  data.FundPosition.TotalExpenses,   isAmount: true);
             row = WriteKvRow(ws, row, ColStart, "Closing Balance", data.FundPosition.ClosingBalance,  isAmount: true, bold: true, highlight: true);
             row++;
 
@@ -335,8 +347,8 @@ namespace SocietyLedger.Infrastructure.Services
 
         private static void BuildYearlyMonthlySummarySheet(XLWorkbook wb, YearlyReportDto data)
         {
-            // C(3)=Month  D(4)=Collected  E(5)=Expenses  F(6)=Net  G(7)=Status
-            const int colEnd = ColStart + 4; // column G
+            // C(3)=Month D(4)=Billed E(5)=Collected F(6)=Expenses G(7)=Net H(8)=Status
+            const int colEnd = ColStart + 5; // column H
             var ws = wb.AddWorksheet("Monthly Summary");
             SetSheetDefaults(ws);
             int row = 1;
@@ -344,26 +356,30 @@ namespace SocietyLedger.Infrastructure.Services
             row = WriteReportTitle(ws, row, ColStart, colEnd, data.SocietyName, $"Monthly Summary - {data.YearLabel}");
 
             int headerRow = row;
-            WriteTableHeader(ws, row, ColStart, new[] { "Month", "Collected", "Expenses", "Net", "Status" });
+            WriteTableHeader(ws, row, ColStart, new[] { "Month", "Billed", "Collected", "Expenses", "Net", "Status" });
+            ws.SheetView.FreezeRows(row); // freeze through table header row
             row++;
 
             int dataStart = row;
             foreach (var m in data.MonthSummary ?? new List<MonthSummaryDto>())
             {
                 ws.Cell(row, ColStart + 0).Value = m.MonthLabel;
-                ws.Cell(row, ColStart + 1).Value = m.Collected;
-                ws.Cell(row, ColStart + 2).Value = m.Expenses;
-                ws.Cell(row, ColStart + 3).Value = m.Net;
-                ws.Range(row, ColStart + 1, row, ColStart + 3).Style.NumberFormat.Format = AmountFormat;
-                ws.Range(row, ColStart + 1, row, ColStart + 3).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+                ws.Cell(row, ColStart + 1).Value = m.Billed;
+                ws.Cell(row, ColStart + 2).Value = m.Collected;
+                ws.Cell(row, ColStart + 3).Value = m.Expenses;
+                ws.Cell(row, ColStart + 4).Value = m.Net;
+                ws.Range(row, ColStart + 1, row, ColStart + 4).Style.NumberFormat.Format = AmountFormat;
+                ws.Range(row, ColStart + 1, row, ColStart + 4).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
 
-                ws.Cell(row, ColStart + 3).Style.Font.Bold = true;
+                ws.Cell(row, ColStart + 4).Style.Font.Bold = true;
 
-                bool isBalance = m.Net >= 0;
-                var statusCell = ws.Cell(row, ColStart + 4);
-                statusCell.Value = isBalance ? "balance left" : "extra spent";
+                // Use MonthStatus from SQL if present; fall back to deriving from Net
+                var rawStatus = m.MonthStatus?.Trim().ToLowerInvariant();
+                bool isSurplus = rawStatus == "surplus" || (rawStatus == null && m.Net >= 0);
+                var statusCell = ws.Cell(row, ColStart + 5);
+                statusCell.Value = isSurplus ? "Surplus" : "Deficit";
                 statusCell.Style.Font.Bold = true;
-                statusCell.Style.Font.FontColor = isBalance ? ColourPaidText : ColourPendingText;
+                statusCell.Style.Font.FontColor = isSurplus ? ColourPaidText : ColourPendingText;
                 statusCell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
 
                 ApplyRowBorder(ws, row, ColStart, colEnd);
@@ -373,14 +389,16 @@ namespace SocietyLedger.Infrastructure.Services
 
             if (dataEnd >= dataStart)
             {
+                // Billed (col+1), Collected (col+2), Expenses (col+3), Net (col+4) are summable
                 ApplyTotalRow(ws, row, ColStart, colEnd, new Dictionary<int, string>
                 {
                     [ColStart + 1] = $"SUM({ws.Cell(dataStart, ColStart + 1).Address}:{ws.Cell(dataEnd, ColStart + 1).Address})",
                     [ColStart + 2] = $"SUM({ws.Cell(dataStart, ColStart + 2).Address}:{ws.Cell(dataEnd, ColStart + 2).Address})",
                     [ColStart + 3] = $"SUM({ws.Cell(dataStart, ColStart + 3).Address}:{ws.Cell(dataEnd, ColStart + 3).Address})",
+                    [ColStart + 4] = $"SUM({ws.Cell(dataStart, ColStart + 4).Address}:{ws.Cell(dataEnd, ColStart + 4).Address})",
                 });
-                ws.Range(row, ColStart + 1, row, ColStart + 3).Style.NumberFormat.Format = AmountFormat;
-                ws.Range(row, ColStart + 1, row, ColStart + 3).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+                ws.Range(row, ColStart + 1, row, ColStart + 4).Style.NumberFormat.Format = AmountFormat;
+                ws.Range(row, ColStart + 1, row, ColStart + 4).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
                 row++;
             }
 
@@ -400,6 +418,7 @@ namespace SocietyLedger.Infrastructure.Services
             row = WriteReportTitle(ws, row, ColStart, colEnd, data.SocietyName, $"Expenses - {data.YearLabel}");
 
             WriteTableHeader(ws, row, ColStart, new[] { "Category", "Total Amount" });
+            ws.SheetView.FreezeRows(row); // freeze through table header row
             row++;
 
             // Sort by highest amount
@@ -449,7 +468,6 @@ namespace SocietyLedger.Infrastructure.Services
             ws.PageSetup.CenterHorizontally = true;
             ws.PageSetup.PageOrientation = XLPageOrientation.Portrait;
             ws.PageSetup.FitToPages(1, 0); // fit to 1 page wide, unlimited height
-            ws.SheetView.FreezeRows(1);    // freeze top row
         }
 
         /// Writes a two-row branded title block (society name + subtitle). Returns next row.

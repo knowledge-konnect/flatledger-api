@@ -43,12 +43,16 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                 .AsQueryable();
 
             if (!string.IsNullOrWhiteSpace(period)
-                && DateTime.TryParseExact(period + "-01", "yyyy-MM-dd", null,
-                    System.Globalization.DateTimeStyles.None, out var periodStartLocal))
+                && System.Text.RegularExpressions.Regex.IsMatch(period, @"^\d{4}-\d{2}$"))
             {
-                var periodStart = DateTime.SpecifyKind(periodStartLocal, DateTimeKind.Utc);
-                var periodEnd   = DateTime.SpecifyKind(periodStartLocal.AddMonths(1), DateTimeKind.Utc);
-                query = query.Where(mp => mp.payment_date >= periodStart && mp.payment_date < periodEnd);
+                var periodStart = DateTime.SpecifyKind(
+                    DateTime.ParseExact(period + "-01", "yyyy-MM-dd", null),
+                    DateTimeKind.Utc);
+                var periodEnd = periodStart.AddMonths(1);
+
+                query = query.Where(mp =>
+                    (mp.bill_id != null  && mp.bill != null && mp.bill.period == period) ||
+                    (mp.bill_id == null  && mp.payment_date >= periodStart && mp.payment_date < periodEnd));
             }
 
             var payments = await query
@@ -74,6 +78,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                     CreatedAt = mp.created_at,
                     BillPublicId = mp.bill != null ? mp.bill.public_id : null,
                     Period = mp.bill != null ? mp.bill.period : mp.payment_date.ToString("yyyy-MM"),
+                    BillStatus = mp.bill != null ? mp.bill.status_code : null,
                     OutstandingAfterPayment = mp.outstanding_after_payment
                 })
                 .AsNoTracking()
@@ -223,14 +228,15 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                 CreatedAt = payment.created_at,
                 BillPublicId = payment.bill?.public_id,
                 Period = payment.bill?.period,
+                BillStatus = payment.bill?.status_code,
                 OutstandingAfterPayment = payment.outstanding_after_payment
             };
         }
 
-        public async Task<IReadOnlyList<PaymentLedgerEntry>> GetByFlatIdForLedgerAsync(long flatId, DateTime? startDate, DateTime? endDate)
+        public async Task<IReadOnlyList<PaymentLedgerEntry>> GetByFlatIdForLedgerAsync(long flatId, long societyId, DateTime? startDate, DateTime? endDate)
         {
             var query = _db.maintenance_payments
-                .Where(p => p.flat_id == flatId && !p.is_deleted)
+                .Where(p => p.flat_id == flatId && p.society_id == societyId && !p.is_deleted)
                 .AsQueryable();
 
             if (startDate.HasValue) query = query.Where(p => p.payment_date >= startDate.Value);
@@ -243,14 +249,14 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                 .ToListAsync();
         }
 
-        public async Task<decimal> GetTotalAmountBeforeDateAsync(long flatId, DateTime before) =>
+        public async Task<decimal> GetTotalAmountBeforeDateAsync(long flatId, long societyId, DateTime before) =>
             await _db.maintenance_payments
-                .Where(p => p.flat_id == flatId && p.payment_date < before && !p.is_deleted)
+                .Where(p => p.flat_id == flatId && p.society_id == societyId && p.payment_date < before && !p.is_deleted)
                 .SumAsync(p => (decimal?)p.amount) ?? 0m;
 
-        public async Task<decimal> GetTotalPaidByFlatIdAsync(long flatId) =>
+        public async Task<decimal> GetTotalPaidByFlatIdAsync(long flatId, long societyId) =>
             await _db.maintenance_payments
-                .Where(p => p.flat_id == flatId && !p.is_deleted)
+                .Where(p => p.flat_id == flatId && p.society_id == societyId && !p.is_deleted)
                 .SumAsync(p => (decimal?)p.amount) ?? 0m;
     }
 }

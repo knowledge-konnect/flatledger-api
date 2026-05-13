@@ -57,6 +57,8 @@ namespace SocietyLedger.Infrastructure.Services.Common
 
         /// <summary>
         /// Returns all bills with an outstanding balance for the given flat, ordered newest-period-first (current month first). FOR UPDATE locks each row to prevent concurrent allocations.
+        /// Excludes 'paid' and 'cancelled' bills — cancelled bills are not real obligations and
+        /// must never receive payment allocations.
         /// </summary>
         public const string LockUnpaidBillsByFlat = @"
             SELECT b.id,
@@ -69,7 +71,8 @@ namespace SocietyLedger.Infrastructure.Services.Common
             WHERE  b.flat_id    = @FlatId
               AND  b.society_id = @SocietyId
               AND  b.is_deleted = FALSE
-              AND  b.status_code != 'paid'
+              AND  b.status_code NOT IN ('paid', 'cancelled')
+              AND  (b.amount - COALESCE(b.paid_amount, 0)) > 0
             ORDER  BY b.period DESC
             FOR UPDATE";
 
@@ -87,13 +90,22 @@ namespace SocietyLedger.Infrastructure.Services.Common
 
         /// <summary>
         /// Updates the accumulated paid amount and derived status on a bill after each FIFO allocation step.
+        /// Sets 'paid' when fully settled, 'overdue' when partially paid and past due date, else 'partial'.
         /// </summary>
         public const string UpdateBillPayment = @"
             UPDATE bills
             SET    paid_amount = @PaidAmount,
-                   status_code = @StatusCode,
+                   status_code = CASE
+                       WHEN @PaidAmount >= amount
+                           THEN 'paid'
+                       WHEN due_date IS NOT NULL AND due_date < NOW()
+                           THEN 'overdue'
+                       ELSE 'partial'
+                   END,
                    updated_at  = @Now
-            WHERE  id = @BillId";
+            WHERE  id         = @BillId
+              AND  society_id = @SocietyId
+              AND  is_deleted = FALSE";
 
         /// <summary>
         /// Loads all allocation rows associated with a given idempotency key. Used to reconstruct the response on duplicate (idempotent) submissions without re-running any write operations.
@@ -213,6 +225,7 @@ namespace SocietyLedger.Infrastructure.Services.Common
         /// Atomically recalculates a bill's <c>paid_amount</c> and <c>status_code</c> after a
         /// maintenance payment row is soft-deleted. Single UPDATE with correlated sub-SELECTs —
         /// no read-then-write race condition.
+        /// When paid_amount drops to zero, restores 'overdue' if due_date has passed, else 'unpaid'.
         /// Parameter: @BillId (bigint).
         /// </summary>
         public const string RecalculateBillAfterPaymentDelete = @"
@@ -229,19 +242,85 @@ namespace SocietyLedger.Infrastructure.Services.Common
                            FROM   maintenance_payments
                            WHERE  bill_id    = @BillId
                              AND  is_deleted = FALSE
-                       ), 0) <= 0
-                           THEN 'unpaid'
+                       ), 0) >= amount
+                           THEN 'paid'
                        WHEN COALESCE((
                            SELECT SUM(amount)
                            FROM   maintenance_payments
                            WHERE  bill_id    = @BillId
                              AND  is_deleted = FALSE
-                       ), 0) >= amount
-                           THEN 'paid'
-                       ELSE 'partial'
+                       ), 0) > 0
+                           THEN 'partial'
+                       WHEN due_date IS NOT NULL AND due_date < NOW()
+                           THEN 'overdue'
+                       ELSE 'unpaid'
                    END,
                    updated_at = NOW()
             WHERE  id         = @BillId
+              AND  is_deleted = FALSE";
+
+        // ── Advance re-allocation after bill generation ────────────────────────────────────
+
+        /// <summary>
+        /// Step 1 of advance re-allocation: links unallocated advance payment rows (bill_id IS NULL,
+        /// adjustment_id IS NULL) to a newly generated bill, FIFO order, up to the bill's amount.
+        /// A row is split when it straddles the boundary (running total exceeds the bill amount):
+        /// the portion up to the boundary is linked to the bill; the remainder is left unlinked.
+        /// Parameters: @BillId, @FlatId, @SocietyId, @Now.
+        /// </summary>
+        public const string LinkAdvancesToNewBill = @"
+            WITH ranked AS (
+                SELECT id,
+                       amount,
+                       SUM(amount) OVER (ORDER BY created_at, id ROWS UNBOUNDED PRECEDING) AS running_total
+                FROM   maintenance_payments
+                WHERE  flat_id        = @FlatId
+                  AND  society_id     = @SocietyId
+                  AND  bill_id        IS NULL
+                  AND  adjustment_id  IS NULL
+                  AND  is_deleted     = FALSE
+                ORDER  BY created_at, id
+                FOR UPDATE
+            ),
+            bill_amount AS (
+                SELECT amount FROM bills WHERE id = @BillId AND society_id = @SocietyId
+            )
+            UPDATE maintenance_payments mp
+            SET    bill_id     = @BillId,
+                   updated_at  = @Now
+            FROM   ranked r, bill_amount ba
+            WHERE  mp.id = r.id
+              AND  r.running_total <= ba.amount";
+
+        /// <summary>
+        /// Step 2 of advance re-allocation: after linking rows, recalculates the bill's
+        /// paid_amount and status_code from scratch using the now-linked payment rows.
+        /// Parameters: @BillId, @SocietyId, @Now.
+        /// </summary>
+        public const string RecalculateBillFromLinkedAdvances = @"
+            UPDATE bills
+            SET    paid_amount = COALESCE((
+                       SELECT SUM(amount)
+                       FROM   maintenance_payments
+                       WHERE  bill_id     = @BillId
+                         AND  is_deleted  = FALSE
+                   ), 0),
+                   status_code = CASE
+                       WHEN COALESCE((
+                                SELECT SUM(amount) FROM maintenance_payments
+                                WHERE bill_id = @BillId AND is_deleted = FALSE
+                            ), 0) >= amount
+                           THEN 'paid'
+                       WHEN COALESCE((
+                                SELECT SUM(amount) FROM maintenance_payments
+                                WHERE bill_id = @BillId AND is_deleted = FALSE
+                            ), 0) > 0
+                           THEN 'partial'
+                       ELSE status_code
+                   END,
+                   updated_at  = @Now
+            WHERE  id         = @BillId
+              AND  society_id = @SocietyId
               AND  is_deleted = FALSE";
     }
 }

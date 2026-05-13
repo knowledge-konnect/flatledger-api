@@ -6,23 +6,26 @@ namespace SocietyLedger.Application.Validators.Subscription
 {
     public class SubscribeRequestValidator : AbstractValidator<SubscribeRequest>
     {
+        private static readonly string[] AllowedMethods =
+        {
+            PaymentModeCodes.Razorpay,
+            PaymentModeCodes.BankTransfer,
+            PaymentModeCodes.Upi,
+            PaymentModeCodes.Cash,
+            PaymentModeCodes.Cheque,
+        };
+
         public SubscribeRequestValidator()
         {
             RuleFor(x => x.PlanId)
                 .NotEmpty().WithMessage("Plan ID is required.");
 
+            // PaymentMethod is optional — defaults to "razorpay" when omitted.
+            // When provided it must be one of the known codes.
             RuleFor(x => x.PaymentMethod)
-                .NotEmpty().WithMessage("Payment method is required.")
-                // Razorpay payments must go through POST /payment/create-order → verify-payment.
-                // Allowing razorpay here would create a Pending invoice that never gets marked Paid.
-                .Must(method => new[]
-                {
-                    PaymentModeCodes.BankTransfer,
-                    PaymentModeCodes.Upi,
-                    PaymentModeCodes.Cash,
-                    PaymentModeCodes.Cheque
-                }.Contains(method.ToLower()))
-                .WithMessage("Invalid payment method. Use bank_transfer, upi, cash, or cheque. For online payments use POST /payment/create-order.");
+                .Must(method => string.IsNullOrEmpty(method) ||
+                                AllowedMethods.Contains(method.ToLower()))
+                .WithMessage($"Invalid payment method. Allowed values: {string.Join(", ", AllowedMethods)}.");
         }
     }
 }

@@ -15,6 +15,9 @@ namespace SocietyLedger.Application.DTOs.Reports
 
         [JsonPropertyName("months")]
         public List<MonthlyIncomeExpenseDto> Months { get; set; } = new();
+
+        [JsonPropertyName("categories")]
+        public List<ExpenseCategoryBreakdownDto> Categories { get; set; } = new();
     }
 
     public class MonthlyIncomeExpenseDto

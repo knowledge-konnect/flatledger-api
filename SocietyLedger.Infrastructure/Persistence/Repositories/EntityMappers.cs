@@ -94,7 +94,8 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                 city: src.city,
                 state: src.state,
                 country: null,
-                pincode: src.pincode
+                pincode: src.pincode,
+                onboardingDate: src.onboarding_date
             );
 
             // Use reflection to set protected properties from BaseEntity
@@ -118,6 +119,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                 name = src.Name,
                 address = src.Address,
                 //is_active = src.IsActive,
+                onboarding_date = src.OnboardingDate,
                 created_at = src.CreatedAt,
                 updated_at = src.UpdatedAt
             };
@@ -402,6 +404,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             {
                 id = src.Id,
                 user_id = src.UserId,
+                society_id = src.SocietyId,
                 subscription_id = src.SubscriptionId,
                 event_type = src.EventType,
                 old_status = src.OldStatus,

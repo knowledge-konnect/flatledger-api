@@ -22,6 +22,7 @@ namespace SocietyLedger.Api.Endpoints
             var version_1_0 = new ApiVersion(ApiConstants.API_VERSION_1_0);
 
             app.MapGet("/",
+            [AllowAnonymous]
             [SwaggerOperation(
                     Summary = "Get active plans",
                     Description = "Returns all active subscription plans available."
@@ -38,7 +39,7 @@ namespace SocietyLedger.Api.Endpoints
                 .WithTags(groupName);
 
             app.MapGet("/{id}",
-            
+            [AllowAnonymous]
             [SwaggerOperation(
                     Summary = "Get plan by ID",
                     Description = "Returns a specific subscription plan by its ID."

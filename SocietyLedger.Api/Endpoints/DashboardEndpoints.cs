@@ -34,7 +34,7 @@ namespace SocietyLedger.Api.Endpoints
                     CancellationToken cancellationToken) =>
                 {
                     if (startDate.HasValue && endDate.HasValue && startDate > endDate)
-                        return Results.BadRequest(ApiResponse<object>.Fail("Start date must be before end date"));
+                        return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, "Start date must be before end date.", ctx.TraceIdentifier));
 
                     // Society ID resolution is handled inside the service using the userId claim.
                     var userId = ctx.GetUserId();

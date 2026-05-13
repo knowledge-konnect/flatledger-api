@@ -18,6 +18,7 @@ namespace SocietyLedger.Infrastructure.Services
         private readonly IUserContext _userContext;
         private readonly ILogger<BillingService> _logger;
         private readonly IDashboardService _dashboardService;
+        private readonly IDapperService _dapper;
 
         public BillingService(
             IBillRepository billRepo,
@@ -26,15 +27,17 @@ namespace SocietyLedger.Infrastructure.Services
             IMaintenanceConfigRepository maintConfigRepo,
             IUserContext userContext,
             ILogger<BillingService> logger,
-            IDashboardService dashboardService)
+            IDashboardService dashboardService,
+            IDapperService dapper)
         {
             _billRepo         = billRepo;
             _flatRepo         = flatRepo;
             _societyRepo      = societyRepo;
             _maintConfigRepo  = maintConfigRepo;
-            _userContext      = userContext;
+            _userContext       = userContext;
             _logger           = logger;
             _dashboardService = dashboardService;
+            _dapper           = dapper;
         }
 
         // ------------------------------------------------------------------ //
@@ -53,6 +56,16 @@ namespace SocietyLedger.Infrastructure.Services
             if (string.Compare(period, maxAllowedPeriod, StringComparison.Ordinal) > 0)
                 throw new ValidationException(
                     $"Period '{period}' is too far in the future. Bills can only be generated up to 1 month ahead (max allowed: '{maxAllowedPeriod}').");
+
+            // Guard: do not generate bills for periods before the society's onboarding date.
+            var onboardingDate = await _societyRepo.GetOnboardingDateAsync(societyId);
+            if (onboardingDate.HasValue)
+            {
+                var onboardingMonth = $"{onboardingDate.Value.Year:D4}-{onboardingDate.Value.Month:D2}";
+                if (string.Compare(period, onboardingMonth, StringComparison.Ordinal) < 0)
+                    throw new ValidationException(
+                        $"Period '{period}' is before this society's onboarding date ({onboardingMonth}). Bills can only be generated from the onboarding month onwards.");
+            }
 
             var defaultCharge = (await _maintConfigRepo.GetDefaultChargesBySocietyIdsAsync(new[] { societyId }))
                                     .GetValueOrDefault(societyId, 0m);
@@ -77,7 +90,10 @@ namespace SocietyLedger.Infrastructure.Services
                 Source:      "manual"
             )).ToList();
 
-            await _billRepo.AddRangeAsync(bills);
+            var insertedBills = await _billRepo.AddRangeAndReturnAsync(bills);
+
+            // Re-allocate any advance payments that were recorded before bill generation.
+            await ReAllocateAdvancesToNewBillsAsync(insertedBills, societyId);
 
             _logger.LogInformation(
                 "Bills generated: societyId={SocietyId}, period={Period}, count={Count}, by={UserId}",
@@ -114,13 +130,14 @@ namespace SocietyLedger.Infrastructure.Services
         //  Automated monthly bill generation                                   //
         // ------------------------------------------------------------------ //
 
-        public async Task<BillingResult> GenerateMonthlyBillsAsync(DateTime? billingMonth = null)
+        public async Task<BillingResult> GenerateMonthlyBillsAsync(DateTime? billingMonth = null, string source = "scheduled")
         {
             var month = billingMonth.HasValue
                 ? new DateTime(billingMonth.Value.Year, billingMonth.Value.Month, 1, 0, 0, 0, DateTimeKind.Utc)
                 : new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
             var stopwatch = Stopwatch.StartNew();
             var period    = month.ToString("yyyy-MM");
+            var periodDate = DateOnly.FromDateTime(month); // first day of billing month as DateOnly for comparison
             int totalFlatsProcessed = 0;
             int billsCreated        = 0;
             int billsSkipped        = 0;
@@ -130,12 +147,20 @@ namespace SocietyLedger.Infrastructure.Services
                 "GenerateMonthlyBillsAsync started. BillingMonth={BillingMonth:yyyy-MM}",
                 month);
 
-            var societyIds = await _societyRepo.GetAllActiveIdsAsync();
+            // Load all active societies with their onboarding dates so we can skip
+            // societies that were not yet registered during the billing period.
+            var onboardingDates = await _societyRepo.GetAllActiveOnboardingDatesAsync();
+            var societyIds = onboardingDates
+                .Where(kv => kv.Value <= periodDate)
+                .Select(kv => kv.Key)
+                .ToList();
 
             if (societyIds.Count == 0)
             {
                 stopwatch.Stop();
-                _logger.LogWarning("GenerateMonthlyBillsAsync: no active societies found. Period={Period}", period);
+                _logger.LogWarning(
+                    "GenerateMonthlyBillsAsync: no active societies eligible for period {Period} " +
+                    "(all societies may have onboarded after this period).", period);
                 return new BillingResult
                 {
                     TotalFlatsProcessed = 0,
@@ -143,7 +168,7 @@ namespace SocietyLedger.Infrastructure.Services
                     BillsSkipped        = 0,
                     ExecutionTime       = stopwatch.Elapsed,
                     Success             = true,
-                    ErrorMessage        = "No active societies with flats found."
+                    ErrorMessage        = "No active societies eligible for this billing period."
                 };
             }
 
@@ -186,14 +211,18 @@ namespace SocietyLedger.Infrastructure.Services
                             GeneratedBy: null,
                             GeneratedAt: now,
                             CreatedAt:   now,
-                            Source:      "scheduled"
+                            Source:      source
                         ));
                     }
 
                     if (newBills.Count > 0)
                     {
-                        await _billRepo.AddRangeAsync(newBills);
+                        var insertedBills = await _billRepo.AddRangeAndReturnAsync(newBills);
                         billsCreated += newBills.Count;
+
+                        // Re-allocate advance payments recorded before bill generation.
+                        await ReAllocateAdvancesToNewBillsAsync(insertedBills, societyId);
+
                         _dashboardService.InvalidateDashboardCache(societyId);
                     }
 
@@ -250,7 +279,7 @@ namespace SocietyLedger.Infrastructure.Services
             if (flat == null)
                 throw new NotFoundException("Flat", $"Flat with public id {flatPublicId} not found or does not belong to this society.");
 
-            if (await _billRepo.ExistsForFlatAndPeriodAsync(flat.Id, period))
+            if (await _billRepo.ExistsForFlatAndPeriodAsync(flat.Id, societyId, period))
                 return;
 
             var defaultCharge = (await _maintConfigRepo.GetDefaultChargesBySocietyIdsAsync(new[] { societyId }))
@@ -289,5 +318,62 @@ namespace SocietyLedger.Infrastructure.Services
             => ex.InnerException?.Message.Contains("unique", StringComparison.OrdinalIgnoreCase) == true
             || ex.InnerException?.Message.Contains("duplicate", StringComparison.OrdinalIgnoreCase) == true
             || ex.InnerException?.Message.Contains("23505") == true;
+
+        // ------------------------------------------------------------------ //
+        //  Advance re-allocation helper                                        //
+        // ------------------------------------------------------------------ //
+
+        /// <summary>
+        /// For each newly inserted bill, links any existing advance payments (bill_id IS NULL,
+        /// adjustment_id IS NULL) to the bill in FIFO order and recalculates the bill's
+        /// paid_amount and status_code. Called immediately after bill generation so that
+        /// members who paid in advance before bill creation are reflected as (partially) paid.
+        /// Each bill is processed independently; failures are logged but do not abort the caller.
+        /// </summary>
+        private async Task ReAllocateAdvancesToNewBillsAsync(
+            IReadOnlyList<(long FlatId, long BillId)> newBills,
+            long societyId)
+        {
+            if (newBills.Count == 0) return;
+            var now = DateTime.UtcNow;
+
+            foreach (var (flatId, billId) in newBills)
+            {
+                try
+                {
+                    var (conn, tx) = await _dapper.BeginTransactionAsync();
+                    await using (conn)
+                    await using (tx)
+                    {
+                        try
+                        {
+                            // Step 1: Link advance rows to the new bill (FIFO, up to bill.amount).
+                            await _dapper.ExecuteAsync(conn, tx,
+                                SqlQueries.LinkAdvancesToNewBill,
+                                new { BillId = billId, FlatId = flatId, SocietyId = societyId, Now = now });
+
+                            // Step 2: Recalculate the bill's paid_amount and status_code.
+                            await _dapper.ExecuteAsync(conn, tx,
+                                SqlQueries.RecalculateBillFromLinkedAdvances,
+                                new { BillId = billId, SocietyId = societyId, Now = now });
+
+                            await tx.CommitAsync();
+                        }
+                        catch
+                        {
+                            await tx.RollbackAsync();
+                            throw;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex,
+                        "Advance re-allocation failed for bill {BillId} (flat {FlatId}, society {SocietyId}). " +
+                        "Bill status will remain 'unpaid' until next payment is processed.",
+                        billId, flatId, societyId);
+                }
+            }
+        }
     }
 }

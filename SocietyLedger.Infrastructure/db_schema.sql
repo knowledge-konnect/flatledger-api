@@ -120,6 +120,7 @@ CREATE TABLE public.expense_categories (
   id smallint GENERATED ALWAYS AS IDENTITY NOT NULL,
   code text NOT NULL,
   display_name text NOT NULL,
+  color character varying(10),
   CONSTRAINT expense_categories_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.expenses (

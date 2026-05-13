@@ -19,7 +19,8 @@ namespace SocietyLedger.Infrastructure.Services.Admin
                 .AsNoTracking()
                 .Where(b => !b.is_deleted)
                 .Join(_db.societies, b => b.society_id, s => s.id, (b, s) => new { b, SocietyName = s.name })
-                .Join(_db.flats,     x => x.b.flat_id,   f => f.id, (x, f) => new { x.b, x.SocietyName, FlatNo = f.flat_no });
+                .GroupJoin(_db.flats, x => x.b.flat_id, f => f.id, (x, flats) => new { x.b, x.SocietyName, Flats = flats })
+                .SelectMany(x => x.Flats.DefaultIfEmpty(), (x, f) => new { x.b, x.SocietyName, FlatNo = f != null ? f.flat_no : null });
 
             if (societyId.HasValue)
                 query = query.Where(x => x.b.society_id == societyId);

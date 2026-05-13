@@ -60,14 +60,7 @@ namespace SocietyLedger.Infrastructure.Services
             if (request.Amount <= 0)
                 throw new ValidationException("Amount must be positive.");
 
-            // Validate business date against the society's financial epoch.
-            // This must happen before the Dapper transaction to keep error reporting clean.
-            var onboardingDate = await GetOnboardingDateAsync(societyId);
             var paymentDateOnly = DateOnly.FromDateTime(request.PaymentDate);
-            if (paymentDateOnly < onboardingDate)
-                throw new ValidationException(
-                    $"Payment date ({paymentDateOnly:yyyy-MM-dd}) cannot be earlier than " +
-                    $"the society onboarding date ({onboardingDate:yyyy-MM-dd}).");
 
             var idempotencyKey = string.IsNullOrWhiteSpace(request.IdempotencyKey)
                 ? Guid.NewGuid().ToString()
@@ -235,8 +228,8 @@ namespace SocietyLedger.Infrastructure.Services
                             new
                             {
                                 PaidAmount = newPaid,
-                                StatusCode = newPaid >= bill.amount ? BillStatusCodes.Paid : BillStatusCodes.Partial,
                                 BillId = bill.id,
+                                SocietyId = societyId,
                                 Now = now
                             });
 
@@ -410,13 +403,6 @@ namespace SocietyLedger.Infrastructure.Services
 
             if (request.PaymentDate.HasValue)
             {
-                var onboardingDate = await GetOnboardingDateAsync(societyId);
-                var paymentDateOnly = DateOnly.FromDateTime(request.PaymentDate.Value);
-                if (paymentDateOnly < onboardingDate)
-                    throw new ValidationException(
-                        $"Payment date ({paymentDateOnly:yyyy-MM-dd}) cannot be earlier than " +
-                        $"the society onboarding date ({onboardingDate:yyyy-MM-dd}).");
-
                 payment.payment_date = request.PaymentDate.Value;
             }
             if (request.ReferenceNumber != null) payment.reference_number = request.ReferenceNumber;
@@ -434,6 +420,7 @@ namespace SocietyLedger.Infrastructure.Services
 
             var updated = await _maintenancePaymentRepo.GetByPublicIdAsync(publicId, societyId)
                 ?? throw new InvalidOperationException("Failed to reload updated payment.");
+            _dashboardService.InvalidateDashboardCache(societyId);
             return MapToResponse(updated);
         }
 
@@ -462,6 +449,8 @@ namespace SocietyLedger.Infrastructure.Services
                     SqlQueries.RecalculateBillAfterPaymentDelete,
                     new { BillId = billId.Value });
             }
+
+            _dashboardService.InvalidateDashboardCache(societyId);
         }
 
         /// <summary>
@@ -531,6 +520,7 @@ namespace SocietyLedger.Infrastructure.Services
             Allocations = p.BillPublicId.HasValue
                 ? [new MaintenancePaymentAllocation(p.BillPublicId.Value, p.Amount, p.Period)]
                 : [],
+            BillStatus = p.BillStatus,
             OutstandingAfterPayment = p.OutstandingAfterPayment
         };
 

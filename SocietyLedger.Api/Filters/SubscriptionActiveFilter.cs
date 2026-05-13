@@ -6,8 +6,8 @@ namespace SocietyLedger.Api.Filters
 {
     /// <summary>
     /// Endpoint filter that blocks write operations when the society has no active subscription.
-    /// Apply to any POST/PUT/DELETE endpoint that must be gated on a valid subscription.
-    /// Returns a consistent 400 ApiResponse on failure; continues the pipeline on success.
+    /// Returns 403 Forbidden with a structured ErrorResponse so the frontend can distinguish
+    /// a subscription gate from a validation error (400).
     /// </summary>
     public class SubscriptionActiveFilter : IEndpointFilter
     {
@@ -24,7 +24,13 @@ namespace SocietyLedger.Api.Filters
             var (valid, message) = await _subscriptionService.ValidateSubscriptionAsync(userId);
 
             if (!valid)
-                return Results.BadRequest(ApiResponse<object>.Fail(message!));
+            {
+                var error = ErrorResponse.Create(
+                    ErrorCodes.FORBIDDEN,
+                    message ?? "Your subscription is inactive. Please renew to continue.",
+                    ctx.HttpContext.TraceIdentifier);
+                return Results.Json(error, statusCode: 403);
+            }
 
             return await next(ctx);
         }

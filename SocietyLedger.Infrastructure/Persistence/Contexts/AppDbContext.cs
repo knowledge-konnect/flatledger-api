@@ -276,6 +276,7 @@ public partial class AppDbContext : DbContext
             entity.HasKey(e => e.id).HasName("expense_categories_pkey");
 
             entity.Property(e => e.id).UseIdentityAlwaysColumn();
+            entity.Property(e => e.color).HasMaxLength(10).IsRequired(false);
         });
 
         modelBuilder.Entity<flat>(entity =>

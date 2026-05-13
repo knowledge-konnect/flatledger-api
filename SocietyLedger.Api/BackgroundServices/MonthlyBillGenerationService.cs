@@ -93,7 +93,9 @@ namespace SocietyLedger.Api.BackgroundServices
             }
 
             _logger.LogCritical(lastException,
-                "Monthly bill generation failed after all retries. Period={Period} Attempts={Attempts}",
+                "ALERT: Monthly bill generation failed after all retries. " +
+                "Manual intervention required. Period={Period} Attempts={Attempts} " +
+                "Action=Check database connectivity and re-trigger via POST /billing/trigger-monthly-job-now",
                 now.ToString("yyyy-MM"), _maxRetryAttempts);
         }
 
