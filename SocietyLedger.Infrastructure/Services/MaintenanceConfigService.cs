@@ -28,7 +28,7 @@ namespace SocietyLedger.Infrastructure.Services
 
         public async Task<MaintenanceConfigResponse> GetAsync(Guid societyPublicId, long authUserId)
         {
-            await ValidateAccessAsync(societyPublicId, authUserId, "read maintenance config");
+            await ValidateAccessAsync(societyPublicId, authUserId, "read maintenance config", isReadOnly: true);
 
             var society = await _societyRepo.GetByPublicIdAsync(societyPublicId)
                 ?? throw new NotFoundException("Society", societyPublicId.ToString());
@@ -54,7 +54,7 @@ namespace SocietyLedger.Infrastructure.Services
 
         public async Task<MaintenanceConfigResponse> SaveAsync(Guid societyPublicId, SaveMaintenanceConfigRequest request, long authUserId)
         {
-            await ValidateAccessAsync(societyPublicId, authUserId, "save maintenance config");
+            await ValidateAccessAsync(societyPublicId, authUserId, "save maintenance config", isReadOnly: false);
 
             var society = await _societyRepo.GetByPublicIdAsync(societyPublicId)
                 ?? throw new NotFoundException("Society", societyPublicId.ToString());
@@ -77,7 +77,7 @@ namespace SocietyLedger.Infrastructure.Services
         // Helpers
         // ---------------------------------------------------------------
 
-        private async Task ValidateAccessAsync(Guid societyPublicId, long authUserId, string operation)
+        private async Task ValidateAccessAsync(Guid societyPublicId, long authUserId, string operation, bool isReadOnly)
         {
             var authUser = await _userRepo.GetByIdAsync(authUserId);
             if (authUser == null || !authUser.IsActive)
@@ -87,10 +87,14 @@ namespace SocietyLedger.Infrastructure.Services
             if (authUser.SocietyPublicId != societyPublicId)
                 throw new AuthorizationException("You can only access maintenance configuration for your own society.");
 
-            // Verify the user has Society Admin role
-            var role = authUser.Role?.Code ?? string.Empty;
-            if (role != RoleCodes.SocietyAdmin)
-                throw new AuthorizationException("Only Society Admin users can access maintenance configuration.");
+            // For write operations, require Society Admin role
+            if (!isReadOnly)
+            {
+                var role = authUser.Role?.Code ?? string.Empty;
+                if (role != RoleCodes.SocietyAdmin)
+                    throw new AuthorizationException("Only Society Admin users can modify maintenance configuration.");
+            }
+            // Read operations are allowed for all authenticated users in the society (including viewers)
         }
     }
 }

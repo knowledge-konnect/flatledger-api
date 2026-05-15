@@ -8,9 +8,9 @@ namespace SocietyLedger.Infrastructure.Services
     {
         // ── Design tokens ─────────────────────────────────────────────────────
         private const string FontName       = "Calibri";
-        private const int    TitleFontSize  = 20;
-        private const int    SubtitleSize   = 13;
-        private const int    SectionSize    = 11;
+        private const int    TitleFontSize  = 22;
+        private const int    SubtitleSize   = 14;
+        private const int    SectionSize    = 12;
         private const int    DataSize       = 11;
         private const string AmountFormat   = "₹#,##0";
 
@@ -18,15 +18,21 @@ namespace SocietyLedger.Infrastructure.Services
         // Right margin begins at column I (index 9) and beyond.
         private const int ColStart = 3; // Column C — first content column
 
-        // Emerald palette
-        private static readonly XLColor ColourHeaderBg    = XLColor.FromHtml("#064E3B"); // dark emerald
-        private static readonly XLColor ColourSectionBg   = XLColor.FromHtml("#065F46"); // section bg
-        private static readonly XLColor ColourLightBg     = XLColor.FromHtml("#D1FAE5"); // light green
-        private static readonly XLColor ColourHighlightBg = XLColor.FromHtml("#A7F3D0"); // closing-balance
-        private static readonly XLColor ColourBorder      = XLColor.FromHtml("#E5E7EB"); // borders
-        private static readonly XLColor ColourPaidText    = XLColor.FromHtml("#059669"); // paid / positive
-        private static readonly XLColor ColourPendingText = XLColor.FromHtml("#DC2626"); // pending / negative
-        private static readonly XLColor ColourTotalRowBg  = XLColor.FromHtml("#D1FAE5"); // total row
+        // Emerald palette - Enhanced for professional appearance
+        private static readonly XLColor ColourHeaderBg      = XLColor.FromHtml("#064E3B"); // dark emerald - main headers
+        private static readonly XLColor ColourSectionBg     = XLColor.FromHtml("#065F46"); // section headers
+        private static readonly XLColor ColourLightBg       = XLColor.FromHtml("#D1FAE5"); // light green backgrounds
+        private static readonly XLColor ColourHighlightBg   = XLColor.FromHtml("#A7F3D0"); // important highlights
+        private static readonly XLColor ColourAlternateRow  = XLColor.FromHtml("#F0FDF4"); // alternating table rows
+        private static readonly XLColor ColourBorder        = XLColor.FromHtml("#D1D5DB"); // borders
+        private static readonly XLColor ColourBorderDark    = XLColor.FromHtml("#9CA3AF"); // stronger borders
+        private static readonly XLColor ColourPaidText      = XLColor.FromHtml("#059669"); // paid / positive
+        private static readonly XLColor ColourPaidBg        = XLColor.FromHtml("#ECFDF5"); // paid status background
+        private static readonly XLColor ColourPendingText   = XLColor.FromHtml("#DC2626"); // pending / negative
+        private static readonly XLColor ColourPendingBg     = XLColor.FromHtml("#FEF2F2"); // pending status background
+        private static readonly XLColor ColourTotalRowBg    = XLColor.FromHtml("#A7F3D0"); // total row - darker for emphasis
+        private static readonly XLColor ColourCardBg        = XLColor.FromHtml("#ECFDF5"); // card-style sections
+        private static readonly XLColor ColourWhite         = XLColor.White;
 
         // ── Monthly report (3 sheets) ────────────────────────────────────────
         public byte[] GenerateMonthlyReport(MonthlyReportDto data)
@@ -67,12 +73,17 @@ namespace SocietyLedger.Infrastructure.Services
             row = WriteReportTitle(ws, row, ColStart, colEnd, data.SocietyName, $"Monthly Report - {data.PeriodLabel}");
             ws.SheetView.FreezeRows(2); // freeze branded title rows 1-2
 
-            // Legend: explain sign semantics for balances (positive = member owes, negative = society owes)
+            // Enhanced legend note
             ws.Range(row, ColStart, row, colEnd).Merge();
             ws.Cell(row, ColStart).Value = "Note: Positive = member owes the society; Negative = society owes member (advance).";
             ws.Cell(row, ColStart).Style.Font.Italic = true;
             ws.Cell(row, ColStart).Style.Font.FontSize = 9;
+            ws.Cell(row, ColStart).Style.Font.FontColor = XLColor.DarkGray;
+            ws.Cell(row, ColStart).Style.Fill.BackgroundColor = XLColor.FromHtml("#F9FAFB");
             ws.Cell(row, ColStart).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
+            ws.Cell(row, ColStart).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+            ws.Cell(row, ColStart).Style.Border.OutsideBorderColor = ColourBorder;
+            ws.Row(row).Height = 20;
             row += 2;
 
             // Fund Position
@@ -114,10 +125,14 @@ namespace SocietyLedger.Infrastructure.Services
                 row = WriteSectionHeader(ws, row, ColStart, colEnd, "Summary");
                 ws.Range(row, ColStart, row, colEnd).Merge();
                 ws.Cell(row, ColStart).Value = data.Summary;
-                ws.Cell(row, ColStart).Style.Fill.BackgroundColor = ColourLightBg;
+                ws.Cell(row, ColStart).Style.Fill.BackgroundColor = XLColor.FromHtml("#F0FDF4");
                 ws.Cell(row, ColStart).Style.Alignment.WrapText = true;
                 ws.Cell(row, ColStart).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
-                ws.Row(row).Height = 36;
+                ws.Cell(row, ColStart).Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+                ws.Cell(row, ColStart).Style.Font.FontSize = DataSize;
+                ws.Cell(row, ColStart).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+                ws.Cell(row, ColStart).Style.Border.OutsideBorderColor = ColourBorder;
+                ws.Row(row).Height = 40;
                 row += 2;
             }
 
@@ -130,16 +145,23 @@ namespace SocietyLedger.Infrastructure.Services
             const int colEnd = ColStart + 7; // column J
             var ws = wb.AddWorksheet("Payments");
             SetSheetDefaults(ws);
+            ws.PageSetup.PageOrientation = XLPageOrientation.Landscape; // Landscape for wider table
             int row = 1;
 
             row = WriteReportTitle(ws, row, ColStart, colEnd, data.SocietyName, $"Payments - {data.PeriodLabel}");
 
+            // Enhanced note styling
             int noteRow = row;
-            // small explanatory note for users clarifying column meanings
             ws.Range(noteRow, ColStart, noteRow, colEnd).Merge();
             ws.Cell(noteRow, ColStart).Value = "Note: 'Total Due (Before Payment)' = Previous Balance + Monthly Charges. 'Outstanding' = Total Due - Amount Paid.";
             ws.Cell(noteRow, ColStart).Style.Font.Italic = true;
+            ws.Cell(noteRow, ColStart).Style.Font.FontSize = 9;
             ws.Cell(noteRow, ColStart).Style.Font.FontColor = XLColor.DarkGray;
+            ws.Cell(noteRow, ColStart).Style.Fill.BackgroundColor = XLColor.FromHtml("#F9FAFB");
+            ws.Cell(noteRow, ColStart).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
+            ws.Cell(noteRow, ColStart).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+            ws.Cell(noteRow, ColStart).Style.Border.OutsideBorderColor = ColourBorder;
+            ws.Row(noteRow).Height = 20;
             row++;
 
             int headerRow = row;
@@ -161,6 +183,7 @@ namespace SocietyLedger.Infrastructure.Services
             foreach (var flat in data.FlatDetails ?? new List<FlatDetailDto>())
             {
                 var outstanding = flat.BalanceAmount;
+                bool isAlternate = (row - dataStart) % 2 == 1; // Alternate every other row
 
                 ws.Cell(row, ColStart + 0).Value = flat.FlatNo;
                 ws.Cell(row, ColStart + 1).Value = flat.OwnerName ?? "-";
@@ -195,7 +218,7 @@ namespace SocietyLedger.Infrastructure.Services
                 statusCell.Style.Font.FontColor = GetMonthlyStatusColor(flat.Status, outstanding);
                 statusCell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
 
-                ApplyRowBorder(ws, row, ColStart, colEnd);
+                ApplyRowBorder(ws, row, ColStart, colEnd, isAlternate);
                 row++;
             }
             int dataEnd = row - 1;
@@ -265,11 +288,13 @@ namespace SocietyLedger.Infrastructure.Services
             int dataStart = row;
             foreach (var exp in expenses)
             {
+                bool isAlternate = (row - dataStart) % 2 == 1; // Alternate every other row
+                
                 ws.Cell(row, ColStart).Value     = exp.CategoryName;
                 ws.Cell(row, ColStart + 1).Value = exp.TotalAmount;
                 ws.Cell(row, ColStart + 1).Style.NumberFormat.Format = AmountFormat;
                 ws.Cell(row, ColStart + 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
-                ApplyRowBorder(ws, row, ColStart, dataColEnd);
+                ApplyRowBorder(ws, row, ColStart, dataColEnd, isAlternate);
                 row++;
             }
             int dataEnd = row - 1;
@@ -335,10 +360,14 @@ namespace SocietyLedger.Infrastructure.Services
                 row = WriteSectionHeader(ws, row, ColStart, colEnd, "Summary");
                 ws.Range(row, ColStart, row, colEnd).Merge();
                 ws.Cell(row, ColStart).Value = data.Summary;
-                ws.Cell(row, ColStart).Style.Fill.BackgroundColor = ColourLightBg;
+                ws.Cell(row, ColStart).Style.Fill.BackgroundColor = XLColor.FromHtml("#F0FDF4");
                 ws.Cell(row, ColStart).Style.Alignment.WrapText = true;
                 ws.Cell(row, ColStart).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
-                ws.Row(row).Height = 36;
+                ws.Cell(row, ColStart).Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+                ws.Cell(row, ColStart).Style.Font.FontSize = DataSize;
+                ws.Cell(row, ColStart).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+                ws.Cell(row, ColStart).Style.Border.OutsideBorderColor = ColourBorder;
+                ws.Row(row).Height = 40;
                 row += 2;
             }
 
@@ -351,6 +380,7 @@ namespace SocietyLedger.Infrastructure.Services
             const int colEnd = ColStart + 5; // column H
             var ws = wb.AddWorksheet("Monthly Summary");
             SetSheetDefaults(ws);
+            ws.PageSetup.PageOrientation = XLPageOrientation.Landscape; // Landscape for wider table
             int row = 1;
 
             row = WriteReportTitle(ws, row, ColStart, colEnd, data.SocietyName, $"Monthly Summary - {data.YearLabel}");
@@ -363,6 +393,8 @@ namespace SocietyLedger.Infrastructure.Services
             int dataStart = row;
             foreach (var m in data.MonthSummary ?? new List<MonthSummaryDto>())
             {
+                bool isAlternate = (row - dataStart) % 2 == 1; // Alternate every other row
+                
                 ws.Cell(row, ColStart + 0).Value = m.MonthLabel;
                 ws.Cell(row, ColStart + 1).Value = m.Billed;
                 ws.Cell(row, ColStart + 2).Value = m.Collected;
@@ -382,7 +414,7 @@ namespace SocietyLedger.Infrastructure.Services
                 statusCell.Style.Font.FontColor = isSurplus ? ColourPaidText : ColourPendingText;
                 statusCell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
 
-                ApplyRowBorder(ws, row, ColStart, colEnd);
+                ApplyRowBorder(ws, row, ColStart, colEnd, isAlternate);
                 row++;
             }
             int dataEnd = row - 1;
@@ -429,11 +461,13 @@ namespace SocietyLedger.Infrastructure.Services
             int dataStart = row;
             foreach (var exp in expenses)
             {
+                bool isAlternate = (row - dataStart) % 2 == 1; // Alternate every other row
+                
                 ws.Cell(row, ColStart).Value     = exp.CategoryName;
                 ws.Cell(row, ColStart + 1).Value = exp.TotalAmount;
                 ws.Cell(row, ColStart + 1).Style.NumberFormat.Format = AmountFormat;
                 ws.Cell(row, ColStart + 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
-                ApplyRowBorder(ws, row, ColStart, dataColEnd);
+                ApplyRowBorder(ws, row, ColStart, dataColEnd, isAlternate);
                 row++;
             }
             int dataEnd = row - 1;
@@ -464,10 +498,21 @@ namespace SocietyLedger.Infrastructure.Services
         {
             ws.Style.Font.FontName = FontName;
             ws.Style.Font.FontSize = DataSize;
+            
+            // Enhanced print settings for professional appearance
             ws.PageSetup.PaperSize = XLPaperSize.A4Paper;
             ws.PageSetup.CenterHorizontally = true;
+            ws.PageSetup.CenterVertically = false;
             ws.PageSetup.PageOrientation = XLPageOrientation.Portrait;
             ws.PageSetup.FitToPages(1, 0); // fit to 1 page wide, unlimited height
+            ws.PageSetup.Margins.Top = 0.5;
+            ws.PageSetup.Margins.Bottom = 0.5;
+            ws.PageSetup.Margins.Left = 0.5;
+            ws.PageSetup.Margins.Right = 0.5;
+            ws.PageSetup.Margins.Header = 0.3;
+            ws.PageSetup.Margins.Footer = 0.3;
+            ws.PageSetup.PrintAreas.Clear();
+            ws.ShowGridLines = false; // Hide grid lines for cleaner appearance
         }
 
         /// Writes a two-row branded title block (society name + subtitle). Returns next row.
@@ -484,7 +529,9 @@ namespace SocietyLedger.Infrastructure.Services
             titleCell.Style.Fill.BackgroundColor = ColourHeaderBg;
             titleCell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
             titleCell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
-            ws.Row(row).Height = 36;
+            titleCell.Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
+            titleCell.Style.Border.OutsideBorderColor = ColourBorderDark;
+            ws.Row(row).Height = 40;
             row++;
 
             // Row 2: Subtitle — merged C:colEnd
@@ -494,10 +541,12 @@ namespace SocietyLedger.Infrastructure.Services
             subCell.Style.Font.FontSize = SubtitleSize;
             subCell.Style.Font.Bold = true;
             subCell.Style.Font.FontColor = XLColor.White;
-            subCell.Style.Fill.BackgroundColor = ColourHeaderBg;
+            subCell.Style.Fill.BackgroundColor = ColourSectionBg;
             subCell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
             subCell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
-            ws.Row(row).Height = 24;
+            subCell.Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
+            subCell.Style.Border.OutsideBorderColor = ColourBorderDark;
+            ws.Row(row).Height = 28;
             row += 2; // blank spacing after title
 
             return row;
@@ -515,7 +564,9 @@ namespace SocietyLedger.Infrastructure.Services
             cell.Style.Fill.BackgroundColor = ColourSectionBg;
             cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
             cell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
-            ws.Row(row).Height = 22;
+            cell.Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
+            cell.Style.Border.OutsideBorderColor = ColourBorderDark;
+            ws.Row(row).Height = 26;
             return row + 1;
         }
 
@@ -529,6 +580,7 @@ namespace SocietyLedger.Infrastructure.Services
             labelCell.Style.Font.Bold = bold;
             labelCell.Style.Font.FontSize = DataSize;
             labelCell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
+            labelCell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
 
             var valueCell = ws.Cell(row, colStart + 1);
             switch (value)
@@ -541,6 +593,7 @@ namespace SocietyLedger.Infrastructure.Services
             valueCell.Style.Font.Bold = bold;
             valueCell.Style.Font.FontSize = DataSize;
             valueCell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+            valueCell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
 
             if (isAmount)
                 valueCell.Style.NumberFormat.Format = AmountFormat;
@@ -548,11 +601,20 @@ namespace SocietyLedger.Infrastructure.Services
             if (valueColor != null)
                 valueCell.Style.Font.FontColor = valueColor;
 
-            var bg = highlight ? ColourHighlightBg : ColourLightBg;
-            ws.Range(row, colStart, row, colStart + 1).Style.Fill.BackgroundColor = bg;
-            ws.Range(row, colStart, row, colStart + 1).Style.Border.BottomBorder = XLBorderStyleValues.Thin;
-            ws.Range(row, colStart, row, colStart + 1).Style.Border.BottomBorderColor = ColourBorder;
-            ws.Row(row).Height = 20;
+            // Enhanced card-style background with borders
+            var bg = highlight ? ColourHighlightBg : ColourCardBg;
+            var cellRange = ws.Range(row, colStart, row, colStart + 1);
+            cellRange.Style.Fill.BackgroundColor = bg;
+            cellRange.Style.Border.TopBorder = XLBorderStyleValues.Thin;
+            cellRange.Style.Border.TopBorderColor = ColourBorder;
+            cellRange.Style.Border.BottomBorder = XLBorderStyleValues.Thin;
+            cellRange.Style.Border.BottomBorderColor = ColourBorder;
+            cellRange.Style.Border.LeftBorder = XLBorderStyleValues.Thin;
+            cellRange.Style.Border.LeftBorderColor = ColourBorder;
+            cellRange.Style.Border.RightBorder = XLBorderStyleValues.Thin;
+            cellRange.Style.Border.RightBorderColor = ColourBorder;
+            
+            ws.Row(row).Height = 22;
             return row + 1;
         }
 
@@ -566,11 +628,12 @@ namespace SocietyLedger.Infrastructure.Services
             cell.Style.Font.Bold = true;
             cell.Style.Font.FontSize = DataSize;
             cell.Style.Font.FontColor = isWarning ? ColourPendingText : ColourPaidText;
-            cell.Style.Fill.BackgroundColor = isWarning
-                ? XLColor.FromHtml("#FEF2F2")
-                : XLColor.FromHtml("#F0FDF4");
+            cell.Style.Fill.BackgroundColor = isWarning ? ColourPendingBg : XLColor.FromHtml("#F0FDF4");
             cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
-            ws.Row(row).Height = 20;
+            cell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+            cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+            cell.Style.Border.OutsideBorderColor = isWarning ? ColourPendingText : ColourPaidText;
+            ws.Row(row).Height = 24;
             return row + 1;
         }
 
@@ -588,33 +651,65 @@ namespace SocietyLedger.Infrastructure.Services
                 cell.Style.Alignment.Horizontal = i == 0
                     ? XLAlignmentHorizontalValues.Left
                     : XLAlignmentHorizontalValues.Center;
-                cell.Style.Border.BottomBorder = XLBorderStyleValues.Thin;
-                cell.Style.Border.BottomBorderColor = ColourBorder;
+                cell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+                cell.Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
+                cell.Style.Border.OutsideBorderColor = ColourBorderDark;
             }
-            ws.Row(row).Height = 24;
+            ws.Row(row).Height = 28;
         }
 
-        /// Applies a thin bottom border to a data row from colStart to colEnd.
-        private static void ApplyRowBorder(IXLWorksheet ws, int row, int colStart, int colEnd)
+        /// Applies borders and optional alternating row color to a data row from colStart to colEnd.
+        private static void ApplyRowBorder(IXLWorksheet ws, int row, int colStart, int colEnd, bool isAlternate = false)
         {
-            ws.Range(row, colStart, row, colEnd).Style.Border.BottomBorder = XLBorderStyleValues.Thin;
-            ws.Range(row, colStart, row, colEnd).Style.Border.BottomBorderColor = ColourBorder;
-            ws.Row(row).Height = 20;
+            var rowRange = ws.Range(row, colStart, row, colEnd);
+            
+            // Apply alternating row background for better readability
+            if (isAlternate)
+                rowRange.Style.Fill.BackgroundColor = ColourAlternateRow;
+            
+            // Apply borders to all cells in the row
+            rowRange.Style.Border.TopBorder = XLBorderStyleValues.Thin;
+            rowRange.Style.Border.TopBorderColor = ColourBorder;
+            rowRange.Style.Border.BottomBorder = XLBorderStyleValues.Thin;
+            rowRange.Style.Border.BottomBorderColor = ColourBorder;
+            rowRange.Style.Border.LeftBorder = XLBorderStyleValues.Thin;
+            rowRange.Style.Border.LeftBorderColor = ColourBorder;
+            rowRange.Style.Border.RightBorder = XLBorderStyleValues.Thin;
+            rowRange.Style.Border.RightBorderColor = ColourBorder;
+            
+            // Vertical alignment
+            rowRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+            
+            ws.Row(row).Height = 22;
         }
 
-        /// Writes a bold light-green total row with SUM formulas from colStart to colEnd.
+        /// Writes a bold emerald total row with SUM formulas from colStart to colEnd.
         private static void ApplyTotalRow(IXLWorksheet ws, int row, int colStart, int colEnd,
             Dictionary<int, string> formulas)
         {
-            ws.Range(row, colStart, row, colEnd).Style.Fill.BackgroundColor = ColourTotalRowBg;
-            ws.Range(row, colStart, row, colEnd).Style.Font.Bold = true;
-            ws.Range(row, colStart, row, colEnd).Style.Border.TopBorder = XLBorderStyleValues.Thin;
-            ws.Range(row, colStart, row, colEnd).Style.Border.TopBorderColor = ColourBorder;
+            var rowRange = ws.Range(row, colStart, row, colEnd);
+            rowRange.Style.Fill.BackgroundColor = ColourTotalRowBg;
+            rowRange.Style.Font.Bold = true;
+            rowRange.Style.Font.FontSize = DataSize;
+            rowRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+            
+            // Strong borders for emphasis
+            rowRange.Style.Border.TopBorder = XLBorderStyleValues.Medium;
+            rowRange.Style.Border.TopBorderColor = ColourBorderDark;
+            rowRange.Style.Border.BottomBorder = XLBorderStyleValues.Medium;
+            rowRange.Style.Border.BottomBorderColor = ColourBorderDark;
+            rowRange.Style.Border.LeftBorder = XLBorderStyleValues.Thin;
+            rowRange.Style.Border.LeftBorderColor = ColourBorder;
+            rowRange.Style.Border.RightBorder = XLBorderStyleValues.Thin;
+            rowRange.Style.Border.RightBorderColor = ColourBorder;
+            
             ws.Cell(row, colStart).Value = "Total";
             ws.Cell(row, colStart).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
+            
             foreach (var (col, formula) in formulas)
                 ws.Cell(row, col).FormulaA1 = formula;
-            ws.Row(row).Height = 22;
+            
+            ws.Row(row).Height = 26;
         }
 
         /// Sets narrow left-margin columns, auto-fits content columns, and enforces minimum widths.

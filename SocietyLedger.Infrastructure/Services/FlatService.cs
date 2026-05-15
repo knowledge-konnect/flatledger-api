@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using SocietyLedger.Infrastructure.Persistence.Contexts;
 using SocietyLedger.Infrastructure.Services.Common;
 using Microsoft.EntityFrameworkCore;
+using SocietyLedger.Infrastructure.Persistence.Extensions;
 
 namespace SocietyLedger.Infrastructure.Services
 {
@@ -74,35 +75,40 @@ namespace SocietyLedger.Infrastructure.Services
             if (dto == null) throw new ArgumentNullException(nameof(dto));
 
             var societyId = await _userContext.GetSocietyIdAsync(userId);
+            var normalizedFlatNo = NormalizeFlatNo(dto.FlatNo);
+            var normalizedOwnerName = NormalizeText(dto.OwnerName);
+            var normalizedEmail = NormalizeEmail(dto.ContactEmail);
+            var normalizedMobile = NormalizeMobile(dto.ContactMobile);
+            var normalizedStatusCode = NormalizeStatusCode(dto.StatusCode);
 
             // Check for duplicate flat number in the society
-            var existingFlat = await _repo.GetByFlatNoAndSocietyAsync(dto.FlatNo, societyId);
+            var existingFlat = await _repo.GetByFlatNoAndSocietyAsync(normalizedFlatNo, societyId);
             if (existingFlat != null)
                 throw new DuplicateException("flat", "flat number");
 
             // Check for duplicate email in the same society
-            if (!string.IsNullOrWhiteSpace(dto.ContactEmail))
+            if (!string.IsNullOrWhiteSpace(normalizedEmail))
             {
-                var existingEmail = await _repo.GetByEmailAndSocietyAsync(dto.ContactEmail, societyId);
+                var existingEmail = await _repo.GetByEmailAndSocietyAsync(normalizedEmail, societyId);
                 if (existingEmail != null)
                     throw new DuplicateException("flat", "email");
             }
 
             // Check for duplicate mobile in the same society
-            if (!string.IsNullOrWhiteSpace(dto.ContactMobile))
+            if (!string.IsNullOrWhiteSpace(normalizedMobile))
             {
-                var existingMobile = await _repo.GetByMobileAndSocietyAsync(dto.ContactMobile, societyId);
+                var existingMobile = await _repo.GetByMobileAndSocietyAsync(normalizedMobile, societyId);
                 if (existingMobile != null)
                     throw new DuplicateException("flat", "mobile number");
             }
 
             // Get status by code if provided, otherwise use default
             short? statusId = null;
-            if (!string.IsNullOrEmpty(dto.StatusCode))
+            if (!string.IsNullOrEmpty(normalizedStatusCode))
             {
-                var status = await _repo.GetByCodeAsync(dto.StatusCode);
+                var status = await _repo.GetByCodeAsync(normalizedStatusCode);
                 if (status == null)
-                    throw new ValidationException($"Invalid flat status code: {dto.StatusCode}");
+                    throw new ValidationException($"Invalid flat status code: {normalizedStatusCode}");
                 statusId = status.Id;
             }
 
@@ -112,20 +118,28 @@ namespace SocietyLedger.Infrastructure.Services
             {
                 PublicId = Guid.NewGuid(),
                 SocietyId = societyId,
-                FlatNo = dto.FlatNo,
-                OwnerName = dto.OwnerName,
-                ContactMobile = dto.ContactMobile,
-                ContactEmail = dto.ContactEmail,
+                FlatNo = normalizedFlatNo,
+                OwnerName = normalizedOwnerName,
+                ContactMobile = normalizedMobile,
+                ContactEmail = normalizedEmail,
                 MaintenanceAmount = dto.MaintenanceAmount ?? 0m,
                 StatusId = statusId,
                 CreatedAt = now,
                 UpdatedAt = now
             };
 
-            await _repo.AddAsync(domain);
-            await _repo.SaveChangesAsync();
+            try
+            {
+                await _repo.AddAsync(domain);
+                await _repo.SaveChangesAsync();
+            }
+            catch (DbUpdateException ex) when (ex.IsUniqueConstraintViolation())
+            {
+                _logger.LogWarning(ex, "Concurrent duplicate flat creation blocked for society {SocietyId}", societyId);
+                throw new DuplicateException("flat", "flat number/email/mobile");
+            }
 
-            _logger.LogInformation("Flat created successfully for FlatNo {FlatNo}", dto.FlatNo);
+            _logger.LogInformation("Flat created successfully for FlatNo {FlatNo}", normalizedFlatNo);
             return MapToDto(domain);
         }
 
@@ -396,37 +410,43 @@ namespace SocietyLedger.Infrastructure.Services
             if (existing == null)
                 throw new NotFoundException("Flat", dto.PublicId.ToString());
 
+            var normalizedFlatNo = dto.FlatNo != null ? NormalizeFlatNo(dto.FlatNo) : null;
+            var normalizedOwnerName = dto.OwnerName != null ? NormalizeText(dto.OwnerName) : null;
+            var normalizedEmail = dto.ContactEmail != null ? NormalizeEmail(dto.ContactEmail) : null;
+            var normalizedMobile = dto.ContactMobile != null ? NormalizeMobile(dto.ContactMobile) : null;
+            var normalizedStatusCode = dto.StatusCode != null ? NormalizeStatusCode(dto.StatusCode) : null;
+
             // Check for duplicate flat number if changing
-            if (dto.FlatNo != null && dto.FlatNo != existing.FlatNo)
+            if (normalizedFlatNo != null && !AreSameFlatNo(normalizedFlatNo, existing.FlatNo))
             {
-                var conflictingFlat = await _repo.GetByFlatNoAndSocietyAsync(dto.FlatNo, existing.SocietyId);
+                var conflictingFlat = await _repo.GetByFlatNoAndSocietyAsync(normalizedFlatNo, existing.SocietyId);
                 if (conflictingFlat != null && conflictingFlat.PublicId != existing.PublicId)
                     throw new DuplicateException("flat", "flat number");
             }
 
             // Check for duplicate email if changing
-            if (!string.IsNullOrWhiteSpace(dto.ContactEmail) && dto.ContactEmail != existing.ContactEmail)
+            if (!string.IsNullOrWhiteSpace(normalizedEmail) && !AreSameEmail(normalizedEmail, existing.ContactEmail))
             {
-                var conflictingEmail = await _repo.GetByEmailAndSocietyAsync(dto.ContactEmail, existing.SocietyId);
+                var conflictingEmail = await _repo.GetByEmailAndSocietyAsync(normalizedEmail, existing.SocietyId);
                 if (conflictingEmail != null && conflictingEmail.PublicId != existing.PublicId)
                     throw new DuplicateException("flat", "email");
             }
 
             // Check for duplicate mobile if changing
-            if (!string.IsNullOrWhiteSpace(dto.ContactMobile) && dto.ContactMobile != existing.ContactMobile)
+            if (!string.IsNullOrWhiteSpace(normalizedMobile) && !AreSameMobile(normalizedMobile, existing.ContactMobile))
             {
-                var conflictingMobile = await _repo.GetByMobileAndSocietyAsync(dto.ContactMobile, existing.SocietyId);
+                var conflictingMobile = await _repo.GetByMobileAndSocietyAsync(normalizedMobile, existing.SocietyId);
                 if (conflictingMobile != null && conflictingMobile.PublicId != existing.PublicId)
                     throw new DuplicateException("flat", "mobile number");
             }
 
             // Get status by code if provided
             short? statusId = existing.StatusId;
-            if (dto.StatusCode != null)
+            if (normalizedStatusCode != null)
             {
-                var status = await _repo.GetByCodeAsync(dto.StatusCode);
+                var status = await _repo.GetByCodeAsync(normalizedStatusCode);
                 if (status == null)
-                    throw new ValidationException($"Invalid flat status code: {dto.StatusCode}");
+                    throw new ValidationException($"Invalid flat status code: {normalizedStatusCode}");
                 statusId = status.Id;
 
                 // #4 — Cannot mark a flat as vacant while it has outstanding unpaid bills.
@@ -441,16 +461,24 @@ namespace SocietyLedger.Infrastructure.Services
                 }
             }
 
-            existing.FlatNo = dto.FlatNo ?? existing.FlatNo;
-            existing.OwnerName = dto.OwnerName ?? existing.OwnerName;
-            existing.ContactMobile = dto.ContactMobile ?? existing.ContactMobile;
-            existing.ContactEmail = dto.ContactEmail ?? existing.ContactEmail;
+            existing.FlatNo = normalizedFlatNo ?? existing.FlatNo;
+            existing.OwnerName = normalizedOwnerName ?? existing.OwnerName;
+            existing.ContactMobile = normalizedMobile ?? existing.ContactMobile;
+            existing.ContactEmail = normalizedEmail ?? existing.ContactEmail;
             existing.MaintenanceAmount = dto.MaintenanceAmount ?? existing.MaintenanceAmount;
             existing.StatusId = statusId;
             existing.UpdatedAt = DateTime.UtcNow;
 
-            await _repo.UpdateAsync(existing, societyId);
-            await _repo.SaveChangesAsync();
+            try
+            {
+                await _repo.UpdateAsync(existing, societyId);
+                await _repo.SaveChangesAsync();
+            }
+            catch (DbUpdateException ex) when (ex.IsUniqueConstraintViolation())
+            {
+                _logger.LogWarning(ex, "Concurrent duplicate flat update blocked for society {SocietyId}", societyId);
+                throw new DuplicateException("flat", "flat number/email/mobile");
+            }
 
             _logger.LogInformation("Flat updated successfully for PublicId {PublicId}", dto.PublicId);
             return MapToDto(existing);
@@ -810,6 +838,39 @@ namespace SocietyLedger.Infrastructure.Services
             };
         }
 
+
+        private static string NormalizeFlatNo(string flatNo)
+            => (flatNo ?? string.Empty).Trim().ToUpperInvariant();
+
+        private static string? NormalizeText(string? value)
+            => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+        private static string? NormalizeEmail(string? email)
+            => string.IsNullOrWhiteSpace(email) ? null : email.Trim().ToLowerInvariant();
+
+        private static string? NormalizeMobile(string? mobile)
+        {
+            if (string.IsNullOrWhiteSpace(mobile))
+                return null;
+
+            var digits = new string(mobile.Where(char.IsDigit).ToArray());
+            if (digits.Length == 12 && digits.StartsWith("91", StringComparison.Ordinal))
+                digits = digits[2..];
+
+            return digits;
+        }
+
+        private static string? NormalizeStatusCode(string? statusCode)
+            => string.IsNullOrWhiteSpace(statusCode) ? null : statusCode.Trim().ToLowerInvariant();
+
+        private static bool AreSameFlatNo(string left, string right)
+            => string.Equals(NormalizeFlatNo(left), NormalizeFlatNo(right), StringComparison.Ordinal);
+
+        private static bool AreSameEmail(string? left, string? right)
+            => string.Equals(NormalizeEmail(left), NormalizeEmail(right), StringComparison.Ordinal);
+
+        private static bool AreSameMobile(string? left, string? right)
+            => string.Equals(NormalizeMobile(left), NormalizeMobile(right), StringComparison.Ordinal);
 
         #region Mapping helpers
 

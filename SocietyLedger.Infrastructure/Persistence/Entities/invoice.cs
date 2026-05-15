@@ -10,7 +10,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Entities;
 [Index("invoice_number", Name = "idx_invoices_invoice_number")]
 [Index("status", Name = "idx_invoices_status")]
 [Index("user_id", Name = "idx_invoices_user_id")]
-[Index("invoice_number", Name = "invoices_invoice_number_key", IsUnique = true)]
+[Index("user_id", "invoice_number", Name = "invoices_user_invoice_number_key", IsUnique = true)]
 public partial class invoice
 {
     [Key]
