@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Serilog;
 using SocietyLedger.Api.Extensions;
+using SocietyLedger.Api.Filters;
 using SocietyLedger.Application.DTOs.Reports;
 using SocietyLedger.Application.Interfaces.Services;
 using SocietyLedger.Shared;
@@ -190,12 +191,14 @@ namespace SocietyLedger.Api.Endpoints
                     var (bytes, fileName) = await reportService.DownloadMonthlyReportAsync(userId, year, month, ct);
                     return Results.File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
                 })
+            .AddEndpointFilter<ViewerForbiddenFilter>()
             .WithTags(groupName)
             .WithApiVersionSet(versionSet).HasApiVersion(v1)
             .WithName("DownloadMonthlyReport")
             .Produces<FileResult>(200)
             .Produces<ErrorResponse>(400)
             .Produces<ErrorResponse>(401)
+            .Produces<ErrorResponse>(403)
             .Produces<ErrorResponse>(500);
 
             // Download Yearly Report
@@ -227,12 +230,14 @@ namespace SocietyLedger.Api.Endpoints
                     var (bytes, fileName) = await reportService.DownloadYearlyReportAsync(userId, selectedYear, yearType, ct);
                     return Results.File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
                 })
+            .AddEndpointFilter<ViewerForbiddenFilter>()
             .WithTags(groupName)
             .WithApiVersionSet(versionSet).HasApiVersion(v1)
             .WithName("DownloadYearlyReport")
             .Produces<FileResult>(200)
             .Produces<ErrorResponse>(400)
             .Produces<ErrorResponse>(401)
+            .Produces<ErrorResponse>(403)
             .Produces<ErrorResponse>(500);
         }
     }

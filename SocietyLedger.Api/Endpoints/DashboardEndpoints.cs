@@ -21,7 +21,7 @@ namespace SocietyLedger.Api.Endpoints
             var v1 = new ApiVersion(ApiConstants.API_VERSION_1_0);
 
             app.MapGet("/",
-                [Authorize]
+                [Authorize("ActiveSubscription")]
                 [SwaggerOperation(
                     Summary = "Get dashboard",
                     Description = "Returns aggregated society financial summary for the authenticated user."

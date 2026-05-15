@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 namespace SocietyLedger.Infrastructure.Persistence.Entities;
 
 [Index("society_id", Name = "idx_users_society_id")]
-[Index("username", Name = "users_username_key", IsUnique = true)]
+[Index("society_id", "username", Name = "users_society_username_key", IsUnique = true)]
 [Index("public_id", Name = "ux_users_public_id", IsUnique = true)]
 public partial class user
 {

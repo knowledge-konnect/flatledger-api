@@ -9,6 +9,7 @@ using SocietyLedger.Domain.Constants;
 using SocietyLedger.Domain.Entities;
 using SocietyLedger.Domain.Exceptions;
 using SocietyLedger.Infrastructure.Persistence.Contexts;
+using SocietyLedger.Infrastructure.Persistence.Extensions;
 
 namespace SocietyLedger.Infrastructure.Services
 {
@@ -77,14 +78,18 @@ namespace SocietyLedger.Infrastructure.Services
             // Partial update: only apply fields that were provided
             if (request.Mobile != null)
             {
+                var normalizedMobile = NormalizeMobile(request.Mobile);
+                if (string.IsNullOrEmpty(normalizedMobile))
+                    throw new ValidationException("Mobile must be a valid 10-digit number.");
+
                 // Check uniqueness within the same society
-                if (user.Mobile != request.Mobile)
+                if (!AreSameMobile(user.Mobile, normalizedMobile))
                 {
-                    var conflict = await _userRepo.GetByMobileAndSocietyAsync(request.Mobile, user.SocietyId);
+                    var conflict = await _userRepo.GetByMobileAndSocietyAsync(normalizedMobile, user.SocietyId);
                     if (conflict != null)
                         throw new DuplicateException("user", "mobile number");
                 }
-                user.Mobile = request.Mobile;
+                user.Mobile = normalizedMobile;
             }
 
             user.UpdatedAt = DateTime.UtcNow;
@@ -265,43 +270,49 @@ namespace SocietyLedger.Infrastructure.Services
             if (string.IsNullOrWhiteSpace(dto.Password))
                 throw new ValidationException("Password is required.");
 
+            var normalizedName = dto.Name?.Trim() ?? string.Empty;
+            var normalizedEmail = NormalizeEmail(dto.Email);
+            var normalizedUsername = NormalizeUsername(dto.Username);
+            var normalizedMobile = NormalizeMobile(dto.Mobile);
+
 
             // Check for duplicate email in the same society
-            if (!string.IsNullOrWhiteSpace(dto.Email))
+            if (!string.IsNullOrWhiteSpace(normalizedEmail))
             {
-                var existingEmail = await _userRepo.GetByEmailAndSocietyAsync(dto.Email, societyId);
+                var existingEmail = await _userRepo.GetByEmailAndSocietyAsync(normalizedEmail, societyId);
                 if (existingEmail != null)
                     throw new DuplicateException("user", "email");
             }
 
             // Check for duplicate username in the same society
-            if (!string.IsNullOrWhiteSpace(dto.Username))
+            if (!string.IsNullOrWhiteSpace(normalizedUsername))
             {
-                var existingUsername = await _userRepo.GetByUsernameAndSocietyAsync(dto.Username, societyId);
+                var existingUsername = await _userRepo.GetByUsernameAndSocietyAsync(normalizedUsername, societyId);
                 if (existingUsername != null)
                     throw new DuplicateException("user", "username");
             }
 
-            if (!string.IsNullOrEmpty(dto.Mobile))
+            if (!string.IsNullOrEmpty(normalizedMobile))
             {
-                var existingMobile = await _userRepo.GetByMobileAndSocietyAsync(dto.Mobile, societyId);
+                var existingMobile = await _userRepo.GetByMobileAndSocietyAsync(normalizedMobile, societyId);
                 if (existingMobile != null)
                     throw new DuplicateException("user", "mobile number");
             }
 
-            var role = await _roleRepo.GetByCodeAsync(dto.RoleCode);
+            var roleCode = string.IsNullOrWhiteSpace(dto.RoleCode) ? RoleCodes.Viewer : dto.RoleCode;
+            var role = await _roleRepo.GetByCodeAsync(roleCode);
             if (role == null)
-                throw new InvalidOperationException($"Role with code '{dto.RoleCode}' not found.");
+                throw new InvalidOperationException($"Role with code '{roleCode}' not found.");
 
             // Hash the admin-provided password
             var passwordHash = _hasher.Hash(dto.Password);
             var user = new User
             {
                 PublicId = Guid.NewGuid(),
-                Name = dto.Name,
-                Email = dto.Email,
-                Username = dto.Username,
-                Mobile = dto.Mobile,
+                Name = normalizedName,
+                Email = normalizedEmail,
+                Username = normalizedUsername,
+                Mobile = normalizedMobile,
                 RoleId = role.Id,
                 SocietyId = societyId,
                 PasswordHash = passwordHash,
@@ -311,8 +322,16 @@ namespace SocietyLedger.Infrastructure.Services
                 UpdatedAt = DateTime.UtcNow
             };
 
-            await _userRepo.AddAsync(user);
-            await _userRepo.SaveChangesAsync();
+            try
+            {
+                await _userRepo.AddAsync(user);
+                await _userRepo.SaveChangesAsync();
+            }
+            catch (DbUpdateException ex) when (ex.IsUniqueConstraintViolation())
+            {
+                _logger.LogWarning(ex, "Concurrent duplicate user creation blocked for society {SocietyId}", societyId);
+                throw new DuplicateException("user", "email/username/mobile");
+            }
 
             _logger.LogInformation("User {Email} created in society {SocietyId}", user.Email, societyId);
 
@@ -337,18 +356,25 @@ namespace SocietyLedger.Infrastructure.Services
             if (user == null)
                 throw new NotFoundException("User", dto.PublicId.ToString());
 
+            var normalizedName = dto.Name?.Trim() ?? string.Empty;
+            var normalizedEmail = NormalizeEmail(dto.Email);
+            var normalizedMobile = NormalizeMobile(dto.Mobile);
+
+            if (string.IsNullOrWhiteSpace(normalizedEmail))
+                throw new ValidationException("Email is required.");
+
             // Check if new email conflicts with another user in the same society
-            if (user.Email != dto.Email)
+            if (!AreSameEmail(user.Email, normalizedEmail))
             {
-                var conflictingUser = await _userRepo.GetByEmailAndSocietyAsync(dto.Email, societyId);
+                var conflictingUser = await _userRepo.GetByEmailAndSocietyAsync(normalizedEmail, societyId);
                 if (conflictingUser != null)
                     throw new DuplicateException("user", "email");
             }
 
             // Check if new mobile conflicts with another user in the same society
-            if (user.Mobile != dto.Mobile && !string.IsNullOrEmpty(dto.Mobile))
+            if (!AreSameMobile(user.Mobile, normalizedMobile) && !string.IsNullOrEmpty(normalizedMobile))
             {
-                var conflictingUser = await _userRepo.GetByMobileAndSocietyAsync(dto.Mobile, societyId);
+                var conflictingUser = await _userRepo.GetByMobileAndSocietyAsync(normalizedMobile, societyId);
                 if (conflictingUser != null)
                     throw new DuplicateException("user", "mobile number");
             }
@@ -359,14 +385,22 @@ namespace SocietyLedger.Infrastructure.Services
                 throw new ValidationException($"Invalid role code '{dto.RoleCode}'. Must be 'society_admin' or 'viewer'.");
 
             // Update user
-            user.Name = dto.Name;
-            user.Email = dto.Email;
-            user.Mobile = dto.Mobile;
+            user.Name = normalizedName;
+            user.Email = normalizedEmail;
+            user.Mobile = normalizedMobile;
             user.RoleId = role.Id;
             user.UpdatedAt = DateTime.UtcNow;
 
-            await _userRepo.UpdateAsync(user);
-            await _userRepo.SaveChangesAsync();
+            try
+            {
+                await _userRepo.UpdateAsync(user);
+                await _userRepo.SaveChangesAsync();
+            }
+            catch (DbUpdateException ex) when (ex.IsUniqueConstraintViolation())
+            {
+                _logger.LogWarning(ex, "Concurrent duplicate user update blocked for society {SocietyId}", societyId);
+                throw new DuplicateException("user", "email/username/mobile");
+            }
 
             _logger.LogInformation("User {PublicId} updated in society {SocietyId}", dto.PublicId, societyId);
 
@@ -429,6 +463,30 @@ namespace SocietyLedger.Infrastructure.Services
                 _logger.LogInformation("User {PublicId} soft deleted in society {SocietyId}", publicId, societyId);
             }
         }
+
+        private static string? NormalizeEmail(string? email)
+            => string.IsNullOrWhiteSpace(email) ? null : email.Trim().ToLowerInvariant();
+
+        private static string? NormalizeUsername(string? username)
+            => string.IsNullOrWhiteSpace(username) ? null : username.Trim().ToLowerInvariant();
+
+        private static string? NormalizeMobile(string? mobile)
+        {
+            if (string.IsNullOrWhiteSpace(mobile))
+                return null;
+
+            var digits = new string(mobile.Where(char.IsDigit).ToArray());
+            if (digits.Length == 12 && digits.StartsWith("91", StringComparison.Ordinal))
+                digits = digits[2..];
+
+            return digits;
+        }
+
+        private static bool AreSameEmail(string? left, string? right)
+            => string.Equals(NormalizeEmail(left), NormalizeEmail(right), StringComparison.Ordinal);
+
+        private static bool AreSameMobile(string? left, string? right)
+            => string.Equals(NormalizeMobile(left), NormalizeMobile(right), StringComparison.Ordinal);
 
     }
 }

@@ -283,6 +283,10 @@ public partial class AppDbContext : DbContext
         {
             entity.HasKey(e => e.id).HasName("flats_pkey");
 
+            entity.HasIndex(e => new { e.society_id, e.flat_no }, "flats_society_id_flat_no_key")
+                .IsUnique()
+                .HasFilter("(is_deleted = false)");
+
             entity.Property(e => e.id).UseIdentityAlwaysColumn();
             entity.Property(e => e.created_at).HasDefaultValueSql("now()");
             entity.Property(e => e.is_deleted).HasDefaultValue(false);
@@ -314,6 +318,9 @@ public partial class AppDbContext : DbContext
         modelBuilder.Entity<invoice>(entity =>
         {
             entity.HasKey(e => e.id).HasName("invoices_pkey");
+
+            entity.HasIndex(e => new { e.user_id, e.invoice_number }, "invoices_user_invoice_number_key")
+                .IsUnique();
 
             entity.Property(e => e.id).HasDefaultValueSql("gen_random_uuid()");
             entity.Property(e => e.created_at).HasDefaultValueSql("now()");
@@ -677,6 +684,10 @@ public partial class AppDbContext : DbContext
         modelBuilder.Entity<user>(entity =>
         {
             entity.HasKey(e => e.id).HasName("users_pkey");
+
+            entity.HasIndex(e => new { e.society_id, e.username }, "users_society_username_key")
+                .IsUnique()
+                .HasFilter("((username IS NOT NULL) AND (is_deleted = false))");
 
             entity.Property(e => e.id).UseIdentityAlwaysColumn();
             entity.Property(e => e.created_at).HasDefaultValueSql("now()");
