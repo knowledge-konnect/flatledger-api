@@ -11,15 +11,14 @@ namespace SocietyLedger.Application.Interfaces.Services
         Task<ChangePasswordResponse> ChangePasswordAsync(long userId, ChangePasswordRequest request);
 
         /// <summary>
-        /// Checks if an email exists in the system. Returns true if found and active, false otherwise.
-        /// Used by the direct password reset flow (no email/token required).
+        /// Initiates password reset: always returns the same message (no email enumeration).
+        /// Sends a reset link when an active account exists for the email.
         /// </summary>
-        Task<bool> CheckEmailExistsAsync(string email);
+        Task<ForgotPasswordResponse> RequestPasswordResetAsync(ForgotPasswordRequest request);
 
         /// <summary>
-        /// Resets password directly: verifies email exists, sets new password, returns access token for auto-login.
-        /// No token or email required — caller must have already verified the email via CheckEmailExistsAsync.
+        /// Completes password reset using the single-use token from the email link.
         /// </summary>
-        Task<PasswordResetResponse> ResetPasswordDirectAsync(ResetPasswordDirectRequest request, string ipAddress);
+        Task<PasswordResetResponse> ResetPasswordWithTokenAsync(ResetPasswordRequest request, string ipAddress);
     }
 }

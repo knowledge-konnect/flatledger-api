@@ -360,7 +360,7 @@ namespace SocietyLedger.Infrastructure.Services
                     "Trial subscription already exists for society {SocietyId} — concurrent creation, skipping",
                     societyId.Value);
                 return;
-            }
+            } 
 
             var eventMeta = JsonSerializer.Serialize(new
             {

@@ -38,6 +38,7 @@ namespace SocietyLedger.Api.Endpoints
                     return Results.Created("/payments/verify-payment", ApiResponse<CreateOrderResponse>.Success(result, "Order created successfully"));
                 })
             .AddEndpointFilter<FluentValidationFilter<CreateOrderRequest>>()
+            .AddEndpointFilter<ViewerForbiddenFilter>()
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)
             .HasApiVersion(version_1_0)
@@ -62,6 +63,7 @@ namespace SocietyLedger.Api.Endpoints
                     return Results.Ok(ApiResponse<VerifyPaymentResponse>.Success(result, "Payment verification completed"));
                 })
             .AddEndpointFilter<FluentValidationFilter<VerifyPaymentRequest>>()
+            .AddEndpointFilter<ViewerForbiddenFilter>()
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)
             .HasApiVersion(version_1_0)
@@ -101,8 +103,29 @@ namespace SocietyLedger.Api.Endpoints
                     if (payload == null)
                         return Results.BadRequest(ErrorResponse.Create(ErrorCodes.VALIDATION_FAILED, "Webhook payload is empty.", null));
 
-                    await paymentService.ProcessWebhookAsync(rawBody, signature, payload);
-                    return Results.Ok(ApiResponse<string>.Success("ok", "Webhook processed"));
+                    var result = await paymentService.ProcessWebhookAsync(rawBody, signature, payload);
+
+                    return result.Status switch
+                    {
+                        WebhookProcessStatus.Processed or WebhookProcessStatus.Duplicate or WebhookProcessStatus.Ignored =>
+                            Results.Ok(ApiResponse<string>.Success("ok", result.Message)),
+
+                        WebhookProcessStatus.InvalidSignature =>
+                            Results.Json(
+                                ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, result.Message, null),
+                                statusCode: 401),
+
+                        WebhookProcessStatus.InvalidPayload =>
+                            Results.BadRequest(
+                                ErrorResponse.Create(ErrorCodes.VALIDATION_FAILED, result.Message, null)),
+
+                        WebhookProcessStatus.OrderNotFound =>
+                            Results.NotFound(
+                                ErrorResponse.Create(ErrorCodes.RESOURCE_NOT_FOUND, result.Message, null)),
+
+                        _ => Results.BadRequest(
+                            ErrorResponse.Create(ErrorCodes.VALIDATION_FAILED, "Webhook could not be processed.", null))
+                    };
                 })
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)

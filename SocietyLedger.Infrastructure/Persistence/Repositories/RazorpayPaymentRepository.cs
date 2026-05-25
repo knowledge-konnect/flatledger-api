@@ -54,8 +54,17 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
 
         public async Task UpdateAsync(Payment payment)
         {
-            var entity = payment.ToEntity();
-            _db.payments.Update(entity);
+            // Update only mutable fields on the tracked entity.
+            // This avoids overwriting immutable columns like created_at/public_id
+            // when the incoming domain object is detached or partially populated.
+            var entity = await _db.payments.FirstOrDefaultAsync(p => p.id == payment.Id && !p.is_deleted);
+            if (entity == null) return;
+
+            entity.date_paid = payment.DatePaid;
+            entity.reference = payment.Reference;
+            entity.razorpay_payment_id = payment.RazorpayPaymentId;
+            entity.razorpay_signature = payment.RazorpaySignature;
+            entity.verified_at = payment.VerifiedAt;
         }
 
         public async Task SaveChangesAsync()

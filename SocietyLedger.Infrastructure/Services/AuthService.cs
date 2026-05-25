@@ -1,4 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using SocietyLedger.Application.DTOs;
 using SocietyLedger.Application.DTOs.Auth;
@@ -8,6 +10,7 @@ using SocietyLedger.Domain.Constants;
 using SocietyLedger.Domain.Entities;
 using SocietyLedger.Domain.Exceptions;
 using SocietyLedger.Infrastructure.Persistence.Contexts;
+using SocietyLedger.Infrastructure.Security;
 using SocietyLedger.Shared;
 
 namespace SocietyLedger.Infrastructure.Services
@@ -24,6 +27,11 @@ namespace SocietyLedger.Infrastructure.Services
         private readonly ILogger<AuthService> _logger;
         private readonly AppDbContext _db;
         private readonly IRefreshTokenRepository _refreshTokenRepo;
+        private readonly IConfiguration _configuration;
+        private readonly IHostEnvironment _environment;
+
+        private const string PasswordResetGenericMessage =
+            "If an account exists for this email, password reset instructions have been sent.";
 
         public AuthService(
             IUserRepository userRepo,
@@ -35,7 +43,9 @@ namespace SocietyLedger.Infrastructure.Services
             PasswordHasher hasher,
             ILogger<AuthService> logger,
             AppDbContext db,
-            IRefreshTokenRepository refreshTokenRepo)
+            IRefreshTokenRepository refreshTokenRepo,
+            IConfiguration configuration,
+            IHostEnvironment environment)
         {
             _userRepo = userRepo;
             _roleRepo = roleRepo;
@@ -47,6 +57,8 @@ namespace SocietyLedger.Infrastructure.Services
             _logger = logger;
             _db = db;
             _refreshTokenRepo = refreshTokenRepo;
+            _configuration = configuration;
+            _environment = environment;
         }
 
         /// <summary>
@@ -353,48 +365,82 @@ namespace SocietyLedger.Infrastructure.Services
         }
 
         /// <summary>
-        /// Checks whether an email address belongs to an active, non-deleted user.
-        /// Used by the direct password reset flow so the frontend can show step 2
-        /// only when the email is valid — without leaking whether the account exists
-        /// to unauthenticated callers (rate-limited at the endpoint level).
+        /// Sends a password-reset email when an active account exists. Always returns the same
+        /// message so callers cannot enumerate registered emails.
         /// </summary>
-        public async Task<bool> CheckEmailExistsAsync(string email)
-        {
-            if (string.IsNullOrWhiteSpace(email))
-                return false;
-
-            var user = await _userRepo.GetByEmailAsync(email);
-            return user != null && user.IsActive;
-        }
-
-        /// <summary>
-        /// Resets a user's password directly by email — no token or email delivery required.
-        /// Validates the email exists and is active, hashes the new password, persists it,
-        /// and returns a JWT access token so the frontend can auto-login the user.
-        /// </summary>
-        public async Task<PasswordResetResponse> ResetPasswordDirectAsync(
-            ResetPasswordDirectRequest request, string ipAddress)
+        public async Task<ForgotPasswordResponse> RequestPasswordResetAsync(ForgotPasswordRequest request)
         {
             if (request == null)
                 throw new ArgumentNullException(nameof(request));
 
-            var user = await _userRepo.GetByEmailAsync(request.Email);
+            var email = request.Email.Trim().ToLowerInvariant();
+            var user = await _userRepo.GetByEmailAsync(email);
+
+            if (user != null && user.IsActive && !string.IsNullOrWhiteSpace(user.Email))
+            {
+                var rawToken = PasswordResetTokenHelper.GenerateRawToken();
+                var tokenHash = PasswordResetTokenHelper.HashToken(rawToken);
+                var expiresAt = DateTime.UtcNow.AddMinutes(PasswordResetTokenHelper.TokenValidityMinutes);
+
+                await _userRepo.SetPasswordResetTokenAsync(user.Id, tokenHash, expiresAt);
+
+                var frontendBase = _configuration["Frontend:BaseUrl"]?.TrimEnd('/')
+                    ?? "http://localhost:5173";
+                var resetLink = $"{frontendBase}/reset-password?token={Uri.EscapeDataString(rawToken)}";
+
+                await _emailService.SendPasswordResetEmailAsync(
+                    user.Email,
+                    user.Name,
+                    resetLink,
+                    logResetLinkInDevelopment: _environment.IsDevelopment());
+            }
+
+            return new ForgotPasswordResponse { Message = PasswordResetGenericMessage };
+        }
+
+        /// <summary>
+        /// Validates the reset token, sets the new password, and returns an access token for auto-login.
+        /// </summary>
+        public async Task<PasswordResetResponse> ResetPasswordWithTokenAsync(
+            ResetPasswordRequest request, string ipAddress)
+        {
+            if (request == null)
+                throw new ArgumentNullException(nameof(request));
+
+            if (request.NewPassword != request.ConfirmPassword)
+                throw new ValidationException(
+                    ErrorMessages.VALIDATION_FAILED,
+                    new Dictionary<string, string[]>
+                    {
+                        ["confirmPassword"] = ["New password and confirm password do not match."]
+                    });
+
+            var tokenHash = PasswordResetTokenHelper.HashToken(request.Token.Trim());
+            var user = await _userRepo.GetByPasswordResetTokenHashAsync(tokenHash);
 
             if (user == null || !user.IsActive)
                 throw new ValidationException(
                     ErrorMessages.VALIDATION_FAILED,
                     new Dictionary<string, string[]>
                     {
-                        ["email"] = ["No active account found with this email address."]
+                        ["token"] = ["This reset link is invalid or has already been used."]
+                    });
+
+            if (user.PasswordResetExpiresAt == null
+                || user.PasswordResetExpiresAt.Value <= DateTime.UtcNow)
+                throw new ValidationException(
+                    ErrorMessages.VALIDATION_FAILED,
+                    new Dictionary<string, string[]>
+                    {
+                        ["token"] = ["This reset link has expired. Please request a new one."]
                     });
 
             var newPasswordHash = _hasher.Hash(request.NewPassword);
             await _userRepo.SetPasswordAndClearResetTokenAsync(user.Id, newPasswordHash);
 
             _logger.LogInformation(
-                "Password reset directly for user {UserId} from {IP}", user.Id, ipAddress);
+                "Password reset via token for user {UserId} from {IP}", user.Id, ipAddress);
 
-            // Issue a fresh access token so the frontend can auto-login after reset.
             var role = user.Role;
             if (role != null)
             {
