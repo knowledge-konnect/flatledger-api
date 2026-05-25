@@ -83,5 +83,10 @@ namespace SocietyLedger.Application.Interfaces.Repositories
         /// Sets a new password hash and clears the password-reset token fields atomically.
         /// </summary>
         Task SetPasswordAndClearResetTokenAsync(long userId, string newPasswordHash);
+
+        /// <summary>
+        /// Stores a hashed password-reset token and expiry for the user.
+        /// </summary>
+        Task SetPasswordResetTokenAsync(long userId, string tokenHash, DateTime expiresAtUtc);
     }
 }

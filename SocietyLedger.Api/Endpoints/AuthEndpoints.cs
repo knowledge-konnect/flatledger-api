@@ -309,66 +309,54 @@ namespace SocietyLedger.Api.Endpoints
     .Produces<ErrorResponse>(404)
     .Produces<ErrorResponse>(500);
 
-            // Check email exists (step 1 of direct password reset)
-            // POST /auth/check-email
-            app.MapPost("/check-email",
+            // Request password reset email (no email enumeration)
+            // POST /auth/forgot-password
+            app.MapPost("/forgot-password",
                 [AllowAnonymous]
                 [SwaggerOperation(
-                    Summary = "Check if email exists",
-                    Description = "Returns whether an active account exists for the given email. " +
-                                  "Used by the password reset flow to validate the email before showing the new-password form."
+                    Summary = "Request password reset",
+                    Description = "Sends a password reset link when an active account exists. " +
+                                  "Always returns the same success message whether or not the email is registered."
                 )]
-                async ([FromBody] ForgotPasswordRequest request, IAuthService authService, HttpContext ctx) =>
+                async ([FromBody] ForgotPasswordRequest request, IAuthService authService) =>
                 {
-                    var exists = await authService.CheckEmailExistsAsync(request.Email);
-                    if (!exists)
-                    {
-                        var err = ErrorResponse.Create(
-                            ErrorCodes.RESOURCE_NOT_FOUND,
-                            "No active account found with this email address.",
-                            ctx.TraceIdentifier);
-                        return Results.Json(err, statusCode: 404);
-                    }
-                    return Results.Ok(ApiResponse<object>.Success(new { email = request.Email }, "Email verified"));
+                    var result = await authService.RequestPasswordResetAsync(request);
+                    return Results.Ok(ApiResponse<ForgotPasswordResponse>.Success(result, result.Message));
                 })
             .AddEndpointFilter<FluentValidationFilter<ForgotPasswordRequest>>()
             .RequireRateLimiting("AuthPolicy")
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)
             .HasApiVersion(version_1_0)
-            .WithName("CheckEmailExists")
-            .Produces<ApiResponse<object>>(200)
+            .WithName("ForgotPassword")
+            .Produces<ApiResponse<ForgotPasswordResponse>>(200)
             .Produces<ErrorResponse>(400)
-            .Produces<ErrorResponse>(404)
             .Produces<ErrorResponse>(429)
             .Produces<ErrorResponse>(500);
 
-            // Direct password reset (step 2 — no token or email required)
-            // POST /auth/reset-password-direct
-            app.MapPost("/reset-password-direct",
+            // Complete password reset with token from email link
+            // POST /auth/reset-password
+            app.MapPost("/reset-password",
                 [AllowAnonymous]
                 [SwaggerOperation(
-                    Summary = "Reset password directly",
-                    Description = "Resets the password for the given email address. " +
-                                  "Call POST /auth/check-email first to verify the email exists. " +
+                    Summary = "Reset password with token",
+                    Description = "Resets the password using the single-use token from the email link. " +
                                   "Returns an access token for auto-login on success."
                 )]
-                async ([FromBody] ResetPasswordDirectRequest request, IAuthService authService, HttpContext ctx) =>
+                async ([FromBody] ResetPasswordRequest request, IAuthService authService, HttpContext ctx) =>
                 {
                     var ip = ctx.GetClientIp();
-                    var result = await authService.ResetPasswordDirectAsync(request, ip);
-                    Log.Information("Password reset directly for email {Email} from {IP}", request.Email, ip);
+                    var result = await authService.ResetPasswordWithTokenAsync(request, ip);
                     return Results.Ok(ApiResponse<PasswordResetResponse>.Success(result, "Password reset successfully."));
                 })
-            .AddEndpointFilter<FluentValidationFilter<ResetPasswordDirectRequest>>()
+            .AddEndpointFilter<FluentValidationFilter<ResetPasswordRequest>>()
             .RequireRateLimiting("AuthPolicy")
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)
             .HasApiVersion(version_1_0)
-            .WithName("ResetPasswordDirect")
+            .WithName("ResetPassword")
             .Produces<ApiResponse<PasswordResetResponse>>(200)
             .Produces<ErrorResponse>(400)
-            .Produces<ErrorResponse>(404)
             .Produces<ErrorResponse>(429)
             .Produces<ErrorResponse>(500);
         }

@@ -272,5 +272,13 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                     .SetProperty(u => u.password_reset_expires_at, (DateTime?)null)
                     .SetProperty(u => u.force_password_change, false)
                     .SetProperty(u => u.updated_at, DateTime.UtcNow));
+
+        public Task SetPasswordResetTokenAsync(long userId, string tokenHash, DateTime expiresAtUtc) =>
+            _db.users
+                .Where(u => u.id == userId)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(u => u.password_reset_token_hash, tokenHash)
+                    .SetProperty(u => u.password_reset_expires_at, expiresAtUtc)
+                    .SetProperty(u => u.updated_at, DateTime.UtcNow));
     }
 }

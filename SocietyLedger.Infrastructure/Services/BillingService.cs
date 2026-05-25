@@ -338,6 +338,18 @@ namespace SocietyLedger.Infrastructure.Services
             var now = DateTime.UtcNow;
 
             foreach (var (flatId, billId) in newBills)
+                await ReAllocateAdvanceForBillWithRetryAsync(flatId, billId, societyId, now);
+        }
+
+        private const int AdvanceReallocationMaxAttempts = 3;
+
+        /// <summary>
+        /// Links advance payments to a single new bill with retries to reduce transient DB failures.
+        /// </summary>
+        private async Task ReAllocateAdvanceForBillWithRetryAsync(
+            long flatId, long billId, long societyId, DateTime now)
+        {
+            for (var attempt = 1; attempt <= AdvanceReallocationMaxAttempts; attempt++)
             {
                 try
                 {
@@ -347,12 +359,10 @@ namespace SocietyLedger.Infrastructure.Services
                     {
                         try
                         {
-                            // Step 1: Link advance rows to the new bill (FIFO, up to bill.amount).
                             await _dapper.ExecuteAsync(conn, tx,
                                 SqlQueries.LinkAdvancesToNewBill,
                                 new { BillId = billId, FlatId = flatId, SocietyId = societyId, Now = now });
 
-                            // Step 2: Recalculate the bill's paid_amount and status_code.
                             await _dapper.ExecuteAsync(conn, tx,
                                 SqlQueries.RecalculateBillFromLinkedAdvances,
                                 new { BillId = billId, SocietyId = societyId, Now = now });
@@ -365,13 +375,22 @@ namespace SocietyLedger.Infrastructure.Services
                             throw;
                         }
                     }
+
+                    return;
+                }
+                catch (Exception ex) when (attempt < AdvanceReallocationMaxAttempts)
+                {
+                    _logger.LogWarning(ex,
+                        "Advance re-allocation attempt {Attempt}/{Max} failed for bill {BillId} (flat {FlatId}). Retrying…",
+                        attempt, AdvanceReallocationMaxAttempts, billId, flatId);
+                    await Task.Delay(TimeSpan.FromMilliseconds(150 * attempt));
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex,
-                        "Advance re-allocation failed for bill {BillId} (flat {FlatId}, society {SocietyId}). " +
+                        "Advance re-allocation failed after {Max} attempts for bill {BillId} (flat {FlatId}, society {SocietyId}). " +
                         "Bill status will remain 'unpaid' until next payment is processed.",
-                        billId, flatId, societyId);
+                        AdvanceReallocationMaxAttempts, billId, flatId, societyId);
                 }
             }
         }

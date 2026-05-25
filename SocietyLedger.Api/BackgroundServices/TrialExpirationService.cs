@@ -93,6 +93,7 @@ namespace SocietyLedger.Api.BackgroundServices
                 {
                     Id             = Guid.NewGuid(),
                     UserId         = subscription.UserId,
+                    SocietyId      = subscription.SocietyId,
                     SubscriptionId = subscription.Id,
                     EventType      = "trial_expired",
                     OldStatus      = SubscriptionStatusCodes.Trial,

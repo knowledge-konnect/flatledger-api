@@ -244,7 +244,7 @@ namespace SocietyLedger.Infrastructure.Services
             return new VerifyPaymentResponse { IsValid = true, Message = "Payment verified and subscription activated" };
         }
 
-        public async Task ProcessWebhookAsync(string rawBody, string signature, WebhookPayload payload)
+        public async Task<WebhookProcessResult> ProcessWebhookAsync(string rawBody, string signature, WebhookPayload payload)
         {
             var expectedBytes = Encoding.UTF8.GetBytes(GenerateWebhookSignature(rawBody, _webhookSecret));
             var receivedBytes = Encoding.UTF8.GetBytes(signature);
@@ -254,22 +254,37 @@ namespace SocietyLedger.Infrastructure.Services
             if (!isSignatureValid)
             {
                 _logger.LogWarning("ProcessWebhook: invalid X-Razorpay-Signature. Possible spoofed webhook.");
-                return;
+                return new WebhookProcessResult
+                {
+                    Status = WebhookProcessStatus.InvalidSignature,
+                    Message = "Invalid webhook signature"
+                };
             }
 
             if (payload.Event != "payment.captured")
             {
                 _logger.LogInformation("ProcessWebhook: ignoring unhandled event '{Event}'", payload.Event);
-                return;
+                return new WebhookProcessResult
+                {
+                    Status = WebhookProcessStatus.Ignored,
+                    Message = $"Ignored event '{payload.Event}'"
+                };
             }
 
-            var paymentId = payload.Payment?.Id;
-            var orderId = payload.Payment?.OrderId;
+            // Razorpay sends payment details under payload.payment.entity in webhook payloads.
+            // Keep legacy flat fallback for backwards compatibility.
+            var paymentEntity = payload.Payload?.Payment?.Entity ?? payload.Payment;
+            var paymentId = paymentEntity?.Id;
+            var orderId = paymentEntity?.OrderId;
 
             if (string.IsNullOrEmpty(paymentId) || string.IsNullOrEmpty(orderId))
             {
                 _logger.LogWarning("ProcessWebhook: missing paymentId or orderId in payload");
-                return;
+                return new WebhookProcessResult
+                {
+                    Status = WebhookProcessStatus.InvalidPayload,
+                    Message = "Missing paymentId/orderId in webhook payload"
+                };
             }
 
             // Fast-path: already processed by paymentId
@@ -277,7 +292,11 @@ namespace SocietyLedger.Infrastructure.Services
             if (existingByPaymentId != null)
             {
                 _logger.LogInformation("ProcessWebhook: duplicate webhook for paymentId {PaymentId}, skipping", paymentId);
-                return;
+                return new WebhookProcessResult
+                {
+                    Status = WebhookProcessStatus.Duplicate,
+                    Message = "Duplicate webhook event"
+                };
             }
 
             // Same stable advisory lock key as VerifyPaymentAsync — serialises concurrent processing
@@ -310,6 +329,31 @@ namespace SocietyLedger.Infrastructure.Services
                 _logger.LogInformation("ProcessWebhook: subscription activated for orderId {OrderId}, paymentId {PaymentId}",
                     orderId, paymentId);
             });
+
+            var postProcessPayment = await _paymentRepo.GetByRazorpayOrderIdAsync(orderId);
+            if (postProcessPayment == null)
+            {
+                return new WebhookProcessResult
+                {
+                    Status = WebhookProcessStatus.OrderNotFound,
+                    Message = "Order not found"
+                };
+            }
+
+            if (postProcessPayment.RazorpayPaymentId == null)
+            {
+                return new WebhookProcessResult
+                {
+                    Status = WebhookProcessStatus.Ignored,
+                    Message = "Webhook ignored because order was already processed or not eligible"
+                };
+            }
+
+            return new WebhookProcessResult
+            {
+                Status = WebhookProcessStatus.Processed,
+                Message = "Webhook processed"
+            };
         }
 
         // Shared subscription activation logic — resolves plan from the stored Reference
