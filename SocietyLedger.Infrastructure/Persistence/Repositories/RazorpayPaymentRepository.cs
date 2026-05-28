@@ -73,20 +73,20 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
         }
 
         /// <summary>
-        /// Acquires a session-level PostgreSQL advisory lock, runs the action, then releases it.
-        /// Serialises concurrent VerifyPaymentAsync + ProcessWebhookAsync calls for the same order.
+        /// Acquires a transaction-level PostgreSQL advisory lock, runs the action inside that
+        /// transaction, then commits.  The lock is released automatically when the transaction
+        /// ends — safe for connection-pooled environments (pgBouncer in transaction mode).
         /// </summary>
         public async Task ExecuteWithAdvisoryLockAsync(long lockKey, Func<Task> action)
         {
-            await _db.Database.ExecuteSqlAsync($"SELECT pg_advisory_lock({lockKey})");
-            try
+            var strategy = _db.Database.CreateExecutionStrategy();
+            await strategy.ExecuteAsync(async () =>
             {
+                await using var tx = await _db.Database.BeginTransactionAsync();
+                await _db.Database.ExecuteSqlAsync($"SELECT pg_advisory_xact_lock({lockKey})");
                 await action();
-            }
-            finally
-            {
-                await _db.Database.ExecuteSqlAsync($"SELECT pg_advisory_unlock({lockKey})");
-            }
+                await tx.CommitAsync();
+            });
         }
     }
 }

@@ -24,7 +24,7 @@ namespace SocietyLedger.Api.Endpoints
 
             // Collection Summary
             app.MapGet("/collection-summary",
-                [Authorize]
+                [Authorize("ActiveSubscription")]
                 [SwaggerOperation(
                     Summary = "Collection Summary",
                     Description = "Total billed vs collected vs outstanding per period. Optionally filter by period range (format: YYYY-MM)."
@@ -52,7 +52,7 @@ namespace SocietyLedger.Api.Endpoints
 
             // Defaulters Report
             app.MapGet("/defaulters",
-                [Authorize]
+                [Authorize("ActiveSubscription")]
                 [SwaggerOperation(
                     Summary = "Defaulters Report",
                     Description = "Lists all flats with pending dues sorted by outstanding amount. Use minOutstanding to filter (default: 0)."
@@ -79,7 +79,7 @@ namespace SocietyLedger.Api.Endpoints
 
             // Income vs Expense
             app.MapGet("/income-vs-expense",
-                [Authorize]
+                [Authorize("ActiveSubscription")]
                 [SwaggerOperation(
                     Summary = "Income vs Expense",
                     Description = "Monthly income (collections) vs expenses with net surplus/deficit. Filter by date range."
@@ -107,7 +107,7 @@ namespace SocietyLedger.Api.Endpoints
 
             // Fund Ledger
             app.MapGet("/fund-ledger",
-                [Authorize]
+                [Authorize("ActiveSubscription")]
                 [SwaggerOperation(
                     Summary = "Society Fund Ledger",
                     Description = "Full transaction history of the society fund with running balance. Filter by date range."
@@ -135,7 +135,7 @@ namespace SocietyLedger.Api.Endpoints
 
             // Payment Collection Register
             app.MapGet("/payment-register",
-                [Authorize]
+                [Authorize("ActiveSubscription")]
                 [SwaggerOperation(
                     Summary = "Payment Collection Register",
                     Description = "Paginated list of all payments received — flat, owner, amount, mode and reference. " +
@@ -166,7 +166,7 @@ namespace SocietyLedger.Api.Endpoints
 
             // Download Monthly Report
             app.MapGet("/download/monthly",
-                [Authorize]
+                [Authorize("ActiveSubscription")]
                 [SwaggerOperation(
                     Summary = "Download Monthly Report",
                     Description = "Downloads an Excel report for the given month with fund position, flat payment status, and expenses by category.\n\nAll monetary balances are signed: Positive = member owes the society; Negative = society owes the member (advance)."
@@ -203,7 +203,7 @@ namespace SocietyLedger.Api.Endpoints
 
             // Download Yearly Report
             app.MapGet("/download/yearly",
-                [Authorize]
+                [Authorize("ActiveSubscription")]
                 [SwaggerOperation(
                     Summary = "Download Yearly Report",
                     Description = "Downloads an Excel report for the given year with fund position, month-by-month breakdown, and expenses by category. " +

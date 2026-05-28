@@ -26,7 +26,7 @@ namespace SocietyLedger.Api.Endpoints
 
             // Get opening balance status
             app.MapGet("/status",
-                [Authorize]
+                [Authorize("ActiveSubscription")]
             [SwaggerOperation(
                     Summary = "Get opening balance status",
                     Description = "Checks if opening balance has been applied for the society and returns details."
@@ -50,7 +50,7 @@ namespace SocietyLedger.Api.Endpoints
 
             // Get opening balance summary
             app.MapGet("/summary",
-                [Authorize]
+                [Authorize("ActiveSubscription")]
             [SwaggerOperation(
                     Summary = "Get opening balance summary",
                     Description = "Returns applied opening balance summary for a society."
@@ -80,7 +80,7 @@ namespace SocietyLedger.Api.Endpoints
 
             // Apply opening balance
             app.MapPost("/",
-                [Authorize]
+                [Authorize("ActiveSubscription")]
             [SwaggerOperation(
                     Summary = "Apply opening balance",
                     Description = "Applies opening balance for a society. Can only be executed once per society. Restricted to Society Admin role."

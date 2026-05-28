@@ -85,10 +85,10 @@ namespace SocietyLedger.Api.Endpoints
 
             // Get all maintenance payments for society
             app.MapGet("/",
-                [Authorize]
+                [Authorize("ActiveSubscription")]
             [SwaggerOperation(
                     Summary = "Get maintenance payments",
-                    Description = "Retrieves maintenance payments for the society. Optionally filter by period (YYYY-MM). Paginated — defaults: page=1, pageSize=50, max pageSize=200."
+                    Description = "Retrieves maintenance payments for the society. Optionally filter by period (YYYY-MM). Paginated — defaults: page=1, pageSize=20, max pageSize=100."
                 )]
             async ([FromQuery] string? period, [FromQuery] int page, [FromQuery] int pageSize,
                    IMaintenancePaymentService paymentService, HttpContext ctx) =>
@@ -100,7 +100,7 @@ namespace SocietyLedger.Api.Endpoints
                     var result = await paymentService.GetMaintenancePaymentsBySocietyAsync(
                         userId, period,
                         page < 1 ? 1 : page,
-                        pageSize < 1 ? 50 : pageSize);
+                        Math.Min(pageSize < 1 ? 20 : pageSize, 100));
 
                     return Results.Ok(ApiResponse<ListMaintenancePaymentsResponse>.Success(
                         new ListMaintenancePaymentsResponse(result.ToList()),
@@ -116,7 +116,7 @@ namespace SocietyLedger.Api.Endpoints
 
             // Get maintenance payment by ID
             app.MapGet("/{publicId:guid}",
-                [Authorize]
+                [Authorize("ActiveSubscription")]
             [SwaggerOperation(
                     Summary = "Get maintenance payment by ID",
                     Description = "Retrieves a specific maintenance payment by its public ID."
@@ -137,7 +137,7 @@ namespace SocietyLedger.Api.Endpoints
 
             // Get maintenance payments by flat
             app.MapGet("/flat/{flatPublicId:guid}",
-                [Authorize]
+                [Authorize("ActiveSubscription")]
             [SwaggerOperation(
                     Summary = "Get maintenance payments by flat",
                     Description = "Retrieves all maintenance payments for a specific flat."
@@ -222,7 +222,7 @@ namespace SocietyLedger.Api.Endpoints
 
             // Get maintenance summary for period
             app.MapGet("/summary",
-                [Authorize]
+                [Authorize("ActiveSubscription")]
             [SwaggerOperation(
                     Summary = "Get maintenance summary",
                     Description = "Retrieves maintenance charges and collection summary for a given period."

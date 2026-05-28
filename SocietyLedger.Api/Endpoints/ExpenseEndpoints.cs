@@ -81,18 +81,9 @@ namespace SocietyLedger.Api.Endpoints
                     if (!new[] { "asc", "desc" }.Contains(resolvedSortDir, StringComparer.OrdinalIgnoreCase))
                         return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, "Invalid sort direction. Use 'asc' or 'desc'.", ctx.TraceIdentifier));
 
-                    // If no pagination/filter params are provided, return the full unpaginated list
-                    // to preserve backward compatibility with existing clients.
-                    if (page == null && size == null && startDate == null && endDate == null && categoryCode == null && search == null && sortBy == null)
-                    {
-                        var all = await expenseService.GetExpensesBySocietyAsync(userId);
-                        return Results.Ok(ApiResponse<ListExpensesResponse>.Success(
-                            new ListExpensesResponse { Expenses = all.ToList() },
-                            "Expenses retrieved successfully"));
-                    }
-
+                    // Always paginate — default page=0, size=20, max size=100.
                     var resolvedPage = page ?? 0;
-                    var resolvedSize = Math.Min(size ?? 25, 100);
+                    var resolvedSize = Math.Min(size ?? 20, 100);
 
                     if (resolvedPage < 0)
                         return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, "Page number must be 0 or greater.", ctx.TraceIdentifier));
@@ -109,7 +100,6 @@ namespace SocietyLedger.Api.Endpoints
             .WithApiVersionSet(versionSet)
             .HasApiVersion(version_1_0)
             .WithName("GetExpenses")
-            .Produces<ApiResponse<ListExpensesResponse>>(200)
             .Produces<ApiResponse<PagedExpensesResponse>>(200)
             .Produces<ErrorResponse>(400)
             .Produces<ErrorResponse>(500);

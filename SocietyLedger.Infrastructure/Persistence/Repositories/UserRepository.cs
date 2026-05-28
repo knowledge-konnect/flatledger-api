@@ -80,6 +80,25 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             return efUser?.ToDomain();
         }
 
+        public async Task<User?> GetByEmailAndMobileAsync(string email, string mobile)
+        {
+            if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(mobile))
+                return null;
+
+            var lowered = email.ToLowerInvariant();
+
+            var efUser = await _db.users
+                .ExcludeDeleted()
+                .Include(u => u.role)
+                .Include(u => u.society)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u =>
+                    (u.email ?? string.Empty).ToLower() == lowered &&
+                    u.mobile == mobile);
+
+            return efUser?.ToDomain();
+        }
+
         public async Task<User?> GetByUsernameOrEmailAsync(string usernameOrEmail)
         {
             if (string.IsNullOrWhiteSpace(usernameOrEmail))

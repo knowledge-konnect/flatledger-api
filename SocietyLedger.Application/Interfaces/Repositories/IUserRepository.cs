@@ -24,6 +24,12 @@ namespace SocietyLedger.Application.Interfaces.Repositories
         Task<User?> GetByEmailAsync(string email);
 
         /// <summary>
+        /// Get a user by email AND mobile (case-insensitive email, exact mobile).
+        /// Used for password reset ownership verification without email delivery.
+        /// </summary>
+        Task<User?> GetByEmailAndMobileAsync(string email, string mobile);
+
+        /// <summary>
         /// Get a user by username or email (case-insensitive).
         /// </summary>
         Task<User?> GetByUsernameOrEmailAsync(string usernameOrEmail);
