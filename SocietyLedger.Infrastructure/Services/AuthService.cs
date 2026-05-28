@@ -374,9 +374,13 @@ namespace SocietyLedger.Infrastructure.Services
                 throw new ArgumentNullException(nameof(request));
 
             var email = request.Email.Trim().ToLowerInvariant();
-            var user = await _userRepo.GetByEmailAsync(email);
+            var mobile = request.Mobile.Trim();
 
-            if (user != null && user.IsActive && !string.IsNullOrWhiteSpace(user.Email))
+            // Validate ownership by matching both email AND mobile.
+            // Use a single generic message to avoid user enumeration.
+            var user = await _userRepo.GetByEmailAndMobileAsync(email, mobile);
+
+            if (user != null && user.IsActive)
             {
                 var rawToken = PasswordResetTokenHelper.GenerateRawToken();
                 var tokenHash = PasswordResetTokenHelper.HashToken(rawToken);
@@ -384,15 +388,11 @@ namespace SocietyLedger.Infrastructure.Services
 
                 await _userRepo.SetPasswordResetTokenAsync(user.Id, tokenHash, expiresAt);
 
-                var frontendBase = _configuration["Frontend:BaseUrl"]?.TrimEnd('/')
-                    ?? "http://localhost:5173";
-                var resetLink = $"{frontendBase}/reset-password?token={Uri.EscapeDataString(rawToken)}";
-
-                await _emailService.SendPasswordResetEmailAsync(
-                    user.Email,
-                    user.Name,
-                    resetLink,
-                    logResetLinkInDevelopment: _environment.IsDevelopment());
+                return new ForgotPasswordResponse
+                {
+                    Message = PasswordResetGenericMessage,
+                    ResetToken = rawToken
+                };
             }
 
             return new ForgotPasswordResponse { Message = PasswordResetGenericMessage };

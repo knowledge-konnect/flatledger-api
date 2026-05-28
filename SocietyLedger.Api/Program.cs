@@ -261,15 +261,25 @@ builder.Services.AddHostedService<MonthlyBillGenerationService>();
 builder.Services.AddHostedService<TrialExpirationService>();
 builder.Services.AddHostedService<BillingCatchupService>();
 
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+});
+
 // Trust Render's SSL-terminating load balancer so that Request.Scheme is "https"
 // and X-Forwarded-For is populated correctly. Clearing known networks/proxies
 // ensures Render's dynamic proxy IPs are always trusted.
+// SECURITY: only clear the defaults when running on Render; in other environments
+// this would trust every hop in the X-Forwarded-For chain.
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-    // Clear known-network/known-proxy defaults so Render's proxy IPs are trusted.
-    options.KnownNetworks.Clear();
-    options.KnownProxies.Clear();
+    if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("RENDER")))
+    {
+        // Render uses rotating proxy IPs — clear defaults to accept any proxy.
+        options.KnownNetworks.Clear();
+        options.KnownProxies.Clear();
+    }
 });
 
 var app = builder.Build();
@@ -311,6 +321,8 @@ app.Use(async (ctx, next) =>
 
 // Correlation ID middleware — pushes CorrelationId into Serilog LogContext for every request.
 app.UseMiddleware<SocietyLedger.Api.CorrelationIdMiddleware>();
+
+app.UseResponseCompression();
 
 app.UseCors("DefaultCorsPolicy");
 

@@ -77,19 +77,9 @@ namespace SocietyLedger.Api.Endpoints
                 if (!new[] { "asc", "desc" }.Contains(resolvedSortDir, StringComparer.OrdinalIgnoreCase))
                     return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, "Invalid sort direction. Use 'asc' or 'desc'.", ctx.TraceIdentifier));
 
-                // If no pagination params provided, return the full unpaginated list
-                // to preserve backward compatibility with existing clients.
-                if (page == null && size == null && search == null && statusCode == null && sortBy == null)
-                {
-                    var flats = await service.GetBySocietyAsync(userId);
-                    Log.Information("Fetched {Count} flats for user {UserId}", flats.Count(), userId);
-                    return Results.Ok(ApiResponse<ListFlatsResponse>.Success(
-                        new ListFlatsResponse { Flats = flats.ToList() },
-                        "Flats retrieved successfully"));
-                }
-
+                // Always paginate — default page=1, size=20, max size=100.
                 var resolvedPage = (page ?? 1) < 1 ? 1 : (page ?? 1);
-                var resolvedSize = Math.Min(size ?? 10, 100);
+                var resolvedSize = Math.Min(size ?? 20, 100);
 
                 if (resolvedPage < 1)
                     return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, "Page number must be 1 or greater.", ctx.TraceIdentifier));
@@ -104,7 +94,6 @@ namespace SocietyLedger.Api.Endpoints
     .WithTags(groupName)
     .WithApiVersionSet(versionSet)
     .HasApiVersion(version_1_0)
-    .Produces<ApiResponse<ListFlatsResponse>>(200)
     .Produces<ApiResponse<PagedFlatsResponse>>(200)
     .Produces<ErrorResponse>(400)
     .Produces<ErrorResponse>(401)
