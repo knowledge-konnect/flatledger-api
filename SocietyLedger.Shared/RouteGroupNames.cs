@@ -28,6 +28,8 @@ namespace SocietyLedger.Shared
 
         // SaaS Admin module
         public const string ADMIN_AUTH = "Admin - Authentication";
+
+        public const string CONTACT = "Contact";
         public const string ADMIN_PLANS = "Admin - Plans";
         public const string ADMIN_SOCIETIES = "Admin - Societies";
         public const string ADMIN_USERS = "Admin - Users";

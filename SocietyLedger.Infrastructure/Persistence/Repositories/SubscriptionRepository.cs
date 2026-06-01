@@ -134,5 +134,30 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
 
             return efSubscriptions.Select(s => s.ToDomain());
         }
+
+        public async Task<IEnumerable<SubscriptionExpiryInfo>> GetActiveSubscriptionsExpiringSoonAsync(
+            DateTime fromDate, DateTime toDate)
+        {
+            var results = await _db.subscriptions
+                .Include(s => s.plan)
+                .Include(s => s.user)
+                .Include(s => s.society)
+                .Where(s => s.status == SubscriptionStatusCodes.Active
+                         && s.current_period_end >= fromDate
+                         && s.current_period_end < toDate)
+                .AsNoTracking()
+                .Select(s => new SubscriptionExpiryInfo(
+                    s.id,
+                    s.user_id,
+                    s.society_id,
+                    s.user.email ?? string.Empty,
+                    s.society.name ?? string.Empty,
+                    s.plan.name,
+                    s.current_period_end!.Value
+                ))
+                .ToListAsync();
+
+            return results;
+        }
     }
 }

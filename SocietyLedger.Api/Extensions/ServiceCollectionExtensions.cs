@@ -1,6 +1,8 @@
 ﻿using FluentValidation;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Npgsql;
+using Resend;
 using SocietyLedger.Api.Filters;
 using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Application.Interfaces.Services;
@@ -37,6 +39,7 @@ namespace SocietyLedger.Api.Extensions
             services.AddScoped<IBillingService, BillingService>();
             services.AddScoped<IMaintenanceConfigService, MaintenanceConfigService>();
             services.AddScoped<INotificationPreferenceService, NotificationPreferenceService>();
+            services.AddScoped<IContactService, ContactService>();
 
             // SaaS Admin module
             services.AddScoped<IAdminAuthService, AdminAuthService>();
@@ -95,6 +98,7 @@ namespace SocietyLedger.Api.Extensions
             services.AddScoped<IAdjustmentRepository, AdjustmentRepository>();
             services.AddScoped<IMaintenanceConfigRepository, MaintenanceConfigRepository>();
             services.AddScoped<INotificationPreferenceRepository, NotificationPreferenceRepository>();
+            services.AddScoped<IContactRequestRepository, ContactRequestRepository>();
             services.AddScoped<IBillRepository, BillRepository>();
 
             services.AddSingleton<SocietyLedger.Infrastructure.Data.IDbConnectionFactory, SocietyLedger.Infrastructure.Data.DbConnectionFactory>();
@@ -116,6 +120,13 @@ namespace SocietyLedger.Api.Extensions
             services.AddSingleton<ViewerForbiddenFilter>();
 
             services.Configure<JwtSettings>(configuration.GetSection("JwtSettings"));
+
+            // Email (Resend)
+            services.Configure<EmailSettings>(configuration.GetSection("Email"));
+            services.AddResend(options =>
+            {
+                options.ApiToken = configuration["Email:ResendApiKey"] ?? string.Empty;
+            });
 
             return services;
         }

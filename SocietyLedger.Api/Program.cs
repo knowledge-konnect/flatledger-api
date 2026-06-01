@@ -213,6 +213,11 @@ if (builder.Environment.IsProduction())
         throw new InvalidOperationException(
             "Razorpay:WebhookSecret is missing. Webhook signature verification will fail without it. " +
             "Set the Razorpay__WebhookSecret environment variable.");
+
+    var resendApiKey = builder.Configuration["Email:ResendApiKey"];
+    if (string.IsNullOrWhiteSpace(resendApiKey))
+        throw new InvalidOperationException(
+            "Email:ResendApiKey is missing. Set the Email__ResendApiKey environment variable.");
 }
 
 
@@ -260,6 +265,7 @@ builder.Services.AddSharedServices();
 builder.Services.AddHostedService<MonthlyBillGenerationService>();
 builder.Services.AddHostedService<TrialExpirationService>();
 builder.Services.AddHostedService<BillingCatchupService>();
+builder.Services.AddHostedService<SubscriptionExpiryReminderService>();
 
 builder.Services.AddResponseCompression(options =>
 {
@@ -435,6 +441,9 @@ app.MapGroup(ApiRoutes.ADMIN_INVOICES)
 
 app.MapGroup(ApiRoutes.ADMIN_SETTINGS)
     .MapAdminPlatformSettingRoutes(RouteGroupNames.ADMIN_SETTINGS, versionSet);
+
+app.MapGroup(ApiRoutes.CONTACT)
+   .MapContactRoutes(RouteGroupNames.CONTACT, versionSet);
 
 app.MapGroup(ApiRoutes.REPORTS)
    .MapReportRoutes(RouteGroupNames.REPORTS, versionSet);

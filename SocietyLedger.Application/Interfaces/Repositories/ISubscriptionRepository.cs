@@ -14,5 +14,22 @@ namespace SocietyLedger.Application.Interfaces.Repositories
         Task BulkUpdateAsync(IEnumerable<Subscription> subscriptions);
         Task<IEnumerable<Subscription>> GetExpiredTrialsAsync();
         Task<IEnumerable<Subscription>> GetActiveSubscriptionsAsync();
+
+        /// <summary>
+        /// Returns Active subscriptions whose CurrentPeriodEnd falls within [fromDate, toDate).
+        /// Includes projected user email and society name for reminder emails.
+        /// </summary>
+        Task<IEnumerable<SubscriptionExpiryInfo>> GetActiveSubscriptionsExpiringSoonAsync(DateTime fromDate, DateTime toDate);
     }
+
+    /// <summary>Lightweight projection used by the subscription expiry reminder background job.</summary>
+    public record SubscriptionExpiryInfo(
+        Guid SubscriptionId,
+        long UserId,
+        long SocietyId,
+        string UserEmail,
+        string SocietyName,
+        string PlanName,
+        DateTime ExpiryDate
+    );
 }
