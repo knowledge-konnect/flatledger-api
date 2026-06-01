@@ -49,5 +49,11 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
 
             return efEvents.Select(e => e.ToDomain());
         }
+
+        public async Task<bool> ExistsAsync(Guid subscriptionId, string eventType)
+        {
+            return await _db.subscription_events
+                .AnyAsync(e => e.subscription_id == subscriptionId && e.event_type == eventType);
+        }
     }
 }

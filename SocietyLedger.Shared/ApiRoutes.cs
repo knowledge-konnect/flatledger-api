@@ -35,5 +35,7 @@ namespace SocietyLedger.Shared
         public const string ADMIN_BILLS = "/api/admin/bills";
         public const string ADMIN_INVOICES = "/api/admin/invoices";
         public const string ADMIN_SETTINGS = "/api/admin/settings";
+
+        public const string CONTACT = "/api/contact";
     }
 }

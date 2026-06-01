@@ -7,7 +7,7 @@ namespace SocietyLedger.Application.Interfaces.Services
         Task<SubscriptionStatusResponse> GetSubscriptionStatusAsync(long userId);
         Task<SubscribeResponse> SubscribeAsync(long userId, SubscribeRequest request);
         Task CancelSubscriptionAsync(long userId, CancelSubscriptionRequest request);
-        Task CreateTrialSubscriptionAsync(long userId);
+        Task<SocietyLedger.Domain.Entities.Subscription?> CreateTrialSubscriptionAsync(long userId);
 
         /// <summary>
         /// Checks whether the society's subscription is currently active and not expired.

@@ -6,7 +6,7 @@ namespace SocietyLedger.Infrastructure.Security
     /// <summary>Generates URL-safe reset tokens and SHA-256 hashes for storage (never store raw tokens).</summary>
     public static class PasswordResetTokenHelper
     {
-        public const int TokenValidityMinutes = 15;
+        public const int TokenValidityMinutes = 30;
 
         public static string GenerateRawToken()
         {

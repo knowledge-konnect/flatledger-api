@@ -201,9 +201,10 @@ namespace SocietyLedger.Infrastructure.Services
 
             // Trial creation is inside the transaction — if it fails the whole registration
             // rolls back, preventing orphaned users with no subscription.
+            SocietyLedger.Domain.Entities.Subscription? trialSubscription = null;
             try
             {
-                await _subscriptionService.CreateTrialSubscriptionAsync(user.Id);
+                trialSubscription = await _subscriptionService.CreateTrialSubscriptionAsync(user.Id);
             }
             catch (Exception ex)
             {
@@ -217,6 +218,30 @@ namespace SocietyLedger.Infrastructure.Services
             _logger.LogInformation(
                 "New user {UserPublicId} registered new society {SocietyId} from {IP}",
                 user.PublicId, society.Id, ipAddress);
+
+            // Send welcome email after commit. Failures are logged but never fail the registration.
+            try
+            {
+                var loginUrl = _configuration["Email:LoginUrl"];
+                if (string.IsNullOrWhiteSpace(loginUrl))
+                    loginUrl = $"{_configuration["Frontend:BaseUrl"]?.TrimEnd('/')}/login";
+
+                var planName = trialSubscription?.Plan?.Name ?? "Free Trial";
+                var trialEnd = trialSubscription?.TrialEnd ?? DateTime.UtcNow.AddDays(30);
+
+                await _emailService.SendWelcomeEmailAsync(
+                    user.Email!,
+                    user.Name,
+                    society.Name,
+                    planName,
+                    trialEnd,
+                    loginUrl,
+                    CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Welcome email failed for user {UserId} — registration already committed", user.Id);
+            }
 
             return new RegisterResponse
             {
@@ -374,11 +399,9 @@ namespace SocietyLedger.Infrastructure.Services
                 throw new ArgumentNullException(nameof(request));
 
             var email = request.Email.Trim().ToLowerInvariant();
-            var mobile = request.Mobile.Trim();
 
-            // Validate ownership by matching both email AND mobile.
-            // Use a single generic message to avoid user enumeration.
-            var user = await _userRepo.GetByEmailAndMobileAsync(email, mobile);
+            // Look up by email only. Always return the same generic message to prevent enumeration.
+            var user = await _userRepo.GetByEmailAsync(email);
 
             if (user != null && user.IsActive)
             {
@@ -388,11 +411,24 @@ namespace SocietyLedger.Infrastructure.Services
 
                 await _userRepo.SetPasswordResetTokenAsync(user.Id, tokenHash, expiresAt);
 
-                return new ForgotPasswordResponse
+                var frontendBase = _configuration["Frontend:BaseUrl"]?.TrimEnd('/') ?? string.Empty;
+                var resetLink = $"{frontendBase}/reset-password?token={Uri.EscapeDataString(rawToken)}";
+                var isDev = _environment.IsDevelopment();
+
+                try
                 {
-                    Message = PasswordResetGenericMessage,
-                    ResetToken = rawToken
-                };
+                    await _emailService.SendPasswordResetEmailAsync(
+                        user.Email ?? email,
+                        user.Name,
+                        resetLink,
+                        isDev,
+                        CancellationToken.None);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to send password reset email for user {UserId}", user.Id);
+                    // Swallow — token is already persisted; user can retry.
+                }
             }
 
             return new ForgotPasswordResponse { Message = PasswordResetGenericMessage };

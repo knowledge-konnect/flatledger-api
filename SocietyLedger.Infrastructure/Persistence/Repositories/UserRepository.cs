@@ -297,7 +297,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                 .Where(u => u.id == userId)
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(u => u.password_reset_token_hash, tokenHash)
-                    .SetProperty(u => u.password_reset_expires_at, expiresAtUtc)
+                    .SetProperty(u => u.password_reset_expires_at, DateTime.SpecifyKind(expiresAtUtc, DateTimeKind.Unspecified))
                     .SetProperty(u => u.updated_at, DateTime.UtcNow));
     }
 }

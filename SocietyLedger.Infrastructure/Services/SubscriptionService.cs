@@ -316,15 +316,15 @@ namespace SocietyLedger.Infrastructure.Services
         /// If the society already has a subscription (another admin registered earlier), this is a no-op.
         /// The unique partial index (uq_subscription_active_per_society) serves as the final DB guard.
         /// </summary>
-        public async Task CreateTrialSubscriptionAsync(long userId)
+        public async Task<SocietyLedger.Domain.Entities.Subscription?> CreateTrialSubscriptionAsync(long userId)
         {
             var societyId = await _societyRepo.GetSocietyIdByUserIdAsync(userId);
-            if (societyId == null) return;
+            if (societyId == null) return null;
 
             // Check by society_id — only one active/trial sub per society
             var existingSubscription = await _subscriptionRepo.GetBySocietyIdAsync(societyId.Value);
             if (existingSubscription != null)
-                return;
+                return null;
 
             var plans = await _planRepo.GetActivePlansAsync();
             var defaultPlan = plans.FirstOrDefault(p => p.DurationMonths == 1) ?? plans.FirstOrDefault();
@@ -359,7 +359,7 @@ namespace SocietyLedger.Infrastructure.Services
                 _logger.LogInformation(
                     "Trial subscription already exists for society {SocietyId} — concurrent creation, skipping",
                     societyId.Value);
-                return;
+                return null;
             } 
 
             var eventMeta = JsonSerializer.Serialize(new
@@ -383,6 +383,9 @@ namespace SocietyLedger.Infrastructure.Services
             });
 
             _logger.LogInformation("Created trial subscription for society {SocietyId}", societyId.Value);
+
+            subscription.Plan = defaultPlan;
+            return subscription;
         }
 
         // ──────────────────────────────────────────────────────────────────

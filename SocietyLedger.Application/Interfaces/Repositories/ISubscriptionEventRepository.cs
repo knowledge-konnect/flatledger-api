@@ -7,5 +7,6 @@ namespace SocietyLedger.Application.Interfaces.Repositories
         Task CreateAsync(SubscriptionEvent subscriptionEvent);
         Task BulkCreateAsync(IEnumerable<SubscriptionEvent> events);
         Task<IEnumerable<SubscriptionEvent>> GetByUserIdAsync(long userId);
+        Task<bool> ExistsAsync(Guid subscriptionId, string eventType);
     }
 }

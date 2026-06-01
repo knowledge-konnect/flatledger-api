@@ -14,12 +14,6 @@ namespace SocietyLedger.Application.Validators.Auth
                 .WithMessage("Email must be a valid email address.")
                 .MaximumLength(255)
                 .WithMessage("Email cannot exceed 255 characters.");
-
-            RuleFor(x => x.Mobile)
-                .NotEmpty()
-                .WithMessage("Mobile number is required.")
-                .Matches(@"^[0-9]{10}$")
-                .WithMessage("Mobile number must be exactly 10 digits.");
         }
     }
 }
