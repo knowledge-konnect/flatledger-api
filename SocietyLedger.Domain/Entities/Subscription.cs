@@ -8,6 +8,7 @@ namespace SocietyLedger.Domain.Entities
     {
         public Guid Id { get; set; }
         public long UserId { get; set; }
+        public long SocietyId { get; set; }
         public Guid PlanId { get; set; }
         public string Status { get; set; } = null!;
         public decimal SubscribedAmount { get; set; }
@@ -30,10 +31,19 @@ namespace SocietyLedger.Domain.Entities
     {
         public Guid Id { get; set; }
         public string Name { get; set; } = null!;
+        public decimal Price { get; set; }
         public decimal MonthlyAmount { get; set; }
         public string Currency { get; set; } = null!;
         public bool? IsActive { get; set; }
         public DateTime? CreatedAt { get; set; }
+        public DateTime? UpdatedAt { get; set; }
+        public int DurationMonths { get; set; } = 1;
+        public int MaxFlats { get; set; }
+        public string? PlanGroup { get; set; }
+        public int? DiscountPercentage { get; set; }
+        public int DisplayOrder { get; set; }
+        public bool IsPopular { get; set; }
+        public string? Description { get; set; }
     }
 
     /// <summary>
@@ -73,6 +83,7 @@ namespace SocietyLedger.Domain.Entities
     {
         public Guid Id { get; set; }
         public long UserId { get; set; }
+        public long SocietyId { get; set; }
         public Guid? SubscriptionId { get; set; }
         public string EventType { get; set; } = null!;
         public string? OldStatus { get; set; }

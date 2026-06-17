@@ -42,7 +42,10 @@ namespace SocietyLedger.Api.Endpoints
                 }
 
                 if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
-                    return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
+                {
+                    var errorResponse = ErrorResponse.Create(ErrorCodes.INSUFFICIENT_PERMISSIONS, ErrorMessages.INSUFFICIENT_PERMISSIONS, ctx.TraceIdentifier);
+                    return Results.Json(errorResponse, statusCode: 403);
+                }
 
                 var result = await service.CreateAsync(request, userId);
                 Log.Information("Flat created successfully for FlatNo {FlatNo}", request.FlatNo);
@@ -86,9 +89,10 @@ namespace SocietyLedger.Api.Endpoints
 
         if (flats == null || !flats.Any())
         {
-            Log.Warning("No flats found for SocietyId {SocietyId}", societyId);
-            var errorResponse = ErrorResponse.Create(ErrorCodes.RESOURCE_NOT_FOUND, ErrorMessages.RESOURCE_NOT_FOUND, ctx.TraceIdentifier);
-            return Results.Json(errorResponse, statusCode: 404);
+            Log.Information("No flats found for SocietyId {SocietyId}, returning empty list.", societyId);
+            return Results.Ok(ApiResponse<ListFlatsResponse>.Success(
+                new ListFlatsResponse { Flats = new List<FlatResponseDto>() },
+                "Flats retrieved successfully"));
         }
 
         Log.Information("Fetched {Count} flats for SocietyId {SocietyId}",

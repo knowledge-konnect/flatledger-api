@@ -16,6 +16,8 @@ public partial class subscription
 
     public long user_id { get; set; }
 
+    public long society_id { get; set; }
+
     public Guid plan_id { get; set; }
 
     [StringLength(20)]

@@ -15,17 +15,20 @@ namespace SocietyLedger.Infrastructure.Services
     {
         private readonly IFlatRepository _repo;
         private readonly IUserContext _userContext;
+        private readonly ISubscriptionRepository _subscriptionRepo;
         private readonly AppDbContext _db;
         private readonly ILogger<FlatService> _logger;
 
         public FlatService(
             IFlatRepository repo, 
             IUserContext userContext,
+            ISubscriptionRepository subscriptionRepo,
             AppDbContext db,
             ILogger<FlatService> logger)
         {
             _repo = repo ?? throw new ArgumentNullException(nameof(repo));
             _userContext = userContext ?? throw new ArgumentNullException(nameof(userContext));
+            _subscriptionRepo = subscriptionRepo ?? throw new ArgumentNullException(nameof(subscriptionRepo));
             _db = db ?? throw new ArgumentNullException(nameof(db));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
@@ -40,35 +43,16 @@ namespace SocietyLedger.Infrastructure.Services
         }
         /// <summary>
         /// Create a new flat and return the created DTO.
+        /// Duplicate checks and creation are wrapped in a single transaction to prevent race conditions.
         /// </summary>
         public async Task<FlatResponseDto> CreateAsync(CreateFlatDto dto, long userId)
         {
             if (dto == null) throw new ArgumentNullException(nameof(dto));
 
             var societyId = await _userContext.GetSocietyIdAsync(userId);
+            await EnsureFlatLimitAsync(societyId, additionalFlats: 1);
 
-            // Check for duplicate flat number in the society
-            var existingFlat = await _repo.GetByFlatNoAndSocietyAsync(dto.FlatNo, societyId);
-            if (existingFlat != null)
-                throw new DuplicateException("flat", "flat number");
-
-            // Check for duplicate email in the same society
-            if (!string.IsNullOrWhiteSpace(dto.ContactEmail))
-            {
-                var existingEmail = await _repo.GetByEmailAndSocietyAsync(dto.ContactEmail, societyId);
-                if (existingEmail != null)
-                    throw new DuplicateException("flat", "email");
-            }
-
-            // Check for duplicate mobile in the same society
-            if (!string.IsNullOrWhiteSpace(dto.ContactMobile))
-            {
-                var existingMobile = await _repo.GetByMobileAndSocietyAsync(dto.ContactMobile, societyId);
-                if (existingMobile != null)
-                    throw new DuplicateException("flat", "mobile number");
-            }
-
-            // Get status by code if provided, otherwise use default
+            // Get status by code if provided, otherwise use default (do this outside transaction)
             short? statusId = null;
             if (!string.IsNullOrEmpty(dto.StatusCode))
             {
@@ -78,27 +62,57 @@ namespace SocietyLedger.Infrastructure.Services
                 statusId = status.Id;
             }
 
-            var now = DateTime.UtcNow;
-
-            var domain = new Flat
+            // Wrap duplicate checks + creation in a transaction to prevent race conditions
+            using var transaction = await _db.Database.BeginTransactionAsync();
+            try
             {
-                PublicId = Guid.NewGuid(),
-                SocietyId = societyId,
-                FlatNo = dto.FlatNo,
-                OwnerName = dto.OwnerName,
-                ContactMobile = dto.ContactMobile,
-                ContactEmail = dto.ContactEmail,
-                MaintenanceAmount = dto.MaintenanceAmount ?? 0m,
-                StatusId = statusId,
-                CreatedAt = now,
-                UpdatedAt = now
-            };
+                // Check for duplicate flat number in the society
+                var existingFlat = await _repo.GetByFlatNoAndSocietyAsync(dto.FlatNo, societyId);
+                if (existingFlat != null)
+                    throw new DuplicateException("flat", "flat number");
 
-            await _repo.AddAsync(domain);
-            await _repo.SaveChangesAsync();
+                // Check for duplicate email in the same society
+                if (!string.IsNullOrWhiteSpace(dto.ContactEmail))
+                {
+                    var existingEmail = await _repo.GetByEmailAndSocietyAsync(dto.ContactEmail, societyId);
+                    if (existingEmail != null)
+                        throw new DuplicateException("flat", "email");
+                }
 
-            _logger.LogInformation("Flat created successfully for FlatNo {FlatNo}", dto.FlatNo);
-            return MapToDto(domain);
+                // Check for duplicate mobile in the same society
+                if (!string.IsNullOrWhiteSpace(dto.ContactMobile))
+                {
+                    var existingMobile = await _repo.GetByMobileAndSocietyAsync(dto.ContactMobile, societyId);
+                    if (existingMobile != null)
+                        throw new DuplicateException("flat", "mobile number");
+                }
+
+                var now = DateTime.UtcNow;
+                var domain = new Flat
+                {
+                    PublicId = Guid.NewGuid(),
+                    SocietyId = societyId,
+                    FlatNo = dto.FlatNo,
+                    OwnerName = dto.OwnerName,
+                    ContactMobile = dto.ContactMobile,
+                    ContactEmail = dto.ContactEmail,
+                    MaintenanceAmount = dto.MaintenanceAmount ?? 0m,
+                    StatusId = statusId,
+                    CreatedAt = now,
+                    UpdatedAt = now
+                };
+
+                await _repo.AddAsync(domain);
+                await transaction.CommitAsync();
+
+                _logger.LogInformation("Flat created successfully for FlatNo {FlatNo}", dto.FlatNo);
+                return MapToDto(domain);
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
         }
         
 
@@ -404,6 +418,22 @@ namespace SocietyLedger.Infrastructure.Services
             };
         }
 
+
+        private async Task EnsureFlatLimitAsync(long societyId, int additionalFlats = 1)
+        {
+            var subscription = await _subscriptionRepo.GetBySocietyIdAsync(societyId);
+            var maxFlats = subscription?.Plan?.MaxFlats ?? 0;
+            if (maxFlats <= 0)
+                return;
+
+            var currentCount = await _db.flats.CountAsync(f => f.society_id == societyId && !f.is_deleted);
+            if (currentCount + additionalFlats > maxFlats)
+            {
+                throw new ValidationException(
+                    $"Your plan allows up to {maxFlats} flats. You currently have {currentCount}. " +
+                    "Upgrade your subscription to add more.");
+            }
+        }
 
         #region Mapping helpers
 

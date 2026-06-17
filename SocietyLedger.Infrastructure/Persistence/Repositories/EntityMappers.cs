@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Text.Json;
 using SocietyLedger.Domain.Entities;
 using SocietyLedger.Infrastructure.Persistence.Entities;
 
@@ -217,6 +218,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             {
                 Id = src.id,
                 UserId = src.user_id,
+                SocietyId = src.society_id,
                 PlanId = src.plan_id,
                 Status = src.status,
                 SubscribedAmount = src.subscribed_amount,
@@ -240,6 +242,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             {
                 id = src.Id,
                 user_id = src.UserId,
+                society_id = src.SocietyId,
                 plan_id = src.PlanId,
                 status = src.Status,
                 subscribed_amount = src.SubscribedAmount,
@@ -262,14 +265,25 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
         {
             if (src == null) return null;
 
+            var price = src.price > 0 ? src.price : src.monthly_amount;
+
             return new Plan
             {
                 Id = src.id,
                 Name = src.name,
-                MonthlyAmount = src.monthly_amount,
+                Price = price,
+                MonthlyAmount = price,
                 Currency = src.currency,
                 IsActive = src.is_active,
-                CreatedAt = src.created_at
+                CreatedAt = src.created_at,
+                UpdatedAt = src.updated_at,
+                DurationMonths = src.duration_months > 0 ? src.duration_months : 1,
+                MaxFlats = src.max_flats,
+                PlanGroup = src.plan_group,
+                DiscountPercentage = src.discount_percentage,
+                DisplayOrder = src.display_order,
+                IsPopular = src.is_popular,
+                Description = src.description
             };
         }
 
@@ -277,14 +291,25 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
         {
             if (src == null) throw new ArgumentNullException(nameof(src));
 
+            var price = src.Price > 0 ? src.Price : src.MonthlyAmount;
+
             return new plan
             {
                 id = src.Id,
                 name = src.Name,
-                monthly_amount = src.MonthlyAmount,
+                price = price,
+                monthly_amount = price,
                 currency = src.Currency,
                 is_active = src.IsActive,
-                created_at = src.CreatedAt
+                created_at = src.CreatedAt,
+                updated_at = src.UpdatedAt,
+                duration_months = src.DurationMonths > 0 ? src.DurationMonths : 1,
+                max_flats = src.MaxFlats,
+                plan_group = src.PlanGroup,
+                discount_percentage = src.DiscountPercentage,
+                display_order = src.DisplayOrder,
+                is_popular = src.IsPopular,
+                description = src.Description
             };
         }
 
@@ -361,6 +386,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             {
                 Id = src.id,
                 UserId = src.user_id,
+                SocietyId = src.society_id,
                 SubscriptionId = src.subscription_id,
                 EventType = src.event_type,
                 OldStatus = src.old_status,
@@ -380,6 +406,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             {
                 id = src.Id,
                 user_id = src.UserId,
+                society_id = src.SocietyId,
                 subscription_id = src.SubscriptionId,
                 event_type = src.EventType,
                 old_status = src.OldStatus,

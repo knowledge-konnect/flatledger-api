@@ -8,6 +8,7 @@ using SocietyLedger.Api.Filters;
 using SocietyLedger.Application.DTOs.Razorpay;
 using SocietyLedger.Application.Interfaces.Services;
 using SocietyLedger.Domain.Exceptions;
+using SocietyLedger.Domain.Constants;
 using SocietyLedger.Shared;
 using Swashbuckle.AspNetCore.Annotations;
 using System.Text;
@@ -37,6 +38,7 @@ namespace SocietyLedger.Api.Endpoints
                     var result = await paymentService.CreateOrderAsync(userId, request.PlanId);
                     return Results.Ok(ApiResponse<CreateOrderResponse>.Success(result, "Order created successfully"));
                 })
+            .RequireRateLimiting("PaymentPolicy")
             .AddEndpointFilter<FluentValidationFilter<CreateOrderRequest>>()
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)
@@ -59,6 +61,7 @@ namespace SocietyLedger.Api.Endpoints
                     var result = await paymentService.VerifyPaymentAsync(request);
                     return Results.Ok(ApiResponse<VerifyPaymentResponse>.Success(result, "Payment verification completed"));
                 })
+            .RequireRateLimiting("PaymentPolicy")
             .AddEndpointFilter<FluentValidationFilter<VerifyPaymentRequest>>()
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)
@@ -66,6 +69,37 @@ namespace SocietyLedger.Api.Endpoints
             .WithName("VerifyPayment")
             .Produces<ApiResponse<VerifyPaymentResponse>>(200)
             .Produces<ErrorResponse>(400)
+            .Produces<ErrorResponse>(500);
+
+            // Initiate a refund
+            app.MapPost("/refund",
+                [Authorize]
+            [SwaggerOperation(
+                    Summary = "Initiate a refund",
+                    Description = "Initiates a refund for a specific Razorpay payment. Requires admin privileges."
+                )]
+            async ([FromBody] RefundRequest request, IRazorpayPaymentService paymentService, HttpContext ctx) =>
+                {
+                    // Basic role check, could be a policy
+                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
+                    {
+                        var errorResponse = ErrorResponse.Create(ErrorCodes.INSUFFICIENT_PERMISSIONS, ErrorMessages.INSUFFICIENT_PERMISSIONS, ctx.TraceIdentifier);
+                        return Results.Json(errorResponse, statusCode: 403);
+                    }
+
+                    var result = await paymentService.InitiateRefundAsync(request);
+                    return Results.Ok(ApiResponse<RefundResponse>.Success(result, "Refund initiated successfully"));
+                })
+            .AddEndpointFilter<FluentValidationFilter<RefundRequest>>()
+            .WithTags(groupName)
+            .WithApiVersionSet(versionSet)
+            .HasApiVersion(version_1_0)
+            .WithName("InitiateRefund")
+            .Produces<ApiResponse<RefundResponse>>(200)
+            .Produces<ErrorResponse>(400)
+            .Produces<ErrorResponse>(403)
+            .Produces<ErrorResponse>(404)
+            .Produces<ErrorResponse>(409)
             .Produces<ErrorResponse>(500);
 
             // Webhook endpoint (no auth — protected by HMAC-SHA256 signature verification inside the service)

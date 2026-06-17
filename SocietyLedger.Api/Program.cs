@@ -78,6 +78,7 @@ var allowedOrigins = builder.Configuration
 
 builder.Services.AddCors(options =>
 {
+
     options.AddPolicy("DefaultCorsPolicy", policy =>
     {
         policy.WithOrigins(allowedOrigins)
@@ -183,6 +184,22 @@ builder.Services.AddRateLimiter(options =>
                 QueueLimit = 0
             }));
 
+    // Strict per-user limit for payment endpoints — prevents brute-force on payment verification.
+    // Applied explicitly via .RequireRateLimiting("PaymentPolicy") on /payments/create-order and /payments/verify-payment.
+    options.AddPolicy("PaymentPolicy", context =>
+    {
+        var userId = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "anonymous";
+        return RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: userId,
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 5,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            });
+    });
+
     options.OnRejected = async (context, token) =>
     {
         context.HttpContext.Response.StatusCode = 429;
@@ -252,6 +269,7 @@ builder.Services.AddSharedServices();
 // ----------------------------
 builder.Services.AddHostedService<MonthlyBillGenerationService>();
 builder.Services.AddHostedService<TrialExpirationService>();
+builder.Services.AddHostedService<SubscriptionReminderService>();
 
 // ----------------------------
 // Forwarded headers — trust Render's SSL-terminating load balancer so that
@@ -278,12 +296,15 @@ var app = builder.Build();
 // Must be first — corrects Request.Scheme / RemoteIpAddress before any other middleware reads them.
 app.UseForwardedHeaders();
 
-app.UseSwagger();
-app.UseSwaggerUI(c =>
+if (app.Environment.IsDevelopment())
 {
-    c.SwaggerEndpoint("/swagger/v1/swagger.json", "SocietyLedger API V1");
-    c.RoutePrefix = "";
-});
+    app.UseSwagger();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "SocietyLedger API V1");
+        c.RoutePrefix = "";
+    });
+}
 
 // Skip HTTPS redirect on Render — SSL is terminated at the load balancer
 if (!app.Environment.IsProduction())
@@ -329,6 +350,12 @@ app.UseSerilogRequestLogging(options =>
         diagCtx.Set("CorrelationId", httpCtx.Request.Headers["X-Correlation-ID"].FirstOrDefault() ?? httpCtx.TraceIdentifier);
     };
 });
+
+// Only capture request/response bodies in non-production environments. Production should not log raw payloads.
+if (!app.Environment.IsProduction())
+{
+    app.UseMiddleware<SocietyLedger.Api.Middlewares.ErrorBodyLoggingMiddleware>();
+}
 
 app.UseMiddleware<ExceptionMiddleware>();
 app.UseRateLimiter();
@@ -387,6 +414,9 @@ app.MapGroup(ApiRoutes.SOCIETIES)
 
 app.MapGroup(ApiRoutes.NOTIFICATIONS)
    .MapNotificationRoutes(RouteGroupNames.NOTIFICATION, versionSet);
+
+app.MapGroup(ApiRoutes.CONTACT_US)
+   .MapContactUsRoutes(RouteGroupNames.CONTACT_US, versionSet);
 
 // Dashboard endpoints
 app.MapDashboardEndpoints();

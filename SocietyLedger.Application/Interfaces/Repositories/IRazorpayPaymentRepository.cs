@@ -6,7 +6,7 @@ namespace SocietyLedger.Application.Interfaces.Repositories
     {
         Task<Payment?> GetByRazorpayOrderIdAsync(string orderId);
         Task<Payment?> GetByRazorpayPaymentIdAsync(string paymentId);
-        Task<Payment?> GetPendingSubscriptionPaymentByUserIdAsync(long userId);
+        Task<Payment?> GetPendingSubscriptionPaymentBySocietyIdAsync(long societyId);
         Task AddAsync(Payment payment);
         Task UpdateAsync(Payment payment);
         Task SaveChangesAsync();

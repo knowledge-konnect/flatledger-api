@@ -5,7 +5,6 @@ using SocietyLedger.Application.Interfaces.Services;
 using SocietyLedger.Domain.Constants;
 using SocietyLedger.Domain.Entities;
 using SocietyLedger.Domain.Exceptions;
-using SocietyLedger.Infrastructure.Persistence.Entities;
 
 namespace SocietyLedger.Infrastructure.Services
 {
@@ -15,6 +14,7 @@ namespace SocietyLedger.Infrastructure.Services
         private readonly IPlanRepository _planRepo;
         private readonly IInvoiceRepository _invoiceRepo;
         private readonly ISubscriptionEventRepository _eventRepo;
+        private readonly IUserRepository _userRepo;
         private readonly ILogger<SubscriptionService> _logger;
 
         public SubscriptionService(
@@ -22,21 +22,34 @@ namespace SocietyLedger.Infrastructure.Services
             IPlanRepository planRepo,
             IInvoiceRepository invoiceRepo,
             ISubscriptionEventRepository eventRepo,
+            IUserRepository userRepo,
             ILogger<SubscriptionService> logger)
         {
             _subscriptionRepo = subscriptionRepo;
             _planRepo = planRepo;
             _invoiceRepo = invoiceRepo;
             _eventRepo = eventRepo;
+            _userRepo = userRepo;
             _logger = logger;
         }
 
         /// <summary>
-        /// Returns the subscription status for a user, including trial days remaining and access allowed.
+        /// Returns the subscription status for the user's society (shared across admins).
         /// </summary>
         public async Task<SubscriptionStatusResponse> GetSubscriptionStatusAsync(long userId)
         {
-            var subscription = await _subscriptionRepo.GetByUserIdAsync(userId);
+            var user = await _userRepo.GetByIdAsync(userId);
+            if (user == null)
+            {
+                return new SubscriptionStatusResponse
+                {
+                    Status = "none",
+                    AccessAllowed = false
+                };
+            }
+
+            var subscription = await _subscriptionRepo.GetBySocietyIdAsync(user.SocietyId)
+                ?? await _subscriptionRepo.GetByUserIdAsync(userId);
 
             if (subscription == null)
             {
@@ -47,42 +60,7 @@ namespace SocietyLedger.Infrastructure.Services
                 };
             }
 
-            var now = DateTime.UtcNow;
-            var accessAllowed = false;
-            int? trialDaysRemaining = null;
-
-            if (subscription.Status == SubscriptionStatusCodes.Trial)
-            {
-                if (subscription.TrialEnd > now)
-                {
-                    accessAllowed = true;
-                    trialDaysRemaining = (subscription.TrialEnd - now)?.Days;
-                }
-                else
-                {
-                    accessAllowed = false; // Trial expired
-                }
-            }
-            else if (subscription.Status == SubscriptionStatusCodes.Active)
-            {
-                accessAllowed = true;
-            }
-            else if (subscription.Status == SubscriptionStatusCodes.Cancelled)
-            {
-                // Allow access until period end if cancelled
-                accessAllowed = subscription.CurrentPeriodEnd > now;
-            }
-
-            return new SubscriptionStatusResponse
-            {
-                Status = subscription.Status,
-                TrialDaysRemaining = trialDaysRemaining,
-                TrialEndDate = subscription.TrialEnd,
-                AccessAllowed = accessAllowed,
-                PlanName = subscription.Plan?.Name,
-                MonthlyAmount = subscription.Plan?.MonthlyAmount,
-                Currency = subscription.Plan?.Currency ?? "INR"
-            };
+            return MapToStatusResponse(subscription);
         }
 
         /// <summary>
@@ -90,16 +68,20 @@ namespace SocietyLedger.Infrastructure.Services
         /// </summary>
         public async Task<SubscribeResponse> SubscribeAsync(long userId, SubscribeRequest request)
         {
+            var user = await _userRepo.GetByIdAsync(userId);
+            if (user == null)
+                throw new NotFoundException("User", userId.ToString());
+
             var plan = await _planRepo.GetByIdAsync(request.PlanId);
             if (plan == null)
                 throw new NotFoundException("Plan", request.PlanId.ToString());
 
-            var existingSubscription = await _subscriptionRepo.GetByUserIdAsync(userId);
-            if (existingSubscription != null && existingSubscription.Status == SubscriptionStatusCodes.Active)
-                throw new ConflictException("User already has an active subscription.");
+            var existingSubscription = await _subscriptionRepo.GetBySocietyIdAsync(user.SocietyId)
+                ?? await _subscriptionRepo.GetByUserIdAsync(userId);
 
-            // #9 — Block re-subscribing when the current paid period hasn't ended yet.
-            //       Applies to Cancelled subscriptions that still have time remaining.
+            if (existingSubscription != null && existingSubscription.Status == SubscriptionStatusCodes.Active)
+                throw new ConflictException("This society already has an active subscription.");
+
             if (existingSubscription != null
                 && existingSubscription.Status != SubscriptionStatusCodes.Active
                 && existingSubscription.CurrentPeriodEnd.HasValue
@@ -108,20 +90,24 @@ namespace SocietyLedger.Infrastructure.Services
                     $"Your current subscription period is still active until {existingSubscription.CurrentPeriodEnd.Value:yyyy-MM-dd}. " +
                     $"You can re-subscribe after that date.");
 
-            var amount = request.Amount ?? plan.MonthlyAmount;
+            var amount = request.Amount ?? plan.Price;
             var now = DateTime.UtcNow;
+            var durationMonths = plan.DurationMonths > 0 ? plan.DurationMonths : 1;
+            var periodEnd = now.AddMonths(durationMonths);
+            var isPrepaidRazorpay = request.PaymentMethod.Equals(PaymentModeCodes.Razorpay, StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(request.PaymentReference);
 
-            // Create or update subscription
             Subscription subscription;
             if (existingSubscription != null)
             {
                 subscription = existingSubscription;
+                subscription.UserId = userId;
                 subscription.Status = SubscriptionStatusCodes.Active;
                 subscription.PlanId = request.PlanId;
                 subscription.SubscribedAmount = amount;
                 subscription.Currency = plan.Currency;
                 subscription.CurrentPeriodStart = now;
-                subscription.CurrentPeriodEnd = now.AddMonths(1);
+                subscription.CurrentPeriodEnd = periodEnd;
                 subscription.UpdatedAt = now;
                 await _subscriptionRepo.UpdateAsync(subscription);
             }
@@ -131,20 +117,19 @@ namespace SocietyLedger.Infrastructure.Services
                 {
                     Id = Guid.NewGuid(),
                     UserId = userId,
+                    SocietyId = user.SocietyId,
                     PlanId = request.PlanId,
                     Status = SubscriptionStatusCodes.Active,
                     SubscribedAmount = amount,
                     Currency = plan.Currency,
                     CurrentPeriodStart = now,
-                    CurrentPeriodEnd = now.AddMonths(1),
+                    CurrentPeriodEnd = periodEnd,
                     CreatedAt = now,
                     UpdatedAt = now
                 };
                 await _subscriptionRepo.CreateAsync(subscription);
             }
 
-            // Create invoice — the repository generates the invoice number atomically
-            // inside a pg_advisory_xact_lock, so concurrent subscriptions never clash.
             var invoice = new Invoice
             {
                 Id = Guid.NewGuid(),
@@ -154,20 +139,20 @@ namespace SocietyLedger.Infrastructure.Services
                 Amount = amount,
                 TotalAmount = amount,
                 Currency = plan.Currency,
-                Status = request.PaymentMethod.ToLower() == PaymentModeCodes.Razorpay ? InvoiceStatusCodes.Pending : InvoiceStatusCodes.Paid,
+                Status = isPrepaidRazorpay ? InvoiceStatusCodes.Paid : InvoiceStatusCodes.Pending,
                 DueDate = DateOnly.FromDateTime(now.AddDays(30)),
                 PaymentMethod = request.PaymentMethod,
                 PaymentReference = request.PaymentReference,
+                PaidDate = isPrepaidRazorpay ? now : null,
                 Description = $"Subscription to {plan.Name} plan"
             };
             await _invoiceRepo.CreateAsync(invoice);
-            // invoice.InvoiceNumber is set by the repository after CreateAsync.
 
-            // Create subscription event
             await _eventRepo.CreateAsync(new SubscriptionEvent
             {
                 Id = Guid.NewGuid(),
                 UserId = userId,
+                SocietyId = user.SocietyId,
                 SubscriptionId = subscription.Id,
                 EventType = "subscribed",
                 NewStatus = SubscriptionStatusCodes.Active,
@@ -184,20 +169,21 @@ namespace SocietyLedger.Infrastructure.Services
                 Status = invoice.Status,
                 Amount = amount,
                 InvoiceNumber = invoice.InvoiceNumber,
-                PaymentUrl = request.PaymentMethod.ToLower() == PaymentModeCodes.Razorpay ? "https://api.razorpay.com/v1/payment_links" : null // Placeholder
+                PaymentUrl = request.PaymentMethod.ToLower() == PaymentModeCodes.Razorpay ? "https://api.razorpay.com/v1/payment_links" : null
             };
         }
 
-        /// <summary>
-        /// Cancels a subscription, allows cancellation of both Active and Trial subscriptions.
-        /// </summary>
         public async Task CancelSubscriptionAsync(long userId, CancelSubscriptionRequest request)
         {
-            var subscription = await _subscriptionRepo.GetByUserIdAsync(userId);
+            var user = await _userRepo.GetByIdAsync(userId);
+            if (user == null)
+                throw new NotFoundException("User", userId.ToString());
+
+            var subscription = await _subscriptionRepo.GetBySocietyIdAsync(user.SocietyId)
+                ?? await _subscriptionRepo.GetByUserIdAsync(userId);
             if (subscription == null)
                 throw new NotFoundException("Subscription", userId.ToString());
 
-            // #8 — Allow cancellation of both Active and Trial subscriptions.
             if (subscription.Status != SubscriptionStatusCodes.Active
                 && subscription.Status != SubscriptionStatusCodes.Trial)
                 throw new ConflictException("Only active or trial subscriptions can be cancelled.");
@@ -210,11 +196,11 @@ namespace SocietyLedger.Infrastructure.Services
 
             await _subscriptionRepo.UpdateAsync(subscription);
 
-            // Create subscription event
             await _eventRepo.CreateAsync(new SubscriptionEvent
             {
                 Id = Guid.NewGuid(),
                 UserId = userId,
+                SocietyId = user.SocietyId,
                 SubscriptionId = subscription.Id,
                 EventType = "cancelled",
                 OldStatus = oldStatus,
@@ -222,21 +208,23 @@ namespace SocietyLedger.Infrastructure.Services
                 Metadata = $"{{\"reason\":\"{request.Reason}\",\"cancel_immediately\":{request.CancelImmediately.ToString().ToLower()}}}"
             });
 
-            _logger.LogInformation("User {UserId} cancelled subscription", userId);
+            _logger.LogInformation("User {UserId} cancelled subscription for society {SocietyId}", userId, user.SocietyId);
         }
 
-        /// <summary>
-        /// Creates a 30-day trial subscription for a user, idempotent.
-        /// </summary>
         public async Task CreateTrialSubscriptionAsync(long userId)
         {
-            var existingSubscription = await _subscriptionRepo.GetByUserIdAsync(userId);
-            if (existingSubscription != null)
-                return; // Already has a subscription
+            var user = await _userRepo.GetByIdAsync(userId);
+            if (user == null)
+                throw new NotFoundException("User", userId.ToString());
 
-            // Get the default plan (assuming there's a basic plan)
+            var existingSubscription = await _subscriptionRepo.GetBySocietyIdAsync(user.SocietyId)
+                ?? await _subscriptionRepo.GetByUserIdAsync(userId);
+            if (existingSubscription != null)
+                return;
+
             var plans = await _planRepo.GetActivePlansAsync();
-            var defaultPlan = plans.FirstOrDefault(p => p.Name.Contains("Basic") || p.Name.Contains("Free")) ?? plans.FirstOrDefault();
+            var defaultPlan = plans.FirstOrDefault(p => p.Name.Contains("Basic", StringComparison.OrdinalIgnoreCase))
+                ?? plans.OrderBy(p => p.DisplayOrder).FirstOrDefault();
 
             if (defaultPlan == null)
                 throw new NotFoundException("Plan", "default trial plan");
@@ -248,6 +236,7 @@ namespace SocietyLedger.Infrastructure.Services
             {
                 Id = Guid.NewGuid(),
                 UserId = userId,
+                SocietyId = user.SocietyId,
                 PlanId = defaultPlan.Id,
                 Status = SubscriptionStatusCodes.Trial,
                 SubscribedAmount = 0,
@@ -260,18 +249,73 @@ namespace SocietyLedger.Infrastructure.Services
 
             await _subscriptionRepo.CreateAsync(subscription);
 
-            // Create subscription event
             await _eventRepo.CreateAsync(new SubscriptionEvent
             {
                 Id = Guid.NewGuid(),
                 UserId = userId,
+                SocietyId = user.SocietyId,
                 SubscriptionId = subscription.Id,
                 EventType = "trial_started",
                 NewStatus = SubscriptionStatusCodes.Trial,
                 Metadata = $"{{\"trial_days\":30}}"
             });
 
-            _logger.LogInformation("Created trial subscription for user {UserId}", userId);
+            _logger.LogInformation("Created trial subscription for user {UserId} in society {SocietyId}", userId, user.SocietyId);
+        }
+
+        private static SubscriptionStatusResponse MapToStatusResponse(Subscription subscription)
+        {
+            var now = DateTime.UtcNow;
+            var accessAllowed = false;
+            int? trialDaysRemaining = null;
+
+            if (subscription.Status == SubscriptionStatusCodes.Trial)
+            {
+                if (subscription.TrialEnd > now)
+                {
+                    accessAllowed = true;
+                    trialDaysRemaining = (subscription.TrialEnd - now)?.Days;
+                }
+            }
+            else if (subscription.Status == SubscriptionStatusCodes.Active)
+            {
+                accessAllowed = true;
+            }
+            else if (subscription.Status == SubscriptionStatusCodes.Cancelled)
+            {
+                accessAllowed = subscription.CurrentPeriodEnd > now;
+            }
+
+            var subscribedAmount = subscription.SubscribedAmount > 0 ? subscription.SubscribedAmount : (decimal?)null;
+            var planAmount = subscription.Plan?.Price > 0
+                ? subscription.Plan.Price
+                : subscription.Plan?.MonthlyAmount > 0
+                    ? subscription.Plan.MonthlyAmount
+                    : (decimal?)null;
+            var amountSource = subscription.Status == SubscriptionStatusCodes.Trial
+                ? "trial"
+                : subscribedAmount.HasValue
+                    ? "subscribed"
+                    : planAmount.HasValue
+                        ? "plan"
+                        : "unknown";
+
+            return new SubscriptionStatusResponse
+            {
+                Status = subscription.Status,
+                TrialDaysRemaining = trialDaysRemaining,
+                TrialEndDate = subscription.TrialEnd,
+                AccessAllowed = accessAllowed,
+                PlanName = subscription.Plan?.Name,
+                MonthlyAmount = subscribedAmount ?? planAmount,
+                SubscribedAmount = subscribedAmount,
+                PlanMonthlyAmount = planAmount,
+                CurrentPeriodEnd = subscription.CurrentPeriodEnd,
+                AmountSource = amountSource,
+                Currency = subscription.Plan?.Currency ?? "INR",
+                DurationMonths = subscription.Plan?.DurationMonths > 0 ? subscription.Plan.DurationMonths : 1,
+                MaxFlats = subscription.Plan?.MaxFlats > 0 ? subscription.Plan.MaxFlats : null
+            };
         }
     }
 }

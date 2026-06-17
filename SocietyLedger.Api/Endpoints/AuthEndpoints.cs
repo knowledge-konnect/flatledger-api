@@ -307,6 +307,53 @@ namespace SocietyLedger.Api.Endpoints
     .Produces<ErrorResponse>(401)
     .Produces<ErrorResponse>(404)
     .Produces<ErrorResponse>(500);
+
+            // Forgot Password
+            app.MapPost("/forgot-password",
+                [AllowAnonymous]
+                [SwaggerOperation(
+                    Summary = "Request password reset",
+                    Description = "Initiates a password reset flow. A reset token will be sent to the provided email if it exists in the system. Always returns success to avoid email enumeration."
+                )]
+                async ([FromBody] ForgotPasswordRequest request, IPasswordResetService passwordResetService, HttpContext ctx) =>
+                {
+                    var ip = ctx.GetClientIp();
+                    var result = await passwordResetService.InitiatePasswordResetAsync(request, ip);
+                    return Results.Ok(ApiResponse<EmptyResponse>.Success(null, "If your email exists in our system, you will receive a password reset link."));
+                })
+            .AddEndpointFilter<FluentValidationFilter<ForgotPasswordRequest>>()
+            .RequireRateLimiting("AuthPolicy")
+            .WithTags(groupName)
+            .WithApiVersionSet(versionSet)
+            .HasApiVersion(version_1_0)
+            .WithName("ForgotPassword")
+            .Produces<ApiResponse<EmptyResponse>>(200)
+            .Produces<ErrorResponse>(400)
+            .Produces<ErrorResponse>(500);
+
+            // Reset Password
+            app.MapPost("/reset-password",
+                [AllowAnonymous]
+                [SwaggerOperation(
+                    Summary = "Reset password",
+                    Description = "Resets the password using a valid reset token. The token should be obtained from the forgot password email."
+                )]
+                async ([FromBody] ResetPasswordRequest request, IPasswordResetService passwordResetService, HttpContext ctx) =>
+                {
+                    var ip = ctx.GetClientIp();
+                    var result = await passwordResetService.ResetPasswordAsync(request, ip);
+                    return Results.Ok(ApiResponse<EmptyResponse>.Success(null, "Password has been reset successfully. You can now login with your new password."));
+                })
+            .AddEndpointFilter<FluentValidationFilter<ResetPasswordRequest>>()
+            .RequireRateLimiting("AuthPolicy")
+            .WithTags(groupName)
+            .WithApiVersionSet(versionSet)
+            .HasApiVersion(version_1_0)
+            .WithName("ResetPassword")
+            .Produces<ApiResponse<EmptyResponse>>(200)
+            .Produces<ErrorResponse>(400)
+            .Produces<ErrorResponse>(401)
+            .Produces<ErrorResponse>(500);
         }
     }
 }

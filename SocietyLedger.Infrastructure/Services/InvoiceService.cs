@@ -113,6 +113,5 @@ namespace SocietyLedger.Infrastructure.Services
                 CreatedAt = invoice.CreatedAt
             };
         }
-        }
-   
+}
 }

@@ -26,6 +26,35 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             return efSubscription?.ToDomain();
         }
 
+        public async Task<Subscription?> GetBySocietyIdAsync(long societyId)
+        {
+            var efSubscriptions = await _db.subscriptions
+                .Include(s => s.plan)
+                .AsNoTracking()
+                .Where(s => s.society_id == societyId)
+                .ToListAsync();
+
+            if (efSubscriptions.Count == 0)
+                return null;
+
+            var now = DateTime.UtcNow;
+            var best = efSubscriptions
+                .OrderByDescending(s => ScoreSubscription(s, now))
+                .ThenByDescending(s => s.updated_at ?? s.created_at)
+                .First();
+
+            return best.ToDomain();
+        }
+
+        private static int ScoreSubscription(subscription s, DateTime now)
+        {
+            if (s.status == SubscriptionStatusCodes.Active) return 1000;
+            if (s.status == SubscriptionStatusCodes.Trial && s.trial_end > now) return 900;
+            if (s.status == SubscriptionStatusCodes.Cancelled && s.current_period_end > now) return 800;
+            if (s.status == SubscriptionStatusCodes.Trial) return 100;
+            return 0;
+        }
+
         public async Task<Subscription?> GetByIdAsync(Guid id)
         {
             var efSubscription = await _db.subscriptions
@@ -59,6 +88,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             var now = DateTime.UtcNow;
             var efSubscriptions = await _db.subscriptions
                 .Include(s => s.plan)
+                .AsNoTracking()
                 .Where(s => s.status == SubscriptionStatusCodes.Trial && s.trial_end < now)
                 .ToListAsync();
 
@@ -69,6 +99,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
         {
             var efSubscriptions = await _db.subscriptions
                 .Include(s => s.plan)
+                .AsNoTracking()
                 .Where(s => s.status == SubscriptionStatusCodes.Active)
                 .ToListAsync();
 

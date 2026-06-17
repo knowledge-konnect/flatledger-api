@@ -88,6 +88,10 @@ public partial class AppDbContext : DbContext
 
     public virtual DbSet<refresh_token> refresh_tokens { get; set; }
 
+    public virtual DbSet<password_reset_token> password_reset_tokens { get; set; }
+
+    public virtual DbSet<email_notification_log> email_notification_logs { get; set; }
+
     public virtual DbSet<role> roles { get; set; }
 
     public virtual DbSet<schema> schemas { get; set; }
@@ -687,6 +691,40 @@ public partial class AppDbContext : DbContext
                 .HasConstraintName("users_role_id_fkey");
 
             entity.HasOne(d => d.society).WithMany(p => p.users).HasConstraintName("users_society_id_fkey");
+        });
+
+        modelBuilder.Entity<password_reset_token>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Id)
+                .HasColumnName("id");
+
+            entity.Property(e => e.user_id)
+                .HasColumnName("user_id");
+
+            entity.Property(e => e.token_hash)
+                .HasColumnName("token_hash");
+
+            entity.Property(e => e.expires_at)
+                .HasColumnName("expires_at");
+
+            entity.Property(e => e.created_at)
+                .HasColumnName("created_at");
+
+            entity.Property(e => e.created_by_ip)
+                .HasColumnName("created_by_ip");
+
+            entity.Property(e => e.is_used)
+                .HasColumnName("is_used");
+
+            entity.Property(e => e.used_at)
+                .HasColumnName("used_at");
+
+            entity.HasOne(e => e.user)
+                .WithMany()
+                .HasForeignKey(e => e.user_id)
+                .HasConstraintName("password_reset_tokens_user_id_fkey");
         });
 
         OnModelCreatingPartial(modelBuilder);

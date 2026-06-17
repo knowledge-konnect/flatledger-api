@@ -1,7 +1,9 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using SocietyLedger.Application.DTOs;
 using SocietyLedger.Application.DTOs.Auth;
+using SocietyLedger.Application.DTOs.Email;
 using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Application.Interfaces.Services;
 using SocietyLedger.Domain.Constants;
@@ -21,6 +23,8 @@ namespace SocietyLedger.Infrastructure.Services
         private readonly ISocietyRepository _societyRepo;
         private readonly ITokenService _tokenService;
         private readonly ISubscriptionService _subscriptionService;
+        private readonly IEmailService _emailService;
+        private readonly EmailSettings _emailSettings;
         private readonly PasswordHasher _hasher;
         private readonly ILogger<AuthService> _logger;
         private readonly AppDbContext _db;
@@ -31,6 +35,8 @@ namespace SocietyLedger.Infrastructure.Services
             ISocietyRepository societyRepo,
             ITokenService tokenService,
             ISubscriptionService subscriptionService,
+            IEmailService emailService,
+            IOptions<EmailSettings> emailSettings,
             PasswordHasher hasher,
             ILogger<AuthService> logger,
             AppDbContext db)
@@ -40,6 +46,8 @@ namespace SocietyLedger.Infrastructure.Services
             _societyRepo = societyRepo;
             _tokenService = tokenService;
             _subscriptionService = subscriptionService;
+            _emailService = emailService;
+            _emailSettings = emailSettings.Value;
             _hasher = hasher;
             _logger = logger;
             _db = db;
@@ -198,6 +206,39 @@ namespace SocietyLedger.Infrastructure.Services
             _logger.LogInformation(
                 "New user {UserId} registered new society {SocietyId} from {IP}",
                 user.Id, society.Id, ipAddress);
+
+            // Send welcome email — best-effort, does not affect registration result.
+            try
+            {
+                var welcomeData = new WelcomeEmailData
+                {
+                    RecipientName = user.Name,
+                    RecipientEmail = user.Email ?? string.Empty,
+                    SocietyName = society.Name ?? string.Empty,
+                    AdminName = user.Name,
+                    LoginUrl = _emailSettings.FrontendUrl?.TrimEnd('/') + "/login",
+                    CurrentPlanName = "Trial"
+                };
+                var welcomeSent = await _emailService.SendWelcomeEmailAsync(user.Email ?? string.Empty, user.Name, welcomeData);
+                await _db.email_notification_logs.AddAsync(new Infrastructure.Persistence.Entities.email_notification_log
+                {
+                    notification_type = "welcome",
+                    recipient_email = user.Email ?? string.Empty,
+                    recipient_name = user.Name,
+                    subject = $"Welcome to FlatLedger, {society.Name}!",
+                    sent_at = DateTime.UtcNow,
+                    sent_by_system = true,
+                    status = welcomeSent ? "sent" : "failed",
+                    error_message = welcomeSent ? null : "Email delivery failed",
+                    society_id = society.Id,
+                    user_id = user.Id
+                });
+                await _db.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to send welcome email to user {UserId}", user.Id);
+            }
 
             return new RegisterResponse
             {

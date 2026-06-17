@@ -373,11 +373,19 @@ CREATE TABLE public.plan_components (
 CREATE TABLE public.plans (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   name character varying NOT NULL,
-  monthly_amount numeric NOT NULL,
+  price numeric NOT NULL,
+  monthly_amount numeric NOT NULL DEFAULT 0,
   currency character varying NOT NULL DEFAULT 'INR'::character varying,
   is_active boolean DEFAULT true,
   created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone,
   duration_months integer NOT NULL DEFAULT 1,
+  max_flats integer NOT NULL DEFAULT 0,
+  plan_group character varying,
+  discount_percentage integer,
+  display_order integer NOT NULL DEFAULT 0,
+  is_popular boolean NOT NULL DEFAULT false,
+  description text,
   CONSTRAINT plans_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.platform_settings (
@@ -506,4 +514,35 @@ CREATE TABLE public.users (
   CONSTRAINT users_pkey PRIMARY KEY (id),
   CONSTRAINT users_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.roles(id),
   CONSTRAINT users_society_id_fkey FOREIGN KEY (society_id) REFERENCES public.societies(id)
+);
+
+CREATE TABLE public.password_reset_tokens (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  user_id bigint NOT NULL,
+  token_hash text NOT NULL,
+  expires_at timestamp with time zone NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  created_by_ip text,
+  is_used boolean NOT NULL DEFAULT false,
+  used_at timestamp with time zone,
+  CONSTRAINT password_reset_tokens_pkey PRIMARY KEY (id),
+  CONSTRAINT password_reset_tokens_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
+);
+
+CREATE TABLE public.email_notification_logs (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  notification_type text NOT NULL,
+  recipient_email text NOT NULL,
+  recipient_name text,
+  subject text NOT NULL,
+  sent_at timestamp with time zone NOT NULL DEFAULT now(),
+  sent_by_system boolean NOT NULL DEFAULT true,
+  status text NOT NULL DEFAULT 'sent',
+  error_message text,
+  society_id bigint,
+  user_id bigint,
+  metadata jsonb,
+  CONSTRAINT email_notification_logs_pkey PRIMARY KEY (id),
+  CONSTRAINT email_notification_logs_society_id_fkey FOREIGN KEY (society_id) REFERENCES public.societies(id),
+  CONSTRAINT email_notification_logs_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );

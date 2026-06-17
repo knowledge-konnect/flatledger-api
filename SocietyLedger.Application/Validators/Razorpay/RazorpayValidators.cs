@@ -30,4 +30,18 @@ namespace SocietyLedger.Application.Validators.Razorpay
                 .WithMessage("Signature is required.");
         }
     }
+
+    public class RefundRequestValidator : AbstractValidator<RefundRequest>
+    {
+        public RefundRequestValidator()
+        {
+            RuleFor(x => x.PaymentId)
+                .NotEmpty()
+                .WithMessage("PaymentId is required.");
+
+            RuleFor(x => x.Amount)
+                .GreaterThan(0)
+                .WithMessage("Amount must be greater than 0.");
+        }
+    }
 }

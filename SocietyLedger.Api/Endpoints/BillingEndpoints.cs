@@ -25,11 +25,11 @@ namespace SocietyLedger.Api.Endpoints
             // GET /billing/status
             app.MapGet("/status",
                 [Authorize]
-                [SwaggerOperation(
-                    Summary     = "Get billing status",
+            [SwaggerOperation(
+                    Summary = "Get billing status",
                     Description = "Returns whether bills have been generated for the current calendar month and how many were created."
                 )]
-                async (IBillingService billingService, HttpContext ctx) =>
+            async (IBillingService billingService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
 
@@ -58,13 +58,13 @@ namespace SocietyLedger.Api.Endpoints
             // internally, so logic is never duplicated.
             app.MapPost("/generate-monthly",
                 [Authorize]
-                [SwaggerOperation(
-                    Summary     = "Generate monthly maintenance bills (society admin)",
+            [SwaggerOperation(
+                    Summary = "Generate monthly maintenance bills (society admin)",
                     Description = "Generates maintenance bills for all active flats in the calling user's society " +
                                   "for the specified month (YYYY-MM). Defaults to current UTC month when omitted. " +
                                   "Returns 409 if bills have already been generated for that period."
                 )]
-                async ([FromBody] GenerateMonthlyBillsRequest request, IBillingService billingService, HttpContext ctx) =>
+            async ([FromBody] GenerateMonthlyBillsRequest request, IBillingService billingService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
 
@@ -77,10 +77,13 @@ namespace SocietyLedger.Api.Endpoints
                     }
 
                     if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
-                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
+                    {
+                        var errorResponse = ErrorResponse.Create(ErrorCodes.INSUFFICIENT_PERMISSIONS, ErrorMessages.INSUFFICIENT_PERMISSIONS, ctx.TraceIdentifier);
+                        return Results.Json(errorResponse, statusCode: 403);
+                    }
 
-                    var billingMonthDate = request.GetBillingMonthDate();
-                    var period           = billingMonthDate.ToString("yyyy-MM");
+                    var billingMonthDate = request?.GetBillingMonthDate() ?? new GenerateMonthlyBillsRequest().GetBillingMonthDate();
+                    var period = billingMonthDate.ToString("yyyy-MM");
 
                     Log.Information(
                         "Manual billing trigger. UserId={UserId}, Period={Period}, TraceId={TraceId}",
@@ -109,12 +112,12 @@ namespace SocietyLedger.Api.Endpoints
             // Admin-only endpoint: manually triggers the same all-societies monthly billing logic used by the background service.
             app.MapPost("/trigger-monthly-job-now",
                 [Authorize("SuperAdmin")]
-                [SwaggerOperation(
-                    Summary     = "Trigger monthly billing job now (SuperAdmin only)",
+            [SwaggerOperation(
+                    Summary = "Trigger monthly billing job now (SuperAdmin only)",
                     Description = "Runs the monthly billing background logic immediately for the current UTC month across societies. " +
                                   "Intended for verification/recovery; safe to re-run because existing bills are skipped. SuperAdmin access required."
                 )]
-                async (IBillingService billingService, HttpContext ctx) =>
+            async (IBillingService billingService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
                     if (userId == 0)
@@ -123,9 +126,10 @@ namespace SocietyLedger.Api.Endpoints
                             statusCode: 401);
 
                     if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
-                        return Results.Json(
-                            new { error = "Forbidden", message = "You do not have permission to perform this action." },
-                            statusCode: 403);
+                    {
+                        var errorResponse = ErrorResponse.Create(ErrorCodes.INSUFFICIENT_PERMISSIONS, ErrorMessages.INSUFFICIENT_PERMISSIONS, ctx.TraceIdentifier);
+                        return Results.Json(errorResponse, statusCode: 403);
+                    }
 
                     var billingMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
                     var result = await billingService.GenerateMonthlyBillsAsync(billingMonth);
@@ -146,11 +150,11 @@ namespace SocietyLedger.Api.Endpoints
             // Generates a bill for a specific flat for the current month (idempotent).
             app.MapPost("/generate-for-flat",
                 [Authorize]
-                [SwaggerOperation(
-                    Summary     = "Generate bill for a flat",
+            [SwaggerOperation(
+                    Summary = "Generate bill for a flat",
                     Description = "Generates a bill for a specific flat in a society for the current month. Idempotent: does nothing if bill already exists."
                 )]
-                async ([FromBody] GenerateBillForFlatRequest request, IBillingService billingService, HttpContext ctx) =>
+            async ([FromBody] GenerateBillForFlatRequest request, IBillingService billingService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
                     if (userId == 0)

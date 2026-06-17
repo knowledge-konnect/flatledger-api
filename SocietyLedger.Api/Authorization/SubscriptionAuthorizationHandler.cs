@@ -54,9 +54,8 @@ namespace SocietyLedger.Api.Authorization
                 // Check subscription status
                 var subscriptionStatus = await _subscriptionService.GetSubscriptionStatusAsync(userId);
 
-                // Allow access if subscription is active or trial is still valid
-                if (subscriptionStatus.Status == SubscriptionStatusCodes.Active ||
-                    (subscriptionStatus.Status == SubscriptionStatusCodes.Trial && subscriptionStatus.TrialEndDate > DateTime.UtcNow))
+                // Allow access if the subscription service determines access is allowed
+                if (subscriptionStatus.AccessAllowed)
                 {
                     context.Succeed(requirement);
                     return;

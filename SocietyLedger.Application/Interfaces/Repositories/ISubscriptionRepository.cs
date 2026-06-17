@@ -5,6 +5,7 @@ namespace SocietyLedger.Application.Interfaces.Repositories
     public interface ISubscriptionRepository
     {
         Task<Subscription?> GetByUserIdAsync(long userId);
+        Task<Subscription?> GetBySocietyIdAsync(long societyId);
         Task<Subscription?> GetByIdAsync(Guid id);
         Task CreateAsync(Subscription subscription);
         Task UpdateAsync(Subscription subscription);

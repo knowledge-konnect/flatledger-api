@@ -69,7 +69,6 @@ namespace SocietyLedger.Infrastructure.Services
             };
 
             await _expenseRepo.AddAsync(expenseEntity);
-            await _expenseRepo.SaveChangesAsync();
 
             Log.Information("Expense created successfully by user {UserId} for society {SocietyId}", userId, societyId);
             

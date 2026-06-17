@@ -265,63 +265,73 @@ namespace SocietyLedger.Infrastructure.Services
             if (string.IsNullOrWhiteSpace(dto.Password))
                 throw new ValidationException("Password is required.");
 
-
-            // Check for duplicate email in the same society
-            if (!string.IsNullOrWhiteSpace(dto.Email))
-            {
-                var existingEmail = await _userRepo.GetByEmailAndSocietyAsync(dto.Email, societyId);
-                if (existingEmail != null)
-                    throw new DuplicateException("user", "email");
-            }
-
-            // Check for duplicate username in the same society
-            if (!string.IsNullOrWhiteSpace(dto.Username))
-            {
-                var existingUsername = await _userRepo.GetByUsernameAndSocietyAsync(dto.Username, societyId);
-                if (existingUsername != null)
-                    throw new DuplicateException("user", "username");
-            }
-
-            if (!string.IsNullOrEmpty(dto.Mobile))
-            {
-                var existingMobile = await _userRepo.GetByMobileAndSocietyAsync(dto.Mobile, societyId);
-                if (existingMobile != null)
-                    throw new DuplicateException("user", "mobile number");
-            }
-
             var role = await _roleRepo.GetByCodeAsync(dto.RoleCode);
             if (role == null)
                 throw new InvalidOperationException($"Role with code '{dto.RoleCode}' not found.");
 
-            // Hash the admin-provided password
+            // Hash the admin-provided password (do this outside transaction)
             var passwordHash = _hasher.Hash(dto.Password);
-            var user = new User
+
+            // Wrap duplicate checks + creation in a transaction to prevent race conditions
+            using var transaction = await _db.Database.BeginTransactionAsync();
+            try
             {
-                PublicId = Guid.NewGuid(),
-                Name = dto.Name,
-                Email = dto.Email,
-                Username = dto.Username,
-                Mobile = dto.Mobile,
-                RoleId = role.Id,
-                SocietyId = societyId,
-                PasswordHash = passwordHash,
-                IsActive = true,
-                ForcePasswordChange = true,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
-            };
+                // Check for duplicate email in the same society
+                if (!string.IsNullOrWhiteSpace(dto.Email))
+                {
+                    var existingEmail = await _userRepo.GetByEmailAndSocietyAsync(dto.Email, societyId);
+                    if (existingEmail != null)
+                        throw new DuplicateException("user", "email");
+                }
 
-            await _userRepo.AddAsync(user);
-            await _userRepo.SaveChangesAsync();
+                // Check for duplicate username in the same society
+                if (!string.IsNullOrWhiteSpace(dto.Username))
+                {
+                    var existingUsername = await _userRepo.GetByUsernameAndSocietyAsync(dto.Username, societyId);
+                    if (existingUsername != null)
+                        throw new DuplicateException("user", "username");
+                }
 
-            _logger.LogInformation("User {Email} created in society {SocietyId}", user.Email, societyId);
+                if (!string.IsNullOrEmpty(dto.Mobile))
+                {
+                    var existingMobile = await _userRepo.GetByMobileAndSocietyAsync(dto.Mobile, societyId);
+                    if (existingMobile != null)
+                        throw new DuplicateException("user", "mobile number");
+                }
 
-            return new CreateUserResponseDto(
-                PublicId: user.PublicId,
-                Email: user.Email ?? string.Empty,
-                Username: user.Username ?? string.Empty,
-                Message: "User created successfully"
-            );
+                var user = new User
+                {
+                    PublicId = Guid.NewGuid(),
+                    Name = dto.Name,
+                    Email = dto.Email,
+                    Username = dto.Username,
+                    Mobile = dto.Mobile,
+                    RoleId = role.Id,
+                    SocietyId = societyId,
+                    PasswordHash = passwordHash,
+                    IsActive = true,
+                    ForcePasswordChange = true,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+
+                await _userRepo.AddAsync(user);
+                await transaction.CommitAsync();
+
+                _logger.LogInformation("User {Email} created in society {SocietyId}", user.Email, societyId);
+
+                return new CreateUserResponseDto(
+                    PublicId: user.PublicId,
+                    Email: user.Email ?? string.Empty,
+                    Username: user.Username ?? string.Empty,
+                    Message: "User created successfully"
+                );
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
         }
 
         /// <summary>

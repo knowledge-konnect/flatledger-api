@@ -77,6 +77,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
         {
             if (entity == null) throw new ArgumentNullException(nameof(entity));
             await _db.expenses.AddAsync((expense)entity);
+            await _db.SaveChangesAsync();
         }
 
         public async Task UpdateAsync(object entity)

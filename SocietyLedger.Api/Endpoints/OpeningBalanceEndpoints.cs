@@ -135,7 +135,10 @@ namespace SocietyLedger.Api.Endpoints
                     }
 
                     if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
-                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
+                    {
+                        var errorResponse = ErrorResponse.Create(ErrorCodes.INSUFFICIENT_PERMISSIONS, ErrorMessages.INSUFFICIENT_PERMISSIONS, ctx.TraceIdentifier);
+                        return Results.Json(errorResponse, statusCode: 403);
+                    }
 
                     // Get user to extract societyId
                     var user = await userRepository.GetByIdAsync(userId);
