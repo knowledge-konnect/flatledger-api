@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Text.Json;
 using SocietyLedger.Domain.Entities;
 using SocietyLedger.Infrastructure.Persistence.Entities;
 
@@ -272,21 +273,16 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
         {
             if (src == null) return null;
 
+            var price = src.price > 0 ? src.price : src.monthly_amount;
+
             return new Plan
             {
                 Id = src.id,
                 Name = src.name,
-                Price = src.price,
+                MonthlyAmount = src.monthly_amount,
                 Currency = src.currency,
                 IsActive = src.is_active,
-                CreatedAt = src.created_at,
-                MaxFlats = src.max_flats,
-                DisplayOrder = src.display_order,
-                IsPopular = src.is_popular,
-                Description = src.description,
-                DiscountPercentage = src.discount_percentage,
-                PlanGroup = src.plan_group,
-                DurationMonths = src.duration_months
+                CreatedAt = src.created_at
             };
         }
 
@@ -294,21 +290,16 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
         {
             if (src == null) throw new ArgumentNullException(nameof(src));
 
+            var price = src.Price > 0 ? src.Price : src.MonthlyAmount;
+
             return new plan
             {
                 id = src.Id,
                 name = src.Name,
-                price = src.Price,
-                max_flats = src.MaxFlats,
-                display_order = src.DisplayOrder,
-                is_popular = src.IsPopular,
-                description = src.Description,
-                discount_percentage = src.DiscountPercentage,
-                plan_group = src.PlanGroup,
+                monthly_amount = src.MonthlyAmount,
                 currency = src.Currency,
                 is_active = src.IsActive,
-                created_at = src.CreatedAt,
-                duration_months = src.DurationMonths
+                created_at = src.CreatedAt
             };
         }
 
@@ -385,6 +376,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             {
                 Id = src.id,
                 UserId = src.user_id,
+                SocietyId = src.society_id,
                 SubscriptionId = src.subscription_id,
                 EventType = src.event_type,
                 OldStatus = src.old_status,

@@ -85,6 +85,16 @@ namespace SocietyLedger.Api.Endpoints
                     IUserService userService) =>
                 {
                     var authUserId = ctx.GetAuthenticatedUserId();
+                    if (authUserId == 0)
+                    {
+                        Log.Warning("Unauthorized user create request - invalid user ID");
+                        var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, ErrorMessages.UNAUTHORIZED, ctx.TraceIdentifier);
+                        return Results.Json(errorResponse, statusCode: 401);
+                    }
+
+                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
+                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
+
                     var created = await userService.CreateUserForAdminAsync(request, authUserId);
                     Log.Information("User {Email} created by {UserId}", request.Email, authUserId);
                     return Results.Created(string.Empty, ApiResponse<CreateUserResponseDto>.Success(created, "User created successfully"));

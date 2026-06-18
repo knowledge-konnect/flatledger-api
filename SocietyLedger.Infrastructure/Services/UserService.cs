@@ -270,49 +270,43 @@ namespace SocietyLedger.Infrastructure.Services
             if (string.IsNullOrWhiteSpace(dto.Password))
                 throw new ValidationException("Password is required.");
 
-            var normalizedName = dto.Name?.Trim() ?? string.Empty;
-            var normalizedEmail = NormalizeEmail(dto.Email);
-            var normalizedUsername = NormalizeUsername(dto.Username);
-            var normalizedMobile = NormalizeMobile(dto.Mobile);
-
 
             // Check for duplicate email in the same society
-            if (!string.IsNullOrWhiteSpace(normalizedEmail))
+            if (!string.IsNullOrWhiteSpace(dto.Email))
             {
-                var existingEmail = await _userRepo.GetByEmailAndSocietyAsync(normalizedEmail, societyId);
+                var existingEmail = await _userRepo.GetByEmailAndSocietyAsync(dto.Email, societyId);
                 if (existingEmail != null)
                     throw new DuplicateException("user", "email");
             }
 
             // Check for duplicate username in the same society
-            if (!string.IsNullOrWhiteSpace(normalizedUsername))
+            if (!string.IsNullOrWhiteSpace(dto.Username))
             {
-                var existingUsername = await _userRepo.GetByUsernameAndSocietyAsync(normalizedUsername, societyId);
+                var existingUsername = await _userRepo.GetByUsernameAndSocietyAsync(dto.Username, societyId);
                 if (existingUsername != null)
                     throw new DuplicateException("user", "username");
             }
 
-            if (!string.IsNullOrEmpty(normalizedMobile))
+            if (!string.IsNullOrEmpty(dto.Mobile))
             {
-                var existingMobile = await _userRepo.GetByMobileAndSocietyAsync(normalizedMobile, societyId);
+                var existingMobile = await _userRepo.GetByMobileAndSocietyAsync(dto.Mobile, societyId);
                 if (existingMobile != null)
                     throw new DuplicateException("user", "mobile number");
             }
 
-            var roleCode = string.IsNullOrWhiteSpace(dto.RoleCode) ? RoleCodes.Viewer : dto.RoleCode;
-            var role = await _roleRepo.GetByCodeAsync(roleCode);
+            var role = await _roleRepo.GetByCodeAsync(dto.RoleCode);
             if (role == null)
-                throw new InvalidOperationException($"Role with code '{roleCode}' not found.");
+                throw new InvalidOperationException($"Role with code '{dto.RoleCode}' not found.");
 
             // Hash the admin-provided password
             var passwordHash = _hasher.Hash(dto.Password);
             var user = new User
             {
                 PublicId = Guid.NewGuid(),
-                Name = normalizedName,
-                Email = normalizedEmail,
-                Username = normalizedUsername,
-                Mobile = normalizedMobile,
+                Name = dto.Name,
+                Email = dto.Email,
+                Username = dto.Username,
+                Mobile = dto.Mobile,
                 RoleId = role.Id,
                 SocietyId = societyId,
                 PasswordHash = passwordHash,
@@ -322,25 +316,23 @@ namespace SocietyLedger.Infrastructure.Services
                 UpdatedAt = DateTime.UtcNow
             };
 
-            try
-            {
-                await _userRepo.AddAsync(user);
-                await _userRepo.SaveChangesAsync();
-            }
-            catch (DbUpdateException ex) when (ex.IsUniqueConstraintViolation())
-            {
-                _logger.LogWarning(ex, "Concurrent duplicate user creation blocked for society {SocietyId}", societyId);
-                throw new DuplicateException("user", "email/username/mobile");
-            }
+            await _userRepo.AddAsync(user);
+            await _userRepo.SaveChangesAsync();
 
-            _logger.LogInformation("User {Email} created in society {SocietyId}", user.Email, societyId);
+                _logger.LogInformation("User {Email} created in society {SocietyId}", user.Email, societyId);
 
-            return new CreateUserResponseDto(
-                PublicId: user.PublicId,
-                Email: user.Email ?? string.Empty,
-                Username: user.Username ?? string.Empty,
-                Message: "User created successfully"
-            );
+                return new CreateUserResponseDto(
+                    PublicId: user.PublicId,
+                    Email: user.Email ?? string.Empty,
+                    Username: user.Username ?? string.Empty,
+                    Message: "User created successfully"
+                );
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
         }
 
         /// <summary>

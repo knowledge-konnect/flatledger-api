@@ -35,6 +35,16 @@ namespace SocietyLedger.Api.Endpoints
             async ([FromBody] CreateFlatDto request, [FromServices] IFlatService service, HttpContext ctx) =>
             {
                 var userId = ctx.GetUserId();
+                if (userId == 0)
+                {
+                    Log.Warning("Unauthorized flat create request - invalid user ID");
+                    var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid or missing authentication token", ctx.TraceIdentifier);
+                    return Results.Json(errorResponse, statusCode: 401);
+                }
+
+                if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
+                    return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
+
                 var result = await service.CreateAsync(request, userId);
                 Log.Information("Flat created successfully for FlatNo {FlatNo}", request.FlatNo);
                 return Results.Created($"/flats/{result.PublicId}", ApiResponse<FlatResponseDto>.Success(result, "Flat created successfully"));
@@ -77,9 +87,12 @@ namespace SocietyLedger.Api.Endpoints
                 if (!new[] { "asc", "desc" }.Contains(resolvedSortDir, StringComparer.OrdinalIgnoreCase))
                     return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, "Invalid sort direction. Use 'asc' or 'desc'.", ctx.TraceIdentifier));
 
-                // Always paginate — default page=1, size=20, max size=100.
-                var resolvedPage = (page ?? 1) < 1 ? 1 : (page ?? 1);
-                var resolvedSize = Math.Min(size ?? 20, 100);
+        if (flats == null || !flats.Any())
+        {
+            Log.Warning("No flats found for SocietyId {SocietyId}", societyId);
+            var errorResponse = ErrorResponse.Create(ErrorCodes.RESOURCE_NOT_FOUND, ErrorMessages.RESOURCE_NOT_FOUND, ctx.TraceIdentifier);
+            return Results.Json(errorResponse, statusCode: 404);
+        }
 
                 if (resolvedPage < 1)
                     return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, "Page number must be 1 or greater.", ctx.TraceIdentifier));

@@ -386,19 +386,12 @@ CREATE TABLE public.plan_price_history (
 );
 CREATE TABLE public.plans (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
-  name character varying NOT NULL UNIQUE,
-  price numeric NOT NULL CHECK (price > 0::numeric),
+  name character varying NOT NULL,
+  monthly_amount numeric NOT NULL,
   currency character varying NOT NULL DEFAULT 'INR'::character varying,
   is_active boolean DEFAULT true,
   created_at timestamp with time zone DEFAULT now(),
-  duration_months integer NOT NULL DEFAULT 1 CHECK (duration_months = ANY (ARRAY[1, 12])),
-  max_flats integer NOT NULL CHECK (max_flats > 0),
-  display_order integer DEFAULT 0,
-  is_popular boolean DEFAULT false,
-  description text,
-  discount_percentage integer,
-  plan_group character varying,
-  updated_at timestamp with time zone DEFAULT now(),
+  duration_months integer NOT NULL DEFAULT 1,
   CONSTRAINT plans_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.platform_settings (
@@ -555,7 +548,4 @@ CREATE TABLE public.users (
   CONSTRAINT users_pkey PRIMARY KEY (id),
   CONSTRAINT users_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.roles(id),
   CONSTRAINT users_society_id_fkey FOREIGN KEY (society_id) REFERENCES public.societies(id)
-);
-CREATE TABLE public.v_opening_bal (
-  coalesce numeric
 );

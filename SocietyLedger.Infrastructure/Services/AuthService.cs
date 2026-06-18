@@ -2,8 +2,10 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using SocietyLedger.Application.DTOs;
 using SocietyLedger.Application.DTOs.Auth;
+using SocietyLedger.Application.DTOs.Email;
 using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Application.Interfaces.Services;
 using SocietyLedger.Domain.Constants;
@@ -22,7 +24,6 @@ namespace SocietyLedger.Infrastructure.Services
         private readonly ISocietyRepository _societyRepo;
         private readonly ITokenService _tokenService;
         private readonly ISubscriptionService _subscriptionService;
-        private readonly IEmailService _emailService;
         private readonly PasswordHasher _hasher;
         private readonly ILogger<AuthService> _logger;
         private readonly AppDbContext _db;
@@ -39,7 +40,6 @@ namespace SocietyLedger.Infrastructure.Services
             ISocietyRepository societyRepo,
             ITokenService tokenService,
             ISubscriptionService subscriptionService,
-            IEmailService emailService,
             PasswordHasher hasher,
             ILogger<AuthService> logger,
             AppDbContext db,
@@ -52,7 +52,6 @@ namespace SocietyLedger.Infrastructure.Services
             _societyRepo = societyRepo;
             _tokenService = tokenService;
             _subscriptionService = subscriptionService;
-            _emailService = emailService;
             _hasher = hasher;
             _logger = logger;
             _db = db;
@@ -218,30 +217,6 @@ namespace SocietyLedger.Infrastructure.Services
             _logger.LogInformation(
                 "New user {UserPublicId} registered new society {SocietyId} from {IP}",
                 user.PublicId, society.Id, ipAddress);
-
-            // Send welcome email after commit. Failures are logged but never fail the registration.
-            try
-            {
-                var loginUrl = _configuration["Email:LoginUrl"];
-                if (string.IsNullOrWhiteSpace(loginUrl))
-                    loginUrl = $"{_configuration["Frontend:BaseUrl"]?.TrimEnd('/')}/login";
-
-                var planName = trialSubscription?.Plan?.Name ?? "Free Trial";
-                var trialEnd = trialSubscription?.TrialEnd ?? DateTime.UtcNow.AddDays(30);
-
-                await _emailService.SendWelcomeEmailAsync(
-                    user.Email!,
-                    user.Name,
-                    society.Name,
-                    planName,
-                    trialEnd,
-                    loginUrl,
-                    CancellationToken.None);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Welcome email failed for user {UserId} — registration already committed", user.Id);
-            }
 
             return new RegisterResponse
             {

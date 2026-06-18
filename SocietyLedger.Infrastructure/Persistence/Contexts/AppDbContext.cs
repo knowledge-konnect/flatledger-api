@@ -90,6 +90,10 @@ public partial class AppDbContext : DbContext
 
     public virtual DbSet<refresh_token> refresh_tokens { get; set; }
 
+    public virtual DbSet<password_reset_token> password_reset_tokens { get; set; }
+
+    public virtual DbSet<email_notification_log> email_notification_logs { get; set; }
+
     public virtual DbSet<role> roles { get; set; }
 
     public virtual DbSet<schema> schemas { get; set; }
@@ -706,15 +710,6 @@ public partial class AppDbContext : DbContext
                 .HasConstraintName("users_role_id_fkey");
 
             entity.HasOne(d => d.society).WithMany(p => p.users).HasConstraintName("users_society_id_fkey");
-        });
-
-        modelBuilder.Entity<contact_request>(entity =>
-        {
-            entity.HasKey(e => e.id).HasName("contact_requests_pkey");
-            entity.Property(e => e.id).UseIdentityAlwaysColumn();
-            entity.Property(e => e.public_id).HasDefaultValueSql("gen_random_uuid()");
-            entity.Property(e => e.status).HasDefaultValue("New");
-            entity.Property(e => e.created_at).HasDefaultValueSql("now()");
         });
 
         OnModelCreatingPartial(modelBuilder);

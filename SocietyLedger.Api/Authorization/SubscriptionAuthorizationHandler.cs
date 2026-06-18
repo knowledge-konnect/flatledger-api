@@ -67,13 +67,12 @@ namespace SocietyLedger.Api.Authorization
                     var isTrial = status.Status == SubscriptionStatusCodes.Trial && status.TrialEndDate > DateTime.UtcNow;
                     isActive = status.Status == SubscriptionStatusCodes.Active || isTrial;
 
-                    // Only cache positive results — expired subscriptions must fail immediately.
-                    // Trials use a shorter TTL so expiry is detected within 1 minute.
-                    if (isActive)
-                    {
-                        var ttl = isTrial ? CacheTtlTrial : CacheTtlPaid;
-                        _cache.Set(cacheKey, true, ttl);
-                    }
+                // Allow access if subscription is active or trial is still valid
+                if (subscriptionStatus.Status == SubscriptionStatusCodes.Active ||
+                    (subscriptionStatus.Status == SubscriptionStatusCodes.Trial && subscriptionStatus.TrialEndDate > DateTime.UtcNow))
+                {
+                    context.Succeed(requirement);
+                    return;
                 }
 
                 if (isActive)

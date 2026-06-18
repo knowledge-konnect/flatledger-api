@@ -31,6 +31,17 @@ namespace SocietyLedger.Api.Endpoints
             async ([FromBody] CreateExpenseRequest request, IExpenseService expenseService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
+                    
+                    if (userId == 0)
+                    {
+                        Log.Warning("Unauthorized expense create request - invalid user ID");
+                        var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid or missing authentication token", ctx.TraceIdentifier);
+                        return Results.Json(errorResponse, statusCode: 401);
+                    }
+
+                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
+                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
+
                     var result = await expenseService.CreateExpenseAsync(userId, request);
                     Log.Information("Expense created successfully by user {UserId}", userId);
                     return Results.Created($"/expenses/{result.PublicId}", ApiResponse<ExpenseResponse>.Success(result, "Expense created successfully"));
@@ -203,6 +214,8 @@ namespace SocietyLedger.Api.Endpoints
             async (Guid publicId, [FromBody] UpdateExpenseRequest request, IExpenseService expenseService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
+                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
+                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
                     var result = await expenseService.UpdateExpenseAsync(publicId, userId, request);
                     return Results.Ok(ApiResponse<ExpenseResponse>.Success(result, "Expense updated successfully"));
                 })
@@ -227,6 +240,8 @@ namespace SocietyLedger.Api.Endpoints
             async (Guid publicId, IExpenseService expenseService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
+                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
+                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
                     await expenseService.DeleteExpenseAsync(publicId, userId);
                     return Results.Ok(ApiResponse<EmptyResponse>.Success(new EmptyResponse(), "Expense deleted successfully"));
                 })

@@ -22,24 +22,18 @@ namespace SocietyLedger.Infrastructure.Services.Admin
             if (isActive.HasValue)
                 query = query.Where(p => p.is_active == isActive);
             var total = await query.CountAsync();
-            var items = await query.OrderByDescending(p => p.created_at)
+            var items = await query.OrderBy(p => p.display_order).ThenByDescending(p => p.created_at)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .Select(p => new AdminPlanDto
                 {
                     Id = p.id,
                     Name = p.name,
-                    Price = p.price,
+                    MonthlyAmount = p.monthly_amount,
                     Currency = p.currency,
                     IsActive = p.is_active,
                     CreatedAt = p.created_at,
-                    DurationMonths = p.duration_months,
-                    MaxFlats = p.max_flats,
-                    PlanGroup = p.plan_group,
-                    IsPopular = p.is_popular,
-                    Description = p.description,
-                    DiscountPercentage = p.discount_percentage,
-                    DisplayOrder = p.display_order
+                    DurationMonths = p.duration_months
                 })
                 .ToListAsync();
             return new PagedResult<AdminPlanDto>(items, total, page, pageSize);
@@ -53,39 +47,27 @@ namespace SocietyLedger.Infrastructure.Services.Admin
             {
                 Id = p.id,
                 Name = p.name,
-                Price = p.price,
+                MonthlyAmount = p.monthly_amount,
                 Currency = p.currency,
                 IsActive = p.is_active,
                 CreatedAt = p.created_at,
-                DurationMonths = p.duration_months,
-                MaxFlats = p.max_flats,
-                PlanGroup = p.plan_group,
-                IsPopular = p.is_popular,
-                Description = p.description,
-                DiscountPercentage = p.discount_percentage,
-                DisplayOrder = p.display_order
+                DurationMonths = p.duration_months
             };
         }
 
         public async Task<AdminPlanDto> CreatePlanAsync(AdminPlanCreateRequest request)
         {
-            if (await _db.plans.AnyAsync(x => x.plan_group == request.PlanGroup && x.duration_months == request.DurationMonths))
-                throw new ConflictException($"Plan with group '{request.PlanGroup}' and duration {request.DurationMonths} already exists.");
+            if (await _db.plans.AnyAsync(x => x.name == request.Name))
+                throw new ConflictException($"Plan with name '{request.Name}' already exists.");
             var plan = new plan
             {
                 id = Guid.NewGuid(),
                 name = request.Name,
-                price = request.Price,
+                monthly_amount = request.MonthlyAmount,
                 currency = request.Currency,
                 is_active = true,
                 created_at = DateTime.UtcNow,
-                duration_months = request.DurationMonths,
-                max_flats = request.MaxFlats,
-                plan_group = request.PlanGroup,
-                is_popular = request.IsPopular,
-                description = request.Description,
-                discount_percentage = request.DiscountPercentage,
-                display_order = request.DisplayOrder
+                duration_months = request.DurationMonths
             };
             _db.plans.Add(plan);
             await _db.SaveChangesAsync();
@@ -96,17 +78,12 @@ namespace SocietyLedger.Infrastructure.Services.Admin
         {
             var plan = await _db.plans.FirstOrDefaultAsync(x => x.id == id);
             if (plan == null) throw new NotFoundException("Plan", id.ToString());
+
             plan.name = request.Name;
-            plan.price = request.Price;
+            plan.monthly_amount = request.MonthlyAmount;
             plan.currency = request.Currency;
             plan.is_active = request.IsActive;
             plan.duration_months = request.DurationMonths;
-            plan.max_flats = request.MaxFlats;
-            plan.plan_group = request.PlanGroup;
-            plan.is_popular = request.IsPopular;
-            plan.description = request.Description;
-            plan.discount_percentage = request.DiscountPercentage;
-            plan.display_order = request.DisplayOrder;
             await _db.SaveChangesAsync();
             return await GetPlanByIdAsync(plan.id) ?? throw new AppException("Failed to retrieve plan after update.");
         }
@@ -117,6 +94,29 @@ namespace SocietyLedger.Infrastructure.Services.Admin
             if (plan == null) throw new NotFoundException("Plan", id.ToString());
             _db.plans.Remove(plan);
             await _db.SaveChangesAsync();
+        }
+
+        private static AdminPlanDto MapToDto(plan p)
+        {
+            var price = p.price > 0 ? p.price : p.monthly_amount;
+            return new AdminPlanDto
+            {
+                Id = p.id,
+                Name = p.name,
+                Price = price,
+                MonthlyAmount = price,
+                Currency = p.currency,
+                IsActive = p.is_active,
+                CreatedAt = p.created_at,
+                UpdatedAt = p.updated_at,
+                DurationMonths = p.duration_months,
+                MaxFlats = p.max_flats,
+                PlanGroup = p.plan_group,
+                DiscountPercentage = p.discount_percentage,
+                DisplayOrder = p.display_order,
+                IsPopular = p.is_popular,
+                Description = p.description
+            };
         }
     }
 }

@@ -24,11 +24,11 @@ namespace SocietyLedger.Api.Endpoints
             // GET /billing/status
             app.MapGet("/status",
                 [Authorize]
-                [SwaggerOperation(
-                    Summary     = "Get billing status",
+            [SwaggerOperation(
+                    Summary = "Get billing status",
                     Description = "Returns whether bills have been generated for the current calendar month and how many were created."
                 )]
-                async (IBillingService billingService, HttpContext ctx) =>
+            async (IBillingService billingService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
 
@@ -53,15 +53,27 @@ namespace SocietyLedger.Api.Endpoints
             // POST /billing/generate-monthly
             app.MapPost("/generate-monthly",
                 [Authorize]
-                [SwaggerOperation(
-                    Summary     = "Generate monthly maintenance bills (society admin)",
+            [SwaggerOperation(
+                    Summary = "Generate monthly maintenance bills (society admin)",
                     Description = "Generates maintenance bills for all active flats in the calling user's society " +
                                   "for the specified month (YYYY-MM). Defaults to current UTC month when omitted. " +
                                   "Returns 409 if bills have already been generated for that period."
                 )]
-                async ([FromBody] GenerateMonthlyBillsRequest request, IBillingService billingService, HttpContext ctx) =>
+            async ([FromBody] GenerateMonthlyBillsRequest request, IBillingService billingService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
+
+                    if (userId == 0)
+                    {
+                        Log.Warning("Unauthorized /billing/generate-monthly request - invalid user ID");
+                        return Results.Json(
+                            ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid or missing authentication token", ctx.TraceIdentifier),
+                            statusCode: 401);
+                    }
+
+                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
+                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
+
                     var billingMonthDate = request.GetBillingMonthDate();
                     var period           = billingMonthDate.ToString("yyyy-MM");
 
@@ -93,15 +105,25 @@ namespace SocietyLedger.Api.Endpoints
             // POST /billing/trigger-monthly-job-now
             app.MapPost("/trigger-monthly-job-now",
                 [Authorize("SuperAdmin")]
-                [SwaggerOperation(
-                    Summary     = "Trigger monthly billing job now (SuperAdmin only)",
+            [SwaggerOperation(
+                    Summary = "Trigger monthly billing job now (SuperAdmin only)",
                     Description = "Runs the monthly billing background logic immediately for the current UTC month across societies. " +
                                   "Intended for verification/recovery; safe to re-run because existing bills are skipped. SuperAdmin access required."
                 )]
-                async (IBillingService billingService, HttpContext ctx) =>
+            async (IBillingService billingService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
-                    var billingMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+                    if (userId == 0)
+                        return Results.Json(
+                            ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid or missing authentication token", ctx.TraceIdentifier),
+                            statusCode: 401);
+
+                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
+                        return Results.Json(
+                            new { error = "Forbidden", message = "You do not have permission to perform this action." },
+                            statusCode: 403);
+
+                    var billingMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
                     var result = await billingService.GenerateMonthlyBillsAsync(billingMonth);
 
                     return Results.Ok(ApiResponse<BillingResult>.Success(
@@ -167,11 +189,11 @@ namespace SocietyLedger.Api.Endpoints
             // Generates a bill for a specific flat for the current month (idempotent).
             app.MapPost("/generate-for-flat",
                 [Authorize]
-                [SwaggerOperation(
-                    Summary     = "Generate bill for a flat",
+            [SwaggerOperation(
+                    Summary = "Generate bill for a flat",
                     Description = "Generates a bill for a specific flat in a society for the current month. Idempotent: does nothing if bill already exists."
                 )]
-                async ([FromBody] GenerateBillForFlatRequest request, IBillingService billingService, HttpContext ctx) =>
+            async ([FromBody] GenerateBillForFlatRequest request, IBillingService billingService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
                     var billingMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);

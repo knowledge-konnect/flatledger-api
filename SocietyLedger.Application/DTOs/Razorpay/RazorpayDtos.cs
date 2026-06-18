@@ -71,4 +71,18 @@ namespace SocietyLedger.Application.DTOs.Razorpay
         public string Currency { get; set; } = null!;
         public string Status { get; set; } = null!;
     }
+
+    public class RefundRequest
+    {
+        public string PaymentId { get; set; } = null!;
+        public decimal Amount { get; set; }
+    }
+
+    public class RefundResponse
+    {
+        public string RefundId { get; set; } = null!;
+        public string PaymentId { get; set; } = null!;
+        public decimal Amount { get; set; }
+        public string Status { get; set; } = null!;
+    }
 }

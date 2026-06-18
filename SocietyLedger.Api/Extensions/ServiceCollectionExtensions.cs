@@ -2,15 +2,16 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Npgsql;
-using Resend;
 using SocietyLedger.Api.Filters;
 using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Application.Interfaces.Services;
 using SocietyLedger.Application.Interfaces.Services.Admin;
 using SocietyLedger.Application.Validators.Auth;
 using SocietyLedger.Infrastructure.Persistence.Contexts;
-using SocietyLedger.Infrastructure.Persistence.Repositories;using SocietyLedger.Infrastructure.Services;
-using SocietyLedger.Infrastructure.Services.Admin;using SocietyLedger.Infrastructure.Services.Common;
+using SocietyLedger.Infrastructure.Persistence.Repositories;
+using SocietyLedger.Infrastructure.Services;
+using SocietyLedger.Infrastructure.Services.Admin;
+using SocietyLedger.Infrastructure.Services.Common;
 using SocietyLedger.Shared.Jwt;
 namespace SocietyLedger.Api.Extensions
 {
@@ -39,7 +40,6 @@ namespace SocietyLedger.Api.Extensions
             services.AddScoped<IBillingService, BillingService>();
             services.AddScoped<IMaintenanceConfigService, MaintenanceConfigService>();
             services.AddScoped<INotificationPreferenceService, NotificationPreferenceService>();
-            services.AddScoped<IContactService, ContactService>();
 
             // SaaS Admin module
             services.AddScoped<IAdminAuthService, AdminAuthService>();
@@ -65,17 +65,28 @@ namespace SocietyLedger.Api.Extensions
         {
             services.AddHttpContextAccessor();
 
+            // Configure EmailSettings
+            services.Configure<EmailSettings>(configuration.GetSection("EmailSettings"));
+
+            // Configure HttpClient for Resend
+            services.AddHttpClient("Resend", client =>
+            {
+                client.BaseAddress = new Uri("https://api.resend.com/emails");
+                client.DefaultRequestHeaders.Add("Authorization", $"Bearer {configuration["EmailSettings:ResendApiKey"]}");
+                client.DefaultRequestHeaders.Add("Accept", "application/json");
+            });
+
             var connectionString = configuration.GetConnectionString("DefaultConnection");
             var dataSource = new NpgsqlDataSourceBuilder(connectionString)
                 .Build();
 
             services.AddDbContext<AppDbContext>(options =>
+            {
                 options.UseNpgsql(dataSource, npgsql =>
                 {
-                    // 30s default timeout for normal queries. Cold-start handling is done
-                    // in the startup warmup loop (5 retries × 30s delay), not by inflating
-                    // the command timeout for every query.
-                    npgsql.CommandTimeout(30);
+                    // pgBouncer transaction mode (port 6543): no savepoints, no retry.
+                    // 120s to handle Supabase free-tier cold starts.
+                    npgsql.CommandTimeout(120);
                 }));
 
             // Common infrastructure helpers

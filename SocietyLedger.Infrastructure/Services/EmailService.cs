@@ -1,155 +1,113 @@
+using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Resend;
 using SocietyLedger.Application.Interfaces.Services;
-using SocietyLedger.Infrastructure.Services.Templates;
 
 namespace SocietyLedger.Infrastructure.Services
 {
     public class EmailService : IEmailService
     {
-        private readonly IResend _resend;
-        private readonly EmailSettings _settings;
         private readonly ILogger<EmailService> _logger;
 
-        public EmailService(IResend resend, IOptions<EmailSettings> settings, ILogger<EmailService> logger)
         {
-            _resend = resend;
-            _settings = settings.Value;
             _logger = logger;
         }
 
-        public async Task SendPasswordResetEmailAsync(
-            string userEmail,
-            string userName,
-            string resetLink,
-            bool logResetLinkInDevelopment = false,
-            CancellationToken cancellationToken = default)
         {
-            if (logResetLinkInDevelopment)
-                _logger.LogInformation("[DEV] Password reset link for {Email}: {ResetLink}", userEmail, resetLink);
 
-            var expiresAt = DateTime.UtcNow.AddMinutes(30);
-            var html = EmailTemplates.PasswordReset(userName, resetLink, expiresAt, _settings.SupportEmail, _settings.SupportPhone);
 
-            await SendAsync(
-                to: userEmail,
-                subject: "Reset your FlatLedger password",
-                html: html,
-                context: $"password reset for {userEmail}",
-                cancellationToken: cancellationToken);
         }
-
-        public async Task SendWelcomeEmailAsync(
-            string userEmail,
-            string adminName,
-            string societyName,
-            string planName,
-            DateTime trialOrExpiryEnd,
-            string loginUrl,
-            CancellationToken cancellationToken = default)
-        {
-            var html = EmailTemplates.Welcome(
-                adminName,
-                societyName,
-                planName,
-                trialOrExpiryEnd.ToString("dd MMM yyyy"),
-                loginUrl,
-                _settings.SupportEmail,
-                _settings.SupportPhone);
-
-            await SendAsync(
-                to: userEmail,
-                subject: $"Welcome to FlatLedger — {societyName} is ready!",
-                html: html,
-                context: $"welcome email for {userEmail}",
-                cancellationToken: cancellationToken);
-        }
-
-        public async Task SendSubscriptionExpiryReminderAsync(
-            string userEmail,
-            string societyName,
-            string planName,
-            DateTime expiryDate,
-            string renewUrl,
-            string stage,
-            CancellationToken cancellationToken = default)
-        {
-            var subjectPrefix = stage switch
+            catch (Exception ex)
             {
-                "0d" => "Action Required: Your FlatLedger subscription expires today",
-                "1d" => "Reminder: Your FlatLedger subscription expires tomorrow",
-                _ => "Reminder: Your FlatLedger subscription expires in 7 days"
+                _logger.LogError(ex, "Failed to send welcome email to {Email}", email);
+                return false;
+            }
+        }
+
+        {
+
+        }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to send subscription reminder email to {Email}", email);
+                return false;
+            }
+        }
+
+        {
+            {
             };
 
-            var html = EmailTemplates.SubscriptionExpiryReminder(
-                societyName,
-                planName,
-                expiryDate.ToString("dd MMM yyyy"),
-                renewUrl,
-                _settings.SupportEmail,
-                _settings.SupportPhone,
-                stage);
 
-            await SendAsync(
-                to: userEmail,
-                subject: subjectPrefix,
-                html: html,
-                context: $"expiry reminder ({stage}) for {userEmail}",
-                cancellationToken: cancellationToken);
         }
-
-        public async Task SendContactUsNotificationAsync(
-            string senderName,
-            string senderEmail,
-            string subject,
-            string message,
-            CancellationToken cancellationToken = default)
-        {
-            var html = EmailTemplates.ContactUsNotification(senderName, senderEmail, subject, message, _settings.SupportEmail, _settings.SupportPhone);
-
-            // Use dedicated ContactEmail when configured; fall back to SupportEmail.
-            var destination = string.IsNullOrWhiteSpace(_settings.ContactEmail)
-                ? _settings.SupportEmail
-                : _settings.ContactEmail;
-
-            await SendAsync(
-                to: destination,
-                subject: $"New Contact Form Submission — {subject}",
-                html: html,
-                context: $"contact-us from {senderEmail}",
-                cancellationToken: cancellationToken);
-        }
-
-        private async Task SendAsync(
-            string to,
-            string subject,
-            string html,
-            string context,
-            CancellationToken cancellationToken)
-        {
-            if (string.IsNullOrWhiteSpace(_settings.ResendApiKey))
+            catch (HttpRequestException ex)
             {
-                _logger.LogWarning("Email not sent ({Context}): ResendApiKey is not configured. Set Email__ResendApiKey environment variable.", context);
-                return;
-            }
-
-            try
-            {
-                var message = new EmailMessage();
-                message.From = $"{_settings.FromName} <{_settings.FromAddress}>";
-                message.To.Add(to);
-                message.Subject = subject;
-                message.HtmlBody = html;
-
-                await _resend.EmailSendAsync(message, cancellationToken);
-                _logger.LogInformation("Email sent ({Context})", context);
+                _logger.LogError(ex, "HTTP error sending email to {Email}", toEmail);
+                return false;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to send email ({Context})", context);
-                throw;
+                _logger.LogError(ex, "Error sending email to {Email}", toEmail);
+                return false;
             }
         }
+
+        {
+
+
+        }
+        private string GetPasswordResetEmailHtml(string resetLink)
+        {
+            var expiryMinutes = _emailSettings.PasswordResetTokenExpiryMinutes;
+
+            var content = $@"
+            <h2 style='margin-top:0;color:#111827;'>Reset Your Password</h2>
+
+            <p style='color:#374151;line-height:1.7;'>
+            We received a request to reset your FlatLedger password.
+            </p>
+
+            <p style='text-align:center;margin:32px 0;'>
+            <a href='{resetLink}'
+            style='background:#10B981;
+            color:#ffffff !important;
+            padding:14px 28px;
+            text-decoration:none;
+            border-radius:10px;
+            font-weight:600;
+            display:inline-block;'>
+            Reset Password
+            </a>
+            </p>
+
+            <div style='background:#ECFDF5;
+            border-left:4px solid #10B981;
+            padding:16px;
+            border-radius:8px;'>
+
+            <strong>Security Notice</strong>
+            <p style='margin:8px 0 0 0;'>
+            This link expires in {expiryMinutes} minutes.
+            </p>
+
+            </div>
+
+            <p style='margin-top:24px;color:#6B7280;'>
+            If you didn't request this password reset, you can safely ignore this email.
+            </p>
+
+            <p style='font-size:13px;color:#6B7280;'>
+            {resetLink}
+            </p>";
+
+            {
+            }
+
+            {
+
+            }
+            {
+        }
+        
     }
 }

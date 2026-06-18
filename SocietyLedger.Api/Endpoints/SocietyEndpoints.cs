@@ -162,6 +162,16 @@ namespace SocietyLedger.Api.Endpoints
                     HttpContext ctx) =>
                 {
                     var userId = ctx.GetAuthenticatedUserId();
+                    if (userId == 0)
+                    {
+                        Log.Warning("Unauthorized maintenance config save request - invalid user ID");
+                        var err = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, ErrorMessages.UNAUTHORIZED, ctx.TraceIdentifier);
+                        return Results.Json(err, statusCode: 401);
+                    }
+
+                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
+                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
+
                     var config = await configService.SaveAsync(societyPublicId, request, userId);
                     Log.Information("Maintenance config saved for society {SocietyPublicId} by user {UserId}", societyPublicId, userId);
                     return Results.Ok(ApiResponse<MaintenanceConfigResponse>.Success(config, "Maintenance configuration saved successfully"));

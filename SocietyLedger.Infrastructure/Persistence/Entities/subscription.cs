@@ -17,9 +17,6 @@ public partial class subscription
 
     public long user_id { get; set; }
 
-    /// <summary>Society that owns this subscription. Billing is society-based.</summary>
-    public long society_id { get; set; }
-
     public Guid plan_id { get; set; }
 
     [StringLength(20)]

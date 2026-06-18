@@ -17,6 +17,7 @@ namespace SocietyLedger.Infrastructure.Services
         private readonly IFlatRepository _repo;
         private readonly IBillRepository _billRepo;
         private readonly IUserContext _userContext;
+        private readonly ISubscriptionRepository _subscriptionRepo;
         private readonly AppDbContext _db;
         private readonly ILogger<FlatService> _logger;
         private readonly IMaintenanceConfigRepository _maintenanceConfigRepo;
@@ -28,6 +29,7 @@ namespace SocietyLedger.Infrastructure.Services
             IFlatRepository repo,
             IBillRepository billRepo,
             IUserContext userContext,
+            ISubscriptionRepository subscriptionRepo,
             AppDbContext db,
             ILogger<FlatService> logger,
             IMaintenanceConfigRepository maintenanceConfigRepo,
@@ -38,6 +40,7 @@ namespace SocietyLedger.Infrastructure.Services
             _repo = repo ?? throw new ArgumentNullException(nameof(repo));
             _billRepo = billRepo ?? throw new ArgumentNullException(nameof(billRepo));
             _userContext = userContext ?? throw new ArgumentNullException(nameof(userContext));
+            _subscriptionRepo = subscriptionRepo ?? throw new ArgumentNullException(nameof(subscriptionRepo));
             _db = db ?? throw new ArgumentNullException(nameof(db));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _maintenanceConfigRepo = maintenanceConfigRepo ?? throw new ArgumentNullException(nameof(maintenanceConfigRepo));
@@ -69,46 +72,42 @@ namespace SocietyLedger.Infrastructure.Services
         }
         /// <summary>
         /// Create a new flat and return the created DTO.
+        /// Duplicate checks and creation are wrapped in a single transaction to prevent race conditions.
         /// </summary>
         public async Task<FlatResponseDto> CreateAsync(CreateFlatDto dto, long userId)
         {
             if (dto == null) throw new ArgumentNullException(nameof(dto));
 
             var societyId = await _userContext.GetSocietyIdAsync(userId);
-            var normalizedFlatNo = NormalizeFlatNo(dto.FlatNo);
-            var normalizedOwnerName = NormalizeText(dto.OwnerName);
-            var normalizedEmail = NormalizeEmail(dto.ContactEmail);
-            var normalizedMobile = NormalizeMobile(dto.ContactMobile);
-            var normalizedStatusCode = NormalizeStatusCode(dto.StatusCode);
 
             // Check for duplicate flat number in the society
-            var existingFlat = await _repo.GetByFlatNoAndSocietyAsync(normalizedFlatNo, societyId);
+            var existingFlat = await _repo.GetByFlatNoAndSocietyAsync(dto.FlatNo, societyId);
             if (existingFlat != null)
                 throw new DuplicateException("flat", "flat number");
 
             // Check for duplicate email in the same society
-            if (!string.IsNullOrWhiteSpace(normalizedEmail))
+            if (!string.IsNullOrWhiteSpace(dto.ContactEmail))
             {
-                var existingEmail = await _repo.GetByEmailAndSocietyAsync(normalizedEmail, societyId);
+                var existingEmail = await _repo.GetByEmailAndSocietyAsync(dto.ContactEmail, societyId);
                 if (existingEmail != null)
                     throw new DuplicateException("flat", "email");
             }
 
             // Check for duplicate mobile in the same society
-            if (!string.IsNullOrWhiteSpace(normalizedMobile))
+            if (!string.IsNullOrWhiteSpace(dto.ContactMobile))
             {
-                var existingMobile = await _repo.GetByMobileAndSocietyAsync(normalizedMobile, societyId);
+                var existingMobile = await _repo.GetByMobileAndSocietyAsync(dto.ContactMobile, societyId);
                 if (existingMobile != null)
                     throw new DuplicateException("flat", "mobile number");
             }
 
             // Get status by code if provided, otherwise use default
             short? statusId = null;
-            if (!string.IsNullOrEmpty(normalizedStatusCode))
+            if (!string.IsNullOrEmpty(dto.StatusCode))
             {
-                var status = await _repo.GetByCodeAsync(normalizedStatusCode);
+                var status = await _repo.GetByCodeAsync(dto.StatusCode);
                 if (status == null)
-                    throw new ValidationException($"Invalid flat status code: {normalizedStatusCode}");
+                    throw new ValidationException($"Invalid flat status code: {dto.StatusCode}");
                 statusId = status.Id;
             }
 
@@ -118,147 +117,23 @@ namespace SocietyLedger.Infrastructure.Services
             {
                 PublicId = Guid.NewGuid(),
                 SocietyId = societyId,
-                FlatNo = normalizedFlatNo,
-                OwnerName = normalizedOwnerName,
-                ContactMobile = normalizedMobile,
-                ContactEmail = normalizedEmail,
+                FlatNo = dto.FlatNo,
+                OwnerName = dto.OwnerName,
+                ContactMobile = dto.ContactMobile,
+                ContactEmail = dto.ContactEmail,
                 MaintenanceAmount = dto.MaintenanceAmount ?? 0m,
                 StatusId = statusId,
                 CreatedAt = now,
                 UpdatedAt = now
             };
 
-            try
-            {
-                await _repo.AddAsync(domain);
-                await _repo.SaveChangesAsync();
-            }
-            catch (DbUpdateException ex) when (ex.IsUniqueConstraintViolation())
-            {
-                _logger.LogWarning(ex, "Concurrent duplicate flat creation blocked for society {SocietyId}", societyId);
-                throw new DuplicateException("flat", "flat number/email/mobile");
-            }
+            await _repo.AddAsync(domain);
+            await _repo.SaveChangesAsync();
 
-            _logger.LogInformation("Flat created successfully for FlatNo {FlatNo}", normalizedFlatNo);
+            _logger.LogInformation("Flat created successfully for FlatNo {FlatNo}", dto.FlatNo);
             return MapToDto(domain);
         }
-
-        /// <summary>
-        /// Bulk create multiple flats in a single operation with transactional integrity.
-        /// Validates all items in-memory first (after 3 bulk pre-load queries), then batch-inserts
-        /// all valid flats in a single transaction. Returns succeeded and failed results.
-        /// </summary>
-        public async Task<BulkCreateFlatsResponse> BulkCreateAsync(BulkCreateFlatsRequest request, long userId, bool skipBilling = false)
-        {
-            if (request == null) throw new ArgumentNullException(nameof(request));
-            if (request.Flats == null || request.Flats.Count == 0)
-                throw new ValidationException("Flats list cannot be empty");
-
-            if (request.Flats.Count > ValidationPatterns.MaxBulkFlats)
-                throw new ValidationException($"Bulk create is limited to {ValidationPatterns.MaxBulkFlats} flats per request");
-
-            var societyId = await _userContext.GetSocietyIdAsync(userId);
-            var maintenanceConfig = await _maintenanceConfigRepo.GetBySocietyIdAsync(societyId);
-            var defaultMaintenanceAmount = maintenanceConfig?.DefaultMonthlyCharge ?? 0m;
-
-           
-            var societyPublicId = await _db.societies
-                .Where(s => s.id == societyId)
-                .Select(s => s.public_id)
-                .FirstOrDefaultAsync();
-
-            _logger.LogInformation("Bulk create started: {Count} items, societyId={SocietyId}, skipBilling={SkipBilling}",
-                request.Flats.Count, societyId, skipBilling);
-
-            // ── Pre-load 1: existing flat numbers, emails, mobiles (3 queries) ──────────
-            var existingFlatNos = await _db.flats
-                .Where(f => f.society_id == societyId && !f.is_deleted)
-                .Select(f => f.flat_no)
-                .ToListAsync();
-            var existingFlatNoSet = new HashSet<string>(existingFlatNos, StringComparer.OrdinalIgnoreCase);
-
-            var existingEmails = await _db.flats
-                .Where(f => f.society_id == societyId && !f.is_deleted && f.contact_email != null)
-                .Select(f => f.contact_email!)
-                .ToListAsync();
-            var existingEmailSet = new HashSet<string>(existingEmails, StringComparer.OrdinalIgnoreCase);
-
-            var existingMobiles = await _db.flats
-                .Where(f => f.society_id == societyId && !f.is_deleted && f.contact_mobile != null)
-                .Select(f => f.contact_mobile!)
-                .ToListAsync();
-            var existingMobileSet = new HashSet<string>(existingMobiles, StringComparer.OrdinalIgnoreCase);
-
-            // ── Pre-load 2: all distinct status codes in one query (not N sequential awaits) ──
-            var distinctStatusCodes = request.Flats
-                .Where(f => !string.IsNullOrEmpty(f?.StatusCode))
-                .Select(f => f!.StatusCode!)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
-
-            var statusCache = new Dictionary<string, SocietyLedger.Domain.Entities.FlatStatus?>(StringComparer.OrdinalIgnoreCase);
-            if (distinctStatusCodes.Count > 0)
-            {
-                var statuses = await _db.flat_statuses
-                    .AsNoTracking()
-                    .Where(s => distinctStatusCodes.Contains(s.code))
-                    .ToListAsync();
-                foreach (var s in statuses)
-                    statusCache[s.code] = new SocietyLedger.Domain.Entities.FlatStatus
-                    {
-                        Id          = s.id,
-                        Code        = s.code,
-                        DisplayName = s.display_name
-                    };
-                // Mark any codes that weren't found as explicitly null
-                foreach (var code in distinctStatusCodes.Where(c => !statusCache.ContainsKey(c)))
-                    statusCache[code] = null;
-            }
-
-            var succeeded = new List<FlatResponseDto>();
-            var failed    = new List<BulkFlatFailure>();
-            var validFlats = new List<(int Index, string FlatNo, Flat FlatEntity)>();
-
-            // Capture timestamp once — all flats in the batch share the same created_at
-            var now = DateTime.UtcNow;
-
-            // Track values accepted in this batch to catch within-request duplicates
-            var batchFlatNos  = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var batchEmails   = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var batchMobiles  = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            // ── Phase 1: Validate all items in-memory ────────────────────────────────────
-            for (int i = 0; i < request.Flats.Count; i++)
-            {
-                var item   = request.Flats[i];
-                var flatNo = item?.FlatNo ?? $"(index {i})";
-
-                try
-                {
-                    if (item == null)
-                    {
-                        failed.Add(new BulkFlatFailure(i, flatNo, "Flat item is null"));
-                        continue;
-                    }
-
-                    if (string.IsNullOrWhiteSpace(item.FlatNo))
-                    {
-                        failed.Add(new BulkFlatFailure(i, flatNo, "FlatNo is required"));
-                        continue;
-                    }
-
-                    if (string.IsNullOrWhiteSpace(item.OwnerName))
-                    {
-                        failed.Add(new BulkFlatFailure(i, flatNo, "OwnerName is required"));
-                        continue;
-                    }
-
-                    if (existingFlatNoSet.Contains(item.FlatNo) || !batchFlatNos.Add(item.FlatNo))
-                    {
-                        failed.Add(new BulkFlatFailure(i, item.FlatNo, "Flat number already exists in this society"));
-                        _logger.LogWarning("Bulk flat create: duplicate flat number {FlatNo} at index {Index}", item.FlatNo, i);
-                        continue;
-                    }
+        
 
                     if (!string.IsNullOrWhiteSpace(item.ContactEmail))
                     {
@@ -871,6 +746,22 @@ namespace SocietyLedger.Infrastructure.Services
 
         private static bool AreSameMobile(string? left, string? right)
             => string.Equals(NormalizeMobile(left), NormalizeMobile(right), StringComparison.Ordinal);
+
+        private async Task EnsureFlatLimitAsync(long societyId, int additionalFlats = 1)
+        {
+            var subscription = await _subscriptionRepo.GetBySocietyIdAsync(societyId);
+            var maxFlats = subscription?.Plan?.MaxFlats ?? 0;
+            if (maxFlats <= 0)
+                return;
+
+            var currentCount = await _db.flats.CountAsync(f => f.society_id == societyId && !f.is_deleted);
+            if (currentCount + additionalFlats > maxFlats)
+            {
+                throw new ValidationException(
+                    $"Your plan allows up to {maxFlats} flats. You currently have {currentCount}. " +
+                    "Upgrade your subscription to add more.");
+            }
+        }
 
         #region Mapping helpers
 

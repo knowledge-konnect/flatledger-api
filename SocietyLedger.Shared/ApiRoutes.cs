@@ -23,7 +23,6 @@ namespace SocietyLedger.Shared
         public const string PAYMENT_MODES = "/api/payment-modes";
         public const string OPENING_BALANCE = "/api/opening-balance";
         public const string REPORTS = "/api/reports";
-        public const string DASHBOARD = "/api/dashboard";
 
         // SaaS Admin module — isolated from society routes
         public const string ADMIN_AUTH = "/api/admin/auth";

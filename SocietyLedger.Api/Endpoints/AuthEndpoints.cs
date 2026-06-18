@@ -308,57 +308,6 @@ namespace SocietyLedger.Api.Endpoints
     .Produces<ErrorResponse>(401)
     .Produces<ErrorResponse>(404)
     .Produces<ErrorResponse>(500);
-
-            // Request password reset email (no email enumeration)
-            // POST /auth/forgot-password
-            app.MapPost("/forgot-password",
-                [AllowAnonymous]
-                [SwaggerOperation(
-                    Summary = "Request password reset",
-                    Description = "Sends a password reset link when an active account exists. " +
-                                  "Always returns the same success message whether or not the email is registered."
-                )]
-                async ([FromBody] ForgotPasswordRequest request, IAuthService authService) =>
-                {
-                    var result = await authService.RequestPasswordResetAsync(request);
-                    return Results.Ok(ApiResponse<ForgotPasswordResponse>.Success(result, result.Message));
-                })
-            .AddEndpointFilter<FluentValidationFilter<ForgotPasswordRequest>>()
-            .RequireRateLimiting("AuthPolicy")
-            .WithTags(groupName)
-            .WithApiVersionSet(versionSet)
-            .HasApiVersion(version_1_0)
-            .WithName("ForgotPassword")
-            .Produces<ApiResponse<ForgotPasswordResponse>>(200)
-            .Produces<ErrorResponse>(400)
-            .Produces<ErrorResponse>(429)
-            .Produces<ErrorResponse>(500);
-
-            // Complete password reset with token from email link
-            // POST /auth/reset-password
-            app.MapPost("/reset-password",
-                [AllowAnonymous]
-                [SwaggerOperation(
-                    Summary = "Reset password with token",
-                    Description = "Resets the password using the single-use token from the email link. " +
-                                  "Returns an access token for auto-login on success."
-                )]
-                async ([FromBody] ResetPasswordRequest request, IAuthService authService, HttpContext ctx) =>
-                {
-                    var ip = ctx.GetClientIp();
-                    var result = await authService.ResetPasswordWithTokenAsync(request, ip);
-                    return Results.Ok(ApiResponse<PasswordResetResponse>.Success(result, "Password reset successfully."));
-                })
-            .AddEndpointFilter<FluentValidationFilter<ResetPasswordRequest>>()
-            .RequireRateLimiting("AuthPolicy")
-            .WithTags(groupName)
-            .WithApiVersionSet(versionSet)
-            .HasApiVersion(version_1_0)
-            .WithName("ResetPassword")
-            .Produces<ApiResponse<PasswordResetResponse>>(200)
-            .Produces<ErrorResponse>(400)
-            .Produces<ErrorResponse>(429)
-            .Produces<ErrorResponse>(500);
         }
     }
 }

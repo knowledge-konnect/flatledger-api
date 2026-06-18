@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using SocietyLedger.Application.DTOs.Plan;
 using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Application.Interfaces.Services;
+using SocietyLedger.Application.Mappings;
 using SocietyLedger.Domain.Exceptions;
 
 namespace SocietyLedger.Infrastructure.Services
@@ -24,17 +25,10 @@ namespace SocietyLedger.Infrastructure.Services
             {
                 Id = p.Id,
                 Name = p.Name,
-                Price = p.Price,
+                MonthlyAmount = p.MonthlyAmount,
                 Currency = p.Currency,
                 IsActive = p.IsActive,
-                CreatedAt = p.CreatedAt,
-                DurationMonths = p.DurationMonths,
-                MaxFlats = p.MaxFlats,
-                PlanGroup = p.PlanGroup,
-                IsPopular = p.IsPopular,
-                Description = p.Description,
-                DiscountPercentage = p.DiscountPercentage,
-                DisplayOrder = p.DisplayOrder
+                CreatedAt = p.CreatedAt
             });
         }
 
@@ -48,17 +42,10 @@ namespace SocietyLedger.Infrastructure.Services
             {
                 Id = plan.Id,
                 Name = plan.Name,
-                Price = plan.Price,
+                MonthlyAmount = plan.MonthlyAmount,
                 Currency = plan.Currency,
                 IsActive = plan.IsActive,
-                CreatedAt = plan.CreatedAt,
-                DurationMonths = plan.DurationMonths,
-                MaxFlats = plan.MaxFlats,
-                PlanGroup = plan.PlanGroup,
-                IsPopular = plan.IsPopular,
-                Description = plan.Description,
-                DiscountPercentage = plan.DiscountPercentage,
-                DisplayOrder = plan.DisplayOrder
+                CreatedAt = plan.CreatedAt
             };
         }
     }

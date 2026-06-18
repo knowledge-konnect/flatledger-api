@@ -91,7 +91,28 @@ namespace SocietyLedger.Api.Endpoints
                    HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
-                    var societyId = await userContext.GetSocietyIdAsync(userId);
+                    
+                    if (userId == 0)
+                    {
+                        Log.Warning("Unauthorized opening balance request - invalid user ID");
+                        var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid or missing authentication token", ctx.TraceIdentifier);
+                        return Results.Json(errorResponse, statusCode: 401);
+                    }
+
+                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
+                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
+
+                    // Get user to extract societyId
+                    var user = await userRepository.GetByIdAsync(userId);
+                    if (user == null || !user.IsActive)
+                    {
+                        Log.Warning("Opening balance request by inactive or non-existent user {UserId}", userId);
+                        var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "User not found or inactive", ctx.TraceIdentifier);
+                        return Results.Json(errorResponse, statusCode: 401);
+                    }
+
+                    var societyId = user.SocietyId;
+
                     await openingBalanceService.ApplyOpeningBalanceAsync(request, societyId, userId);
                     Log.Information("Opening balance applied successfully for society {SocietyId} by user {UserId}", societyId, userId);
                     return Results.Ok(ApiResponse<EmptyResponse>.Success(new EmptyResponse(), "Opening balance applied successfully"));

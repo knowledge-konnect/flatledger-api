@@ -16,14 +16,11 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             _db = db;
         }
 
-        public async Task<Payment?> GetPendingSubscriptionPaymentByUserIdAsync(long userId)
+        public async Task<Payment?> GetPendingSubscriptionPaymentBySocietyIdAsync(long societyId)
         {
             var efPayment = await _db.payments
                 .AsNoTracking()
-                .Where(p => p.payment_type == PaymentTypeCodes.Subscription
-                         && p.razorpay_payment_id == null
-                         && p.recorded_by == userId   // was incorrectly p.society_id == userId
-                         && !p.is_deleted)
+                .Where(p => p.payment_type == PaymentTypeCodes.Subscription && p.razorpay_payment_id == null && p.society_id == userId && !p.is_deleted)
                 .OrderByDescending(p => p.created_at)
                 .FirstOrDefaultAsync();
             return efPayment?.ToDomain();
@@ -50,6 +47,8 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
         {
             var entity = payment.ToEntity();
             await _db.payments.AddAsync(entity);
+            await _db.SaveChangesAsync();
+            payment.Id = entity.id;
         }
 
         public async Task UpdateAsync(Payment payment)

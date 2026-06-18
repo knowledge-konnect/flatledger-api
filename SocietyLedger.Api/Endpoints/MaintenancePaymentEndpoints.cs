@@ -35,6 +35,9 @@ namespace SocietyLedger.Api.Endpoints
                 {
                     var userId = ctx.GetUserId();
 
+                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
+                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
+
                     if (request == null)
                     {
                         var errorResponse = ErrorResponse.Create(ErrorCodes.VALIDATION_FAILED, "Request body is required", ctx.TraceIdentifier);
@@ -168,6 +171,8 @@ namespace SocietyLedger.Api.Endpoints
             async (Guid publicId, [FromBody] UpdateMaintenancePaymentRequest request, IMaintenancePaymentService paymentService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
+                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
+                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
 
                     if (request.PaymentDate.HasValue)
                     {
@@ -207,6 +212,8 @@ namespace SocietyLedger.Api.Endpoints
             async (Guid publicId, IMaintenancePaymentService paymentService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
+                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
+                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
                     await paymentService.DeleteMaintenancePaymentAsync(publicId, userId);
                     return Results.Ok(ApiResponse<EmptyResponse>.Success(null, "Maintenance payment deleted successfully"));
                 })
