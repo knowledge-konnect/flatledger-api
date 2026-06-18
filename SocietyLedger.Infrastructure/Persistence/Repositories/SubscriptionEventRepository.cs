@@ -24,6 +24,21 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             subscriptionEvent.Id = efEvent.id;
         }
 
+        public async Task BulkCreateAsync(IEnumerable<SubscriptionEvent> events)
+        {
+            // Fix #16: materialize before AddRangeAsync — prevents double-enumeration
+            // if the caller passes a deferred LINQ chain.
+            var entities = events.Select(e =>
+            {
+                var entity = e.ToEntity();
+                entity.created_at = DateTime.UtcNow;
+                return entity;
+            }).ToList();
+
+            await _db.subscription_events.AddRangeAsync(entities);
+            await _db.SaveChangesAsync();
+        }
+
         public async Task<IEnumerable<SubscriptionEvent>> GetByUserIdAsync(long userId)
         {
             var efEvents = await _db.subscription_events
@@ -33,6 +48,12 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                 .ToListAsync();
 
             return efEvents.Select(e => e.ToDomain());
+        }
+
+        public async Task<bool> ExistsAsync(Guid subscriptionId, string eventType)
+        {
+            return await _db.subscription_events
+                .AnyAsync(e => e.subscription_id == subscriptionId && e.event_type == eventType);
         }
     }
 }

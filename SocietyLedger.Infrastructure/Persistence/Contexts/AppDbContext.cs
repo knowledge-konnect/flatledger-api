@@ -24,6 +24,8 @@ public partial class AppDbContext : DbContext
 
     public virtual DbSet<_lock> locks { get; set; }
 
+    public virtual DbSet<contact_request> contact_requests { get; set; }
+
     public virtual DbSet<adjustment> adjustments { get; set; }
 
     public virtual DbSet<aggregatedcounter> aggregatedcounters { get; set; }
@@ -280,11 +282,16 @@ public partial class AppDbContext : DbContext
             entity.HasKey(e => e.id).HasName("expense_categories_pkey");
 
             entity.Property(e => e.id).UseIdentityAlwaysColumn();
+            entity.Property(e => e.color).HasMaxLength(10).IsRequired(false);
         });
 
         modelBuilder.Entity<flat>(entity =>
         {
             entity.HasKey(e => e.id).HasName("flats_pkey");
+
+            entity.HasIndex(e => new { e.society_id, e.flat_no }, "flats_society_id_flat_no_key")
+                .IsUnique()
+                .HasFilter("(is_deleted = false)");
 
             entity.Property(e => e.id).UseIdentityAlwaysColumn();
             entity.Property(e => e.created_at).HasDefaultValueSql("now()");
@@ -317,6 +324,9 @@ public partial class AppDbContext : DbContext
         modelBuilder.Entity<invoice>(entity =>
         {
             entity.HasKey(e => e.id).HasName("invoices_pkey");
+
+            entity.HasIndex(e => new { e.user_id, e.invoice_number }, "invoices_user_invoice_number_key")
+                .IsUnique();
 
             entity.Property(e => e.id).HasDefaultValueSql("gen_random_uuid()");
             entity.Property(e => e.created_at).HasDefaultValueSql("now()");
@@ -545,6 +555,11 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.currency).HasDefaultValueSql("'INR'::character varying");
             entity.Property(e => e.duration_months).HasDefaultValue(1);
             entity.Property(e => e.is_active).HasDefaultValue(true);
+            entity.Property(e => e.price).HasPrecision(10, 2);
+            entity.Property(e => e.max_flats).HasDefaultValue(1);
+            entity.Property(e => e.display_order).HasDefaultValue(0);
+            entity.Property(e => e.is_popular).HasDefaultValue(false);
+            // plan_group is required by model - no default
         });
 
         modelBuilder.Entity<plan_component>(entity =>
@@ -668,20 +683,24 @@ public partial class AppDbContext : DbContext
                 .HasConstraintName("subscription_events_subscription_id_fkey");
 
             entity.HasOne(d => d.user).WithMany(p => p.subscription_events).HasConstraintName("subscription_events_user_id_fkey");
+            
+            entity.HasOne(d => d.society).WithMany().HasConstraintName("subscription_events_society_id_fkey");
         });
 
         modelBuilder.Entity<user>(entity =>
         {
             entity.HasKey(e => e.id).HasName("users_pkey");
 
+            entity.HasIndex(e => new { e.society_id, e.username }, "users_society_username_key")
+                .IsUnique()
+                .HasFilter("((username IS NOT NULL) AND (is_deleted = false))");
+
             entity.Property(e => e.id).UseIdentityAlwaysColumn();
             entity.Property(e => e.created_at).HasDefaultValueSql("now()");
             entity.Property(e => e.force_password_change).HasDefaultValue(false);
             entity.Property(e => e.is_active).HasDefaultValue(true);
             entity.Property(e => e.is_deleted).HasDefaultValue(false);
-            entity.Property(e => e.monthly_amount).HasDefaultValueSql("299.00");
             entity.Property(e => e.public_id).HasDefaultValueSql("gen_random_uuid()");
-            entity.Property(e => e.subscription_plan).HasDefaultValueSql("'pro'::character varying");
             entity.Property(e => e.subscription_status).HasDefaultValueSql("'trial'::character varying");
             entity.Property(e => e.trial_ends_date).HasDefaultValueSql("(now() + '30 days'::interval)");
             entity.Property(e => e.updated_at).HasDefaultValueSql("now()");
@@ -691,40 +710,6 @@ public partial class AppDbContext : DbContext
                 .HasConstraintName("users_role_id_fkey");
 
             entity.HasOne(d => d.society).WithMany(p => p.users).HasConstraintName("users_society_id_fkey");
-        });
-
-        modelBuilder.Entity<password_reset_token>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-
-            entity.Property(e => e.Id)
-                .HasColumnName("id");
-
-            entity.Property(e => e.user_id)
-                .HasColumnName("user_id");
-
-            entity.Property(e => e.token_hash)
-                .HasColumnName("token_hash");
-
-            entity.Property(e => e.expires_at)
-                .HasColumnName("expires_at");
-
-            entity.Property(e => e.created_at)
-                .HasColumnName("created_at");
-
-            entity.Property(e => e.created_by_ip)
-                .HasColumnName("created_by_ip");
-
-            entity.Property(e => e.is_used)
-                .HasColumnName("is_used");
-
-            entity.Property(e => e.used_at)
-                .HasColumnName("used_at");
-
-            entity.HasOne(e => e.user)
-                .WithMany()
-                .HasForeignKey(e => e.user_id)
-                .HasConstraintName("password_reset_tokens_user_id_fkey");
         });
 
         OnModelCreatingPartial(modelBuilder);

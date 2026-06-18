@@ -20,7 +20,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
         {
             var efPayment = await _db.payments
                 .AsNoTracking()
-                .Where(p => p.payment_type == PaymentTypeCodes.Subscription && p.razorpay_payment_id == null && p.society_id == societyId && !p.is_deleted)
+                .Where(p => p.payment_type == PaymentTypeCodes.Subscription && p.razorpay_payment_id == null && p.society_id == userId && !p.is_deleted)
                 .OrderByDescending(p => p.created_at)
                 .FirstOrDefaultAsync();
             return efPayment?.ToDomain();
@@ -53,13 +53,39 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
 
         public async Task UpdateAsync(Payment payment)
         {
-            var entity = payment.ToEntity();
-            _db.payments.Update(entity);
+            // Update only mutable fields on the tracked entity.
+            // This avoids overwriting immutable columns like created_at/public_id
+            // when the incoming domain object is detached or partially populated.
+            var entity = await _db.payments.FirstOrDefaultAsync(p => p.id == payment.Id && !p.is_deleted);
+            if (entity == null) return;
+
+            entity.date_paid = payment.DatePaid;
+            entity.reference = payment.Reference;
+            entity.razorpay_payment_id = payment.RazorpayPaymentId;
+            entity.razorpay_signature = payment.RazorpaySignature;
+            entity.verified_at = payment.VerifiedAt;
         }
 
         public async Task SaveChangesAsync()
         {
             await _db.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// Acquires a transaction-level PostgreSQL advisory lock, runs the action inside that
+        /// transaction, then commits.  The lock is released automatically when the transaction
+        /// ends — safe for connection-pooled environments (pgBouncer in transaction mode).
+        /// </summary>
+        public async Task ExecuteWithAdvisoryLockAsync(long lockKey, Func<Task> action)
+        {
+            var strategy = _db.Database.CreateExecutionStrategy();
+            await strategy.ExecuteAsync(async () =>
+            {
+                await using var tx = await _db.Database.BeginTransactionAsync();
+                await _db.Database.ExecuteSqlAsync($"SELECT pg_advisory_xact_lock({lockKey})");
+                await action();
+                await tx.CommitAsync();
+            });
         }
     }
 }

@@ -40,7 +40,8 @@
             string? city = null,
             string? state = null,
             string? country = null,
-            string? pincode = null)
+            string? pincode = null,
+            DateOnly? onboardingDate = null)
         {
             if (string.IsNullOrWhiteSpace(name))
                 throw new ArgumentException("Society name cannot be empty.", nameof(name));
@@ -52,7 +53,8 @@
                 City = city,
                 State = state,
                 Country = country,
-                Pincode = pincode
+                Pincode = pincode,
+                OnboardingDate = onboardingDate ?? DateOnly.FromDateTime(DateTime.UtcNow)
             };
 
             return society;

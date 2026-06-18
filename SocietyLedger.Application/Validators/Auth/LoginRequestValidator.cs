@@ -15,12 +15,12 @@ namespace SocietyLedger.Application.Validators.Auth
             RuleFor(x => x.UsernameOrEmail)
                 .NotEmpty()
                 .WithMessage("Username or email is required.")
-                .MaximumLength(50).WithMessage("Username or email is too long.");
+                .MaximumLength(254).WithMessage("Username or email is too long.");
 
             RuleFor(x => x.Password)
                 .NotEmpty()
                 .WithMessage("Password is required.")
-                .MinimumLength(6).WithMessage("Password must be at least 6 characters.");
+                .MaximumLength(128).WithMessage("Password is too long.");
         }
     }
 }

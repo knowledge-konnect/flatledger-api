@@ -54,10 +54,21 @@ namespace SocietyLedger.Infrastructure.Services.Admin
 
             var accessToken = _tokenService.GenerateAdminAccessToken(tokenClaims, out var expiresAt);
 
-            // Fire-and-forget last_login update: do not block login on this
-            _ = _db.admin_users
-                .Where(a => a.id == admin.id)
-                .ExecuteUpdateAsync(s => s.SetProperty(a => a.last_login, DateTime.UtcNow));
+            // Update last_login without blocking the login response.
+            // Swallow exceptions — a failed timestamp update must never fail a successful login.
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await _db.admin_users
+                        .Where(a => a.id == admin.id)
+                        .ExecuteUpdateAsync(s => s.SetProperty(a => a.last_login, DateTime.UtcNow));
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to update last_login for admin {AdminId}", admin.id);
+                }
+            });
 
             _logger.LogInformation("Admin {Email} logged in from {IP}", admin.email, ipAddress);
 

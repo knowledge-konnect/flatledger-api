@@ -22,17 +22,12 @@ using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ----------------------------
-// Render.com PORT support
-// Render injects a PORT env var at runtime; bind to it so the health
-// check and reverse-proxy can reach the process.
-// ----------------------------
+// Render.com injects a PORT env var at runtime; bind to it so the health
+// check and reverse-proxy can reach the process on the correct port.
 var renderPort = Environment.GetEnvironmentVariable("PORT");
 if (!string.IsNullOrEmpty(renderPort))
     builder.WebHost.UseUrls($"http://+:{renderPort}");
 
-
-// ----------------------------
 var logTemplate = "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] [{CorrelationId}] {Message}{NewLine}{Exception}";
 
 builder.Host.UseSerilog((ctx, lc) =>
@@ -48,8 +43,8 @@ builder.Host.UseSerilog((ctx, lc) =>
 
     if (ctx.HostingEnvironment.IsProduction())
     {
-        // Render.com has an ephemeral filesystem — log to stdout only and forward
-        // via the Render log drain (Datadog, Papertrail, Logtail, etc.).
+        // Render.com has an ephemeral filesystem, so log to stdout only.
+        // Forward logs to a drain (Datadog, Papertrail, Logtail, etc.) via the Render dashboard.
         lc.WriteTo.Async(a => a.Console(outputTemplate: logTemplate));
     }
     else
@@ -67,11 +62,8 @@ builder.Host.UseSerilog((ctx, lc) =>
 
 Log.Information("Starting SocietyLedger API...");
 
-// ----------------------------
-// CORS
-// The frontend sends credentials (withCredentials: true / httpOnly cookie), so
-// AllowAnyOrigin() is forbidden by the browser.  Origins are loaded from config.
-// ----------------------------
+// CORS: AllowAnyOrigin() is forbidden when the frontend sends credentials
+// (withCredentials: true / httpOnly cookie). Origins are loaded from config.
 var allowedOrigins = builder.Configuration
     .GetSection("AllowedOrigins")
     .Get<string[]>() ?? [];
@@ -84,18 +76,15 @@ builder.Services.AddCors(options =>
         policy.WithOrigins(allowedOrigins)
               .AllowAnyHeader()
               .AllowAnyMethod()
-              .AllowCredentials();   // required for httpOnly cookie
+              .AllowCredentials(); // Required for httpOnly cookie support
     });
 });
 
-// ----------------------------
-// Health Checks
-// ----------------------------
-builder.Services.AddHealthChecks();
+// Health check wired to EF Core — reports unhealthy if the DB is unreachable.
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<AppDbContext>("database");
 
-// ----------------------------
 // Swagger / OpenAPI
-// ----------------------------
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -105,7 +94,7 @@ builder.Services.AddSwaggerGen(c =>
         Version = "v1"
     });
 
-    // JWT Authorization for Swagger
+    // Enables the "Authorize" button in Swagger UI for JWT bearer tokens.
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Name = "Authorization",
@@ -133,9 +122,8 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 
-// ----------------------------
-// API Versioning
-// ----------------------------
+// API Versioning — URL segment strategy (e.g. /api/v1/...).
+// ReportApiVersions adds the api-supported-versions header to every response.
 builder.Services.AddApiVersioning(options =>
 {
     options.DefaultApiVersion = new ApiVersion(ApiConstants.API_VERSION_1_0);
@@ -149,9 +137,8 @@ builder.Services.AddApiVersioning(options =>
     options.SubstituteApiVersionInUrl = true;
 });
 
-// ----------------------------
-// Rate Limiting
-// ----------------------------
+// Rate limiting: per-user (authenticated) or per-IP (anonymous), 100 req/min globally.
+// Auth endpoints use a stricter 5 req/min policy for brute-force protection.
 builder.Services.AddRateLimiter(options =>
 {
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
@@ -171,7 +158,6 @@ builder.Services.AddRateLimiter(options =>
             });
     });
 
-    // Strict per-IP limit for auth endpoints — brute-force protection.
     // Applied explicitly via .RequireRateLimiting("AuthPolicy") on /login and /register.
     options.AddPolicy("AuthPolicy", context =>
         RateLimitPartition.GetFixedWindowLimiter(
@@ -212,15 +198,45 @@ builder.Services.AddRateLimiter(options =>
     };
 });
 
-// ----------------------------
 // JWT Authentication
-// ----------------------------
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
 var key = jwtSettings["Key"];
 if (string.IsNullOrWhiteSpace(key))
     throw new InvalidOperationException("JwtSettings:Key is missing or empty. Set the JwtSettings__Key environment variable.");
+if (System.Text.Encoding.UTF8.GetByteCount(key) < 32)
+    throw new InvalidOperationException("JwtSettings:Key must be at least 32 bytes (256 bits) for HMAC-SHA256. Use a longer key.");
 var issuer = jwtSettings["Issuer"];
 var audience = jwtSettings["Audience"];
+
+
+if (builder.Environment.IsProduction())
+{
+    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+    if (string.IsNullOrWhiteSpace(connectionString))
+        throw new InvalidOperationException(
+            "ConnectionStrings:DefaultConnection is missing. Set the ConnectionStrings__DefaultConnection environment variable.");
+
+    var razorpayKeyId = builder.Configuration["Razorpay:KeyId"];
+    var razorpayKeySecret = builder.Configuration["Razorpay:KeySecret"];
+    var razorpayWebhookSecret = builder.Configuration["Razorpay:WebhookSecret"];
+
+    if (string.IsNullOrWhiteSpace(razorpayKeyId))
+        throw new InvalidOperationException(
+            "Razorpay:KeyId is missing. Set the Razorpay__KeyId environment variable.");
+    if (string.IsNullOrWhiteSpace(razorpayKeySecret))
+        throw new InvalidOperationException(
+            "Razorpay:KeySecret is missing. Set the Razorpay__KeySecret environment variable.");
+    if (string.IsNullOrWhiteSpace(razorpayWebhookSecret))
+        throw new InvalidOperationException(
+            "Razorpay:WebhookSecret is missing. Webhook signature verification will fail without it. " +
+            "Set the Razorpay__WebhookSecret environment variable.");
+
+    var resendApiKey = builder.Configuration["Email:ResendApiKey"];
+    if (string.IsNullOrWhiteSpace(resendApiKey))
+        throw new InvalidOperationException(
+            "Email:ResendApiKey is missing. Set the Email__ResendApiKey environment variable.");
+}
+
 
 builder.Services.AddAuthentication(options =>
 {
@@ -248,87 +264,82 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("ActiveSubscription", policy =>
         policy.Requirements.Add(new SubscriptionRequirement()));
 
-    // SuperAdmin policy: grants access to all /api/admin/* endpoints.
+    // SuperAdmin policy grants access to all /api/admin/* endpoints.
     // Only JWTs issued by AdminAuthService carry the role:super_admin claim.
     options.AddPolicy("SuperAdmin", policy =>
         policy.RequireClaim(System.Security.Claims.ClaimTypes.Role, "super_admin"));
 });
 
 builder.Services.AddScoped<IAuthorizationHandler, SubscriptionAuthorizationHandler>();
-// ----------------------------
-// Application services
-// ----------------------------
+
+// Application and infrastructure services
 builder.Services.AddApplicationServices(builder.Configuration);
 builder.Services.AddInfrastructureServices(builder.Configuration);
 builder.Services.AddSharedServices();
 
-// BackgroundService is used for monthly billing. Hangfire removed for MVP.
-
-// ----------------------------
-// Background services
-// ----------------------------
+// Background services for monthly billing and trial expiration.
+// Hangfire was removed in favour of these lightweight hosted services for the MVP.
 builder.Services.AddHostedService<MonthlyBillGenerationService>();
 builder.Services.AddHostedService<TrialExpirationService>();
-builder.Services.AddHostedService<SubscriptionReminderService>();
 
-// ----------------------------
-// Forwarded headers — trust Render's SSL-terminating load balancer so that
-// Request.Scheme is "https" and X-Forwarded-For is populated correctly.
-// ----------------------------
+// Trust Render's SSL-terminating load balancer so that Request.Scheme is "https"
+// and X-Forwarded-For is populated correctly. Clearing known networks/proxies
+// ensures Render's dynamic proxy IPs are always trusted.
+// SECURITY: only clear the defaults when running on Render; in other environments
+// this would trust every hop in the X-Forwarded-For chain.
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-    // Clear known-network/known-proxy defaults so Render's proxy IPs are trusted.
-    options.KnownNetworks.Clear();
-    options.KnownProxies.Clear();
+    if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("RENDER")))
+    {
+        // Render uses rotating proxy IPs — clear defaults to accept any proxy.
+        options.KnownNetworks.Clear();
+        options.KnownProxies.Clear();
+    }
 });
 
-// ----------------------------
-// Build the app
-// ----------------------------
 var app = builder.Build();
 
-// ----------------------------
 // Middleware pipeline
-// ----------------------------
-// Swagger is only served in non-production environments.
-// Swagger is now enabled in all environments (including production)
 // Must be first — corrects Request.Scheme / RemoteIpAddress before any other middleware reads them.
 app.UseForwardedHeaders();
 
-if (app.Environment.IsDevelopment())
+app.UseSwagger();
+app.UseSwaggerUI(c =>
 {
-    app.UseSwagger();
-    app.UseSwaggerUI(c =>
-    {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "SocietyLedger API V1");
-        c.RoutePrefix = "";
-    });
-}
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "SocietyLedger API V1");
+    c.RoutePrefix = "";
+});
 
-// Skip HTTPS redirect on Render — SSL is terminated at the load balancer
+// SSL is terminated at the Render load balancer, so HTTPS redirect is only needed locally.
 if (!app.Environment.IsProduction())
 {
     app.UseHttpsRedirection();
 }
 
-// Secure headers
+// Minimal security headers — tightened for an API-only surface (no browser assets served).
 app.Use(async (ctx, next) =>
 {
     ctx.Response.Headers.Append("X-Content-Type-Options", "nosniff");
     ctx.Response.Headers.Append("X-Frame-Options", "DENY");
     ctx.Response.Headers.Append("Referrer-Policy", "no-referrer");
     ctx.Response.Headers.Append("X-XSS-Protection", "1; mode=block");
+    if (!ctx.Request.Path.StartsWithSegments("/swagger"))
+    {
+        ctx.Response.Headers.Append("Content-Security-Policy", "default-src 'none'");
+    }
     await next();
 });
 
-// Correlation ID middleware — pushes CorrelationId into Serilog LogContext
+// Correlation ID middleware — pushes CorrelationId into Serilog LogContext for every request.
 app.UseMiddleware<SocietyLedger.Api.CorrelationIdMiddleware>();
+
+app.UseResponseCompression();
 
 app.UseCors("DefaultCorsPolicy");
 
-// Serilog built-in request logging replaces the custom RequestLoggingMiddleware:
-// one structured log line per request with Method, Path, StatusCode, Elapsed, UserId.
+// Serilog structured request logging: one log line per request with Method, Path, StatusCode, Elapsed, UserId.
+// Health-check and Swagger probes are suppressed at Verbose level to reduce noise.
 app.UseSerilogRequestLogging(options =>
 {
     options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0}ms";
@@ -338,7 +349,6 @@ app.UseSerilogRequestLogging(options =>
         if (ctx.Request.Path.StartsWithSegments("/health") ||
             ctx.Request.Path.StartsWithSegments("/swagger"))
             return LogEventLevel.Verbose;
-
         return ex != null || ctx.Response.StatusCode >= 500 ? LogEventLevel.Error :
                ctx.Response.StatusCode >= 400 ? LogEventLevel.Warning :
                elapsed > 1000 ? LogEventLevel.Warning :
@@ -365,9 +375,7 @@ app.UseAuthorization();
 // Health check endpoint
 app.MapHealthChecks("/health");
 
-// ----------------------------
 // API Version Set & Endpoints
-// ----------------------------
 var versionSet = app.NewApiVersionSet()
     .HasApiVersion(new ApiVersion(ApiConstants.API_VERSION_1_0))
     .ReportApiVersions()
@@ -415,15 +423,10 @@ app.MapGroup(ApiRoutes.SOCIETIES)
 app.MapGroup(ApiRoutes.NOTIFICATIONS)
    .MapNotificationRoutes(RouteGroupNames.NOTIFICATION, versionSet);
 
-app.MapGroup(ApiRoutes.CONTACT_US)
-   .MapContactUsRoutes(RouteGroupNames.CONTACT_US, versionSet);
-
 // Dashboard endpoints
 app.MapDashboardEndpoints();
 
-// -----------------------------------------------
-// SaaS Admin module routes
-// -----------------------------------------------
+// SaaS Admin module routes — all require the SuperAdmin policy.
 app.MapGroup(ApiRoutes.ADMIN_AUTH)
    .MapAdminAuthRoutes(RouteGroupNames.ADMIN_AUTH, versionSet);
 
@@ -451,12 +454,16 @@ app.MapGroup(ApiRoutes.ADMIN_INVOICES)
 app.MapGroup(ApiRoutes.ADMIN_SETTINGS)
     .MapAdminPlatformSettingRoutes(RouteGroupNames.ADMIN_SETTINGS, versionSet);
 
+app.MapGroup(ApiRoutes.CONTACT)
+   .MapContactRoutes(RouteGroupNames.CONTACT, versionSet);
+
 app.MapGroup(ApiRoutes.REPORTS)
    .MapReportRoutes(RouteGroupNames.REPORTS, versionSet);
 
 // Proactively warm up the Supabase connection pool on startup.
 // Free-tier Supabase instances can take 60-90s to resume from idle; retrying here
-// prevents the first real request from timing out.
+// prevents the first real request from timing out after a cold start.
+// A dedicated 120s timeout is used only for this warmup ping — normal queries use 30s.
 const int maxWarmupAttempts = 5;
 for (int attempt = 1; attempt <= maxWarmupAttempts; attempt++)
 {
@@ -464,7 +471,7 @@ for (int attempt = 1; attempt <= maxWarmupAttempts; attempt++)
     {
         using var scope = app.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        await db.Database.ExecuteSqlRawAsync("SELECT 1");
+        await db.Database.ExecuteSqlRawAsync("SET statement_timeout = '120s'; SELECT 1");
         Log.Information("Database warmup successful on attempt {Attempt}.", attempt);
         break;
     }

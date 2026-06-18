@@ -16,8 +16,8 @@ namespace SocietyLedger.Application.Validators.Flat
                 .MaximumLength(100).WithMessage("Owner name cannot exceed 100 characters.");
 
             RuleFor(x => x.ContactMobile)
-                .NotEmpty().WithMessage("Contact mobile number is required.")
-                .Matches(@"^[0-9]{10}$").WithMessage("Contact mobile must be a valid 10-digit number.");
+                .Matches(@"^[0-9]{10}$").WithMessage("Contact mobile must be a valid 10-digit number.")
+                .When(x => !string.IsNullOrWhiteSpace(x.ContactMobile));
 
             RuleFor(x => x.ContactEmail)
                 .EmailAddress().WithMessage("Contact email must be a valid email address.")

@@ -80,37 +80,41 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             return efUser?.ToDomain();
         }
 
+        public async Task<User?> GetByEmailAndMobileAsync(string email, string mobile)
+        {
+            if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(mobile))
+                return null;
+
+            var lowered = email.ToLowerInvariant();
+
+            var efUser = await _db.users
+                .ExcludeDeleted()
+                .Include(u => u.role)
+                .Include(u => u.society)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u =>
+                    (u.email ?? string.Empty).ToLower() == lowered &&
+                    u.mobile == mobile);
+
+            return efUser?.ToDomain();
+        }
+
         public async Task<User?> GetByUsernameOrEmailAsync(string usernameOrEmail)
         {
             if (string.IsNullOrWhiteSpace(usernameOrEmail))
                 return null;
 
             var lowered = usernameOrEmail.ToLowerInvariant();
-            var row = await (from u in _db.users.AsNoTracking()
-                             join r in _db.roles.AsNoTracking() on u.role_id equals r.id into rg
-                             from r in rg.DefaultIfEmpty()
-                             join s in _db.societies.AsNoTracking() on u.society_id equals s.id into sg
-                             from s in sg.DefaultIfEmpty()
-                             where ((u.email ?? string.Empty).ToLower() == lowered) ||
-                                   ((u.username ?? string.Empty).ToLower() == lowered)
-                                   && !u.is_deleted
-                             select new
-                             {
-                                 UserEntity = u,
-                                 RoleEntity = r,
-                                 SocietyName = s != null ? s.name : null,
-                                 SocietyPublicId = s != null ? s.public_id : Guid.Empty
-                             })
-                             .FirstOrDefaultAsync();
+            var efUser = await _db.users
+                .Include(u => u.role)
+                .Include(u => u.society)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => 
+                    ((u.email ?? string.Empty).ToLower() == lowered ||
+                     (u.username ?? string.Empty).ToLower() == lowered) &&
+                    !u.is_deleted);
 
-            if (row == null) return null;
-
-            var domainUser = row.UserEntity.ToDomain();
-            domainUser.Role = row.RoleEntity != null ? row.RoleEntity.ToDomain() : null;
-            domainUser.SocietyName = row.SocietyName ?? string.Empty;
-            domainUser.SocietyPublicId = row.SocietyPublicId;
-            return domainUser;
-
+            return efUser?.ToDomain();
         }
 
         /// <summary>
@@ -174,14 +178,14 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
         }
 
         /// <summary>
-        /// Get all users for a specific society.
+        /// Get all users for a specific society. Loads only the role navigation property —
+        /// society is already implied by the ForSociety() filter and does not need to be re-loaded.
         /// </summary>
         public async Task<IEnumerable<User>> GetBySocietyIdAsync(long societyId)
         {
             var users = await _db.users
                 .ForSociety(societyId)
                 .Include(u => u.role)
-                .Include(u => u.society)
                 .AsNoTracking()
                 .OrderBy(u => u.name)
                 .ToListAsync();
@@ -252,5 +256,48 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
         {
             await _db.SaveChangesAsync();
         }
+
+        /// <summary>
+        /// Updates last_login using a targeted bulk UPDATE — avoids a SELECT + track round-trip.
+        /// </summary>
+        public Task UpdateLastLoginAsync(long userId, DateTime loginAt) =>
+            _db.users
+                .Where(u => u.id == userId)
+                .ExecuteUpdateAsync(s => s.SetProperty(u => u.last_login, loginAt));
+
+        /// <summary>
+        /// Finds a non-deleted user by password-reset token hash, including Role and Society navigation.
+        /// </summary>
+        public async Task<User?> GetByPasswordResetTokenHashAsync(string tokenHash)
+        {
+            var efUser = await _db.users
+                .Include(u => u.role)
+                .Include(u => u.society)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => u.password_reset_token_hash == tokenHash && !u.is_deleted);
+
+            return efUser?.ToDomain();
+        }
+
+        /// <summary>
+        /// Updates password hash and clears password-reset token fields atomically via a bulk UPDATE.
+        /// </summary>
+        public Task SetPasswordAndClearResetTokenAsync(long userId, string newPasswordHash) =>
+            _db.users
+                .Where(u => u.id == userId)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(u => u.password_hash, newPasswordHash)
+                    .SetProperty(u => u.password_reset_token_hash, (string?)null)
+                    .SetProperty(u => u.password_reset_expires_at, (DateTime?)null)
+                    .SetProperty(u => u.force_password_change, false)
+                    .SetProperty(u => u.updated_at, DateTime.UtcNow));
+
+        public Task SetPasswordResetTokenAsync(long userId, string tokenHash, DateTime expiresAtUtc) =>
+            _db.users
+                .Where(u => u.id == userId)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(u => u.password_reset_token_hash, tokenHash)
+                    .SetProperty(u => u.password_reset_expires_at, DateTime.SpecifyKind(expiresAtUtc, DateTimeKind.Unspecified))
+                    .SetProperty(u => u.updated_at, DateTime.UtcNow));
     }
 }

@@ -29,6 +29,7 @@
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
     <PackageReference Include="Polly" Version="8.5.0" />
     <PackageReference Include="Razorpay" Version="3.3.2" />
+    <PackageReference Include="Resend" Version="0.5.1" />
   </ItemGroup>
 
   <ItemGroup>

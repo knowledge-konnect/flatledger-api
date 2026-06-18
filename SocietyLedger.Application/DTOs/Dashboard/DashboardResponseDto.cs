@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 namespace SocietyLedger.Application.DTOs.Dashboard
 {
     /// <summary>
-    /// Top-level response from public.get_dashboard_all_data_json()
+    /// Top-level response from public.get_dashboard_data()
     /// </summary>
     public class DashboardResponseDto
     {
@@ -12,6 +12,9 @@ namespace SocietyLedger.Application.DTOs.Dashboard
 
         [JsonPropertyName("snapshot")]
         public SnapshotInfo Snapshot { get; set; } = new();
+
+        [JsonPropertyName("trend_meta")]
+        public TrendMetaInfo? TrendMeta { get; set; }
 
         [JsonPropertyName("trends")]
         public List<MonthlyTrend> Trends { get; set; } = new();
@@ -27,5 +30,17 @@ namespace SocietyLedger.Application.DTOs.Dashboard
 
         [JsonPropertyName("insights")]
         public List<string> Insights { get; set; } = new();
+
+        [JsonPropertyName("flat_summary")]
+        public FlatSummaryDto FlatSummary { get; set; } = new();
+    }
+
+    public class TrendMetaInfo
+    {
+        [JsonPropertyName("window_months")]
+        public int WindowMonths { get; set; }
+
+        [JsonPropertyName("end_month")]
+        public string EndMonth { get; set; } = string.Empty;
     }
 }

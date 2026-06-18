@@ -15,9 +15,12 @@ namespace SocietyLedger.Application.DTOs.Admin
         public bool IsDeleted { get; set; }
         public DateTime? LastLogin { get; set; }
         public DateTime CreatedAt { get; set; }
-        // Denormalized subscription fields stored on the user row
+        // Denormalized subscription fields stored on the user row.
+        // Note: subscription_status and trial/billing dates are still read from users table.
+        // SubscriptionPlan is deprecated (was users.subscription_plan) — always null; use
+        // the subscriptions table for current plan data.
         public string? SubscriptionStatus { get; set; }
-        public string? SubscriptionPlan { get; set; }
+        public string? SubscriptionPlan { get; set; }  // DEPRECATED — always null
         public DateTime? TrialEndsDate { get; set; }
         public DateTime? NextBillingDate { get; set; }
     }

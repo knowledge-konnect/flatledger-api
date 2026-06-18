@@ -81,9 +81,9 @@ namespace SocietyLedger.Api.Endpoints
                 {
                     var ip = ctx.GetClientIp();
                     var res = await authService.RegisterAsync(request, ip);
-                    // Deliver refresh token as httpOnly cookie; [JsonIgnore] keeps it out of the body.
+                    // Deliver the refresh token as an httpOnly cookie; [JsonIgnore] keeps it out of the response body.
                     SetRefreshTokenCookie(ctx, res.RefreshToken, res.RefreshTokenExpiresAt, env);
-                    return Results.Ok(ApiResponse<RegisterResponse>.Success(res, "Account created successfully"));
+                    return Results.Created("/auth/user", ApiResponse<RegisterResponse>.Success(res, "Account created successfully"));
                 })
             .AddEndpointFilter<FluentValidationFilter<RegisterRequest>>()
             .RequireRateLimiting("AuthPolicy")
@@ -91,7 +91,7 @@ namespace SocietyLedger.Api.Endpoints
             .WithApiVersionSet(versionSet)
             .HasApiVersion(version_1_0)
             .WithName("Register")
-            .Produces<ApiResponse<RegisterResponse>>(200)
+            .Produces<ApiResponse<RegisterResponse>>(201)
             .Produces<ErrorResponse>(400)
             .Produces<ErrorResponse>(409)
             .Produces<ErrorResponse>(500);
@@ -145,7 +145,8 @@ namespace SocietyLedger.Api.Endpoints
                         return Results.Json(errorResponse, statusCode: 401);
                     }
 
-                    // Log the hash (safe) so operators can correlate with DB rows.
+                    // Log the token hash (never the raw value) so operators can correlate
+                    // refresh attempts with rows in the token store.
                     try
                     {
                         var hashed = tokenService.HashToken(refreshToken);
@@ -285,18 +286,18 @@ namespace SocietyLedger.Api.Endpoints
         var userId = ctx.GetAuthenticatedUserId();
         if (userId == 0)
         {
-            var errorResponse = ErrorResponse.Create("UNAUTHORIZED", "User not authenticated", ctx.TraceIdentifier);
+            var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, ErrorMessages.UNAUTHORIZED, ctx.TraceIdentifier);
             return Results.Json(errorResponse, statusCode: 401);
         }
 
         var user = await userService.GetUserByIdAsync(userId);
         if (user == null)
         {
-            var errorResponse = ErrorResponse.Create("USER_NOT_FOUND", "User not found", ctx.TraceIdentifier);
+            var errorResponse = ErrorResponse.Create(ErrorCodes.RESOURCE_NOT_FOUND, ErrorMessages.RESOURCE_NOT_FOUND, ctx.TraceIdentifier);
             return Results.Json(errorResponse, statusCode: 404);
         }
 
-        return Results.Ok(ApiResponse<UserResponseDto>.Success(user));
+        return Results.Ok(ApiResponse<UserResponseDto>.Success(user, "User profile retrieved successfully"));
     })
     .RequireAuthorization()
     .WithTags(groupName)
@@ -307,53 +308,6 @@ namespace SocietyLedger.Api.Endpoints
     .Produces<ErrorResponse>(401)
     .Produces<ErrorResponse>(404)
     .Produces<ErrorResponse>(500);
-
-            // Forgot Password
-            app.MapPost("/forgot-password",
-                [AllowAnonymous]
-                [SwaggerOperation(
-                    Summary = "Request password reset",
-                    Description = "Initiates a password reset flow. A reset token will be sent to the provided email if it exists in the system. Always returns success to avoid email enumeration."
-                )]
-                async ([FromBody] ForgotPasswordRequest request, IPasswordResetService passwordResetService, HttpContext ctx) =>
-                {
-                    var ip = ctx.GetClientIp();
-                    var result = await passwordResetService.InitiatePasswordResetAsync(request, ip);
-                    return Results.Ok(ApiResponse<EmptyResponse>.Success(null, "If your email exists in our system, you will receive a password reset link."));
-                })
-            .AddEndpointFilter<FluentValidationFilter<ForgotPasswordRequest>>()
-            .RequireRateLimiting("AuthPolicy")
-            .WithTags(groupName)
-            .WithApiVersionSet(versionSet)
-            .HasApiVersion(version_1_0)
-            .WithName("ForgotPassword")
-            .Produces<ApiResponse<EmptyResponse>>(200)
-            .Produces<ErrorResponse>(400)
-            .Produces<ErrorResponse>(500);
-
-            // Reset Password
-            app.MapPost("/reset-password",
-                [AllowAnonymous]
-                [SwaggerOperation(
-                    Summary = "Reset password",
-                    Description = "Resets the password using a valid reset token. The token should be obtained from the forgot password email."
-                )]
-                async ([FromBody] ResetPasswordRequest request, IPasswordResetService passwordResetService, HttpContext ctx) =>
-                {
-                    var ip = ctx.GetClientIp();
-                    var result = await passwordResetService.ResetPasswordAsync(request, ip);
-                    return Results.Ok(ApiResponse<EmptyResponse>.Success(null, "Password has been reset successfully. You can now login with your new password."));
-                })
-            .AddEndpointFilter<FluentValidationFilter<ResetPasswordRequest>>()
-            .RequireRateLimiting("AuthPolicy")
-            .WithTags(groupName)
-            .WithApiVersionSet(versionSet)
-            .HasApiVersion(version_1_0)
-            .WithName("ResetPassword")
-            .Produces<ApiResponse<EmptyResponse>>(200)
-            .Produces<ErrorResponse>(400)
-            .Produces<ErrorResponse>(401)
-            .Produces<ErrorResponse>(500);
         }
     }
 }

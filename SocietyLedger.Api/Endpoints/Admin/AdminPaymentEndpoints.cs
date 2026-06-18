@@ -11,6 +11,10 @@ namespace SocietyLedger.Api.Endpoints.Admin
 {
     public static class AdminPaymentEndpoints
     {
+        /// <summary>
+        /// Maps admin payment routes: paginated cross-society payment listing with optional filters.
+        /// Requires the SuperAdmin policy.
+        /// </summary>
         public static void MapAdminPaymentRoutes(this RouteGroupBuilder app, string groupName, ApiVersionSet versionSet)
         {
             var v1 = new ApiVersion(ApiConstants.API_VERSION_1_0);
@@ -23,7 +27,7 @@ namespace SocietyLedger.Api.Endpoints.Admin
                        IAdminPaymentService service) =>
                 {
                     var result = await service.GetPaymentsAsync(page < 1 ? 1 : page, pageSize < 1 ? 20 : pageSize, societyId, paymentType, from, to);
-                    return Results.Ok(ApiResponse<PagedResult<AdminPaymentDto>>.Success(result));
+                    return Results.Ok(ApiResponse<PagedResult<AdminPaymentDto>>.Success(result, "Payments retrieved successfully"));
                 })
             .WithTags(groupName).WithApiVersionSet(versionSet).HasApiVersion(v1).WithName("AdminListPayments");
 

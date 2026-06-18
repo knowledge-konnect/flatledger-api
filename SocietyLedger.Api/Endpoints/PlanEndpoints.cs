@@ -22,6 +22,7 @@ namespace SocietyLedger.Api.Endpoints
             var version_1_0 = new ApiVersion(ApiConstants.API_VERSION_1_0);
 
             app.MapGet("/",
+            [AllowAnonymous]
             [SwaggerOperation(
                     Summary = "Get active plans",
                     Description = "Returns all active subscription plans available."
@@ -38,7 +39,7 @@ namespace SocietyLedger.Api.Endpoints
                 .WithTags(groupName);
 
             app.MapGet("/{id}",
-            
+            [AllowAnonymous]
             [SwaggerOperation(
                     Summary = "Get plan by ID",
                     Description = "Returns a specific subscription plan by its ID."
@@ -46,11 +47,6 @@ namespace SocietyLedger.Api.Endpoints
             async (Guid id, IPlanService planService, HttpContext ctx) =>
                 {
                     var result = await planService.GetPlanByIdAsync(id);
-                    if (result == null)
-                    {
-                        var errorResponse = ErrorResponse.Create(ErrorCodes.RESOURCE_NOT_FOUND, "Plan not found", ctx.TraceIdentifier);
-                        return Results.Json(errorResponse, statusCode: 404);
-                    }
                     return Results.Ok(ApiResponse<PlanResponse>.Success(result, "Plan retrieved successfully"));
                 })
                 .WithApiVersionSet(versionSet)

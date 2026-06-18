@@ -24,6 +24,12 @@ namespace SocietyLedger.Application.Interfaces.Repositories
         Task<User?> GetByEmailAsync(string email);
 
         /// <summary>
+        /// Get a user by email AND mobile (case-insensitive email, exact mobile).
+        /// Used for password reset ownership verification without email delivery.
+        /// </summary>
+        Task<User?> GetByEmailAndMobileAsync(string email, string mobile);
+
+        /// <summary>
         /// Get a user by username or email (case-insensitive).
         /// </summary>
         Task<User?> GetByUsernameOrEmailAsync(string usernameOrEmail);
@@ -67,5 +73,26 @@ namespace SocietyLedger.Application.Interfaces.Repositories
         /// Persists pending changes in the underlying context.
         /// </summary>
         Task SaveChangesAsync();
+
+        /// <summary>
+        /// Updates the last_login timestamp without loading the full entity.
+        /// </summary>
+        Task UpdateLastLoginAsync(long userId, DateTime loginAt);
+
+        /// <summary>
+        /// Finds a non-deleted user by their password-reset token hash (includes Role and Society navigation).
+        /// Returns null when not found.
+        /// </summary>
+        Task<User?> GetByPasswordResetTokenHashAsync(string tokenHash);
+
+        /// <summary>
+        /// Sets a new password hash and clears the password-reset token fields atomically.
+        /// </summary>
+        Task SetPasswordAndClearResetTokenAsync(long userId, string newPasswordHash);
+
+        /// <summary>
+        /// Stores a hashed password-reset token and expiry for the user.
+        /// </summary>
+        Task SetPasswordResetTokenAsync(long userId, string tokenHash, DateTime expiresAtUtc);
     }
 }

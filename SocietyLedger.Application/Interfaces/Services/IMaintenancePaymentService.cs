@@ -7,7 +7,7 @@ namespace SocietyLedger.Application.Interfaces.Services
         Task<MaintenancePaymentResponse> CreateMaintenancePaymentAsync(long userId, CreateMaintenancePaymentRequest request);
         Task<MaintenancePaymentResponse> AllocateMaintenancePaymentAsync(long userId, CreateMaintenancePaymentRequest request, string idempotencyKey);
         Task<MaintenancePaymentResponse> GetMaintenancePaymentAsync(Guid publicId, long userId);
-        Task<IEnumerable<MaintenancePaymentResponse>> GetMaintenancePaymentsBySocietyAsync(long userId, string? period = null);
+        Task<IEnumerable<MaintenancePaymentResponse>> GetMaintenancePaymentsBySocietyAsync(long userId, string? period = null, int page = 1, int pageSize = 50);
         Task<IEnumerable<MaintenancePaymentResponse>> GetMaintenancePaymentsByFlatAsync(Guid flatPublicId, long userId);
         Task<MaintenancePaymentResponse> UpdateMaintenancePaymentAsync(Guid publicId, long userId, UpdateMaintenancePaymentRequest request);
         Task DeleteMaintenancePaymentAsync(Guid publicId, long userId);

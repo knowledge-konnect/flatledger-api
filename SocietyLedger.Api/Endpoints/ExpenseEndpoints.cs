@@ -40,16 +40,15 @@ namespace SocietyLedger.Api.Endpoints
                     }
 
                     if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
-                    {
-                        var errorResponse = ErrorResponse.Create(ErrorCodes.INSUFFICIENT_PERMISSIONS, ErrorMessages.INSUFFICIENT_PERMISSIONS, ctx.TraceIdentifier);
-                        return Results.Json(errorResponse, statusCode: 403);
-                    }
+                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
 
                     var result = await expenseService.CreateExpenseAsync(userId, request);
                     Log.Information("Expense created successfully by user {UserId}", userId);
                     return Results.Created($"/expenses/{result.PublicId}", ApiResponse<ExpenseResponse>.Success(result, "Expense created successfully"));
                 })
             .AddEndpointFilter<FluentValidationFilter<CreateExpenseRequest>>()
+            .AddEndpointFilter<SubscriptionActiveFilter>()
+            .AddEndpointFilter<ViewerForbiddenFilter>()
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)
             .HasApiVersion(version_1_0)
@@ -58,26 +57,61 @@ namespace SocietyLedger.Api.Endpoints
             .Produces<ErrorResponse>(400)
             .Produces<ErrorResponse>(500);
 
-            // Get all expenses for society
+            // Get all expenses for society (with optional pagination/filtering)
             app.MapGet("/",
                 [Authorize]
             [SwaggerOperation(
                     Summary = "Get expenses",
-                    Description = "Retrieves all expenses for the society."
+                    Description = "Retrieves expenses for the society. Supports optional pagination, date range, category, and search filters. When no params are provided, returns all expenses (backward compatible)."
                 )]
-            async (IExpenseService expenseService, HttpContext ctx) =>
+            async (
+                IExpenseService expenseService,
+                HttpContext ctx,
+                [FromQuery] DateOnly? startDate,
+                [FromQuery] DateOnly? endDate,
+                [FromQuery] string? categoryCode,
+                [FromQuery] string? search,
+                [FromQuery] int? page,
+                [FromQuery] int? size,
+                [FromQuery] string? sortBy,
+                [FromQuery] string? sortDir) =>
                 {
                     var userId = ctx.GetUserId();
-                    var result = await expenseService.GetExpensesBySocietyAsync(userId);
-                    return Results.Ok(ApiResponse<ListExpensesResponse>.Success(
-                        new ListExpensesResponse { Expenses = result.ToList() },
-                        "Expenses retrieved successfully"));
+
+                    // Validate date range
+                    if (startDate.HasValue && endDate.HasValue && startDate > endDate)
+                        return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, "Start date must be on or before end date.", ctx.TraceIdentifier));
+
+                    // Validate sortBy
+                    var allowedSortBy = new[] { "dateIncurred", "amount", "categoryCode" };
+                    var resolvedSortBy = sortBy ?? "dateIncurred";
+                    if (!allowedSortBy.Contains(resolvedSortBy, StringComparer.OrdinalIgnoreCase))
+                        return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, $"Invalid sort field '{resolvedSortBy}'. Allowed values: {string.Join(", ", allowedSortBy)}.", ctx.TraceIdentifier));
+
+                    var resolvedSortDir = sortDir ?? "desc";
+                    if (!new[] { "asc", "desc" }.Contains(resolvedSortDir, StringComparer.OrdinalIgnoreCase))
+                        return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, "Invalid sort direction. Use 'asc' or 'desc'.", ctx.TraceIdentifier));
+
+                    // Always paginate — default page=0, size=20, max size=100.
+                    var resolvedPage = page ?? 0;
+                    var resolvedSize = Math.Min(size ?? 20, 100);
+
+                    if (resolvedPage < 0)
+                        return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, "Page number must be 0 or greater.", ctx.TraceIdentifier));
+                    if (resolvedSize <= 0)
+                        return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, "Page size must be greater than 0.", ctx.TraceIdentifier));
+
+                    var result = await expenseService.GetPagedAsync(
+                        userId, startDate, endDate, categoryCode, search,
+                        resolvedPage, resolvedSize, resolvedSortBy, resolvedSortDir);
+
+                    return Results.Ok(ApiResponse<PagedExpensesResponse>.Success(result, "Expenses retrieved successfully"));
                 })
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)
             .HasApiVersion(version_1_0)
             .WithName("GetExpenses")
-            .Produces<ApiResponse<ListExpensesResponse>>(200)
+            .Produces<ApiResponse<PagedExpensesResponse>>(200)
             .Produces<ErrorResponse>(400)
             .Produces<ErrorResponse>(500);
 
@@ -181,14 +215,13 @@ namespace SocietyLedger.Api.Endpoints
                 {
                     var userId = ctx.GetUserId();
                     if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
-                    {
-                        var errorResponse = ErrorResponse.Create(ErrorCodes.INSUFFICIENT_PERMISSIONS, ErrorMessages.INSUFFICIENT_PERMISSIONS, ctx.TraceIdentifier);
-                        return Results.Json(errorResponse, statusCode: 403);
-                    }
+                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
                     var result = await expenseService.UpdateExpenseAsync(publicId, userId, request);
                     return Results.Ok(ApiResponse<ExpenseResponse>.Success(result, "Expense updated successfully"));
                 })
             .AddEndpointFilter<FluentValidationFilter<UpdateExpenseRequest>>()
+            .AddEndpointFilter<SubscriptionActiveFilter>()
+            .AddEndpointFilter<ViewerForbiddenFilter>()
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)
             .HasApiVersion(version_1_0)
@@ -208,13 +241,12 @@ namespace SocietyLedger.Api.Endpoints
                 {
                     var userId = ctx.GetUserId();
                     if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
-                    {
-                        var errorResponse = ErrorResponse.Create(ErrorCodes.INSUFFICIENT_PERMISSIONS, ErrorMessages.INSUFFICIENT_PERMISSIONS, ctx.TraceIdentifier);
-                        return Results.Json(errorResponse, statusCode: 403);
-                    }
+                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
                     await expenseService.DeleteExpenseAsync(publicId, userId);
                     return Results.Ok(ApiResponse<EmptyResponse>.Success(new EmptyResponse(), "Expense deleted successfully"));
                 })
+            .AddEndpointFilter<SubscriptionActiveFilter>()
+            .AddEndpointFilter<ViewerForbiddenFilter>()
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)
             .HasApiVersion(version_1_0)

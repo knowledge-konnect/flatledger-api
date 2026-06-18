@@ -16,6 +16,11 @@ namespace SocietyLedger.Application.DTOs.Reports
         [JsonPropertyName("total_flats")]
         public int TotalFlats { get; set; }
 
+        /// <summary>Percentage of billed amount that has been collected. 0 when nothing has been billed.</summary>
+        [JsonPropertyName("collection_percentage")]
+        public decimal CollectionPercentage =>
+            TotalBilled > 0 ? Math.Round(TotalCollected / TotalBilled * 100, 2) : 0;
+
         [JsonPropertyName("periods")]
         public List<CollectionPeriodDto> Periods { get; set; } = new();
     }

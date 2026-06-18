@@ -1,8 +1,10 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Polly;
+using Polly.CircuitBreaker;
 using Polly.Retry;
 using Razorpay.Api;
+using SocietyLedger.Application.DTOs.Invoice;
 using SocietyLedger.Application.DTOs.Razorpay;
 using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Application.Interfaces.Services;
@@ -20,6 +22,7 @@ namespace SocietyLedger.Infrastructure.Services
     {
         private readonly IPaymentRepository _paymentRepo;
         private readonly ISubscriptionService _subscriptionService;
+        private readonly IInvoiceService _invoiceService;
         private readonly IPlanService _planService;
         private readonly IInvoiceRepository _invoiceRepo;
         private readonly IUserRepository _userRepo;
@@ -35,6 +38,7 @@ namespace SocietyLedger.Infrastructure.Services
         public RazorpayPaymentService(
             IPaymentRepository paymentRepo,
             ISubscriptionService subscriptionService,
+            IInvoiceService invoiceService,
             IPlanService planService,
             IInvoiceRepository invoiceRepo,
             IUserRepository userRepo,
@@ -43,6 +47,7 @@ namespace SocietyLedger.Infrastructure.Services
         {
             _paymentRepo = paymentRepo;
             _subscriptionService = subscriptionService;
+            _invoiceService = invoiceService;
             _planService = planService;
             _invoiceRepo = invoiceRepo;
             _userRepo = userRepo;
@@ -52,7 +57,27 @@ namespace SocietyLedger.Infrastructure.Services
             _webhookSecret = config["Razorpay:WebhookSecret"] ?? throw new InvalidOperationException("Razorpay WebhookSecret not configured");
 
             // Retry up to 3× with exponential back-off (1s → 2s → 4s) per attempt, each capped at 15 s.
+            // Circuit breaker opens after 50% failure rate over 10 requests in a 30-second window,
+            // preventing cascading failures when Razorpay is down.
             _razorpayRetry = new ResiliencePipelineBuilder()
+                .AddCircuitBreaker(new CircuitBreakerStrategyOptions
+                {
+                    FailureRatio = 0.5,
+                    MinimumThroughput = 10,
+                    SamplingDuration = TimeSpan.FromSeconds(30),
+                    BreakDuration = TimeSpan.FromSeconds(30),
+                    OnOpened = args =>
+                    {
+                        logger.LogError("Razorpay circuit breaker opened — requests will be rejected for {Duration}s",
+                            args.BreakDuration.TotalSeconds);
+                        return ValueTask.CompletedTask;
+                    },
+                    OnClosed = args =>
+                    {
+                        logger.LogInformation("Razorpay circuit breaker closed — resuming normal operation");
+                        return ValueTask.CompletedTask;
+                    }
+                })
                 .AddRetry(new RetryStrategyOptions
                 {
                     MaxRetryAttempts = 3,
@@ -78,24 +103,10 @@ namespace SocietyLedger.Infrastructure.Services
         {
             // Resolve authoritative price from the plan — never trust a client-supplied amount
             var plan = await _planService.GetPlanByIdAsync(planId);
-            if (plan == null)
-                throw new NotFoundException("Plan", planId.ToString());
-
-            var user = await _userRepo.GetByIdAsync(userId);
-            if (user == null)
-                throw new NotFoundException("User", userId.ToString());
-
-            var serverAmount = plan.Price > 0 ? plan.Price : plan.MonthlyAmount;
-            if (serverAmount <= 0)
-                throw new ValidationException($"Selected plan '{plan.Name}' has invalid amount ({serverAmount}). Please contact support.");
 
             // Reuse a recent pending order to avoid duplicates (skip if expired)
-            var existingPending = await _paymentRepo.GetPendingSubscriptionPaymentBySocietyIdAsync(user.SocietyId);
-            var pendingPlanId = ParsePlanIdFromReference(existingPending?.Reference);
-            if (existingPending != null
-                && pendingPlanId == planId
-                && existingPending.Amount > 0
-                && existingPending.CreatedAt >= DateTime.UtcNow - OrderExpiry)
+            var existingPending = await _paymentRepo.GetPendingSubscriptionPaymentByUserIdAsync(userId);
+            if (existingPending != null && existingPending.CreatedAt >= DateTime.UtcNow - OrderExpiry)
             {
                 _logger.LogInformation("Reusing existing pending order {OrderId} for user {UserId}", existingPending.RazorpayOrderId, userId);
                 return new CreateOrderResponse
@@ -108,6 +119,7 @@ namespace SocietyLedger.Infrastructure.Services
             }
 
             var client = new RazorpayClient(_keyId, _keySecret);
+            var serverAmount = plan.MonthlyAmount;
 
             var options = new Dictionary<string, object>
             {
@@ -141,6 +153,8 @@ namespace SocietyLedger.Infrastructure.Services
                 // Encode planId into Reference so it can be resolved without guessing at verification
                 Reference = $"plan:{planId}|order:{razorpayOrderId}",
                 CreatedAt = DateTime.UtcNow,
+                // Record which user initiated this order so activation can run in the correct user context
+                RecordedBy = userId,
                 RazorpayOrderId = razorpayOrderId,
                 PaymentType = PaymentTypeCodes.Subscription
             };
@@ -160,9 +174,13 @@ namespace SocietyLedger.Infrastructure.Services
         }
 
         /// <summary>
-        /// Verifies payment signature and activates subscription. Uses constant-time comparison for security.
+        /// Verifies payment signature and activates subscription.
+        /// userId is validated against the order's RecordedBy to prevent one user from
+        /// verifying another user's payment order.
+        /// Advisory lock on orderId prevents concurrent activation when both
+        /// VerifyPaymentAsync and ProcessWebhookAsync fire at the same time.
         /// </summary>
-        public async Task<VerifyPaymentResponse> VerifyPaymentAsync(VerifyPaymentRequest request)
+        public async Task<VerifyPaymentResponse> VerifyPaymentAsync(VerifyPaymentRequest request, long userId)
         {
             var payment = await _paymentRepo.GetByRazorpayOrderIdAsync(request.OrderId);
             if (payment == null)
@@ -171,14 +189,22 @@ namespace SocietyLedger.Infrastructure.Services
                 return new VerifyPaymentResponse { IsValid = false, Message = "Order not found" };
             }
 
-            // Idempotency: already verified
+            // Ownership check: only the user who created the order can verify it.
+            if (payment.RecordedBy.HasValue && payment.RecordedBy.Value != userId)
+            {
+                _logger.LogWarning(
+                    "VerifyPayment: user {UserId} attempted to verify order {OrderId} owned by user {OwnerId}",
+                    userId, request.OrderId, payment.RecordedBy.Value);
+                return new VerifyPaymentResponse { IsValid = false, Message = "Order not found" };
+            }
+
+            // Fast-path idempotency check before acquiring the lock
             if (payment.RazorpayPaymentId != null)
             {
                 _logger.LogInformation("VerifyPayment: order {OrderId} already verified", request.OrderId);
                 return new VerifyPaymentResponse { IsValid = true, Message = "Payment already verified" };
             }
 
-            // Fix #5: Use constant-time comparison to prevent timing attacks
             var expectedBytes = Encoding.UTF8.GetBytes(GenerateSignature(request.OrderId, request.PaymentId, _keySecret));
             var receivedBytes = Encoding.UTF8.GetBytes(request.Signature);
             var isSignatureValid = expectedBytes.Length == receivedBytes.Length
@@ -186,24 +212,35 @@ namespace SocietyLedger.Infrastructure.Services
 
             if (!isSignatureValid)
             {
-                // Fix #6: On failure, log only — never mutate DatePaid or store a forged signature
                 _logger.LogWarning(
                     "VerifyPayment: invalid signature for order {OrderId}, paymentId {PaymentId}. Possible tampering attempt.",
                     request.OrderId, request.PaymentId);
                 return new VerifyPaymentResponse { IsValid = false, Message = "Invalid signature" };
             }
 
-            // Mark as verified — only reached after a valid signature
-            payment.RazorpayPaymentId = request.PaymentId;
-            payment.RazorpaySignature = request.Signature;
-            payment.DatePaid = DateTime.UtcNow;
-            payment.VerifiedAt = DateTime.UtcNow;
+            // Advisory lock keyed by a stable SHA256-derived long — avoids GetHashCode() collisions
+            // across different orderId strings that could map to the same bucket.
+            var lockKey = StableAdvisoryLockKey(request.OrderId);
+            await _paymentRepo.ExecuteWithAdvisoryLockAsync(lockKey, async () =>
+            {
+                // Re-read inside the lock — webhook may have already processed this
+                var freshPayment = await _paymentRepo.GetByRazorpayOrderIdAsync(request.OrderId);
+                if (freshPayment?.RazorpayPaymentId != null)
+                {
+                    _logger.LogInformation("VerifyPayment: order {OrderId} already processed (concurrent webhook), skipping", request.OrderId);
+                    return;
+                }
 
-            await _paymentRepo.UpdateAsync(payment);
-            await _paymentRepo.SaveChangesAsync();
+                payment.RazorpayPaymentId = request.PaymentId;
+                payment.RazorpaySignature = request.Signature;
+                payment.DatePaid = DateTime.UtcNow;
+                payment.VerifiedAt = DateTime.UtcNow;
 
-            // Fix #2: Resolve plan from the payment record, not by position in a list
-            await ActivateSubscriptionAsync(payment, request.PaymentId);
+                await _paymentRepo.UpdateAsync(payment);
+                await _paymentRepo.SaveChangesAsync();
+
+                await ActivateSubscriptionAsync(payment, request.PaymentId);
+            });
 
             _logger.LogInformation("Payment verified and subscription activated for order {OrderId}, paymentId {PaymentId}",
                 request.OrderId, request.PaymentId);
@@ -211,51 +248,12 @@ namespace SocietyLedger.Infrastructure.Services
             return new VerifyPaymentResponse { IsValid = true, Message = "Payment verified and subscription activated" };
         }
 
-        /// <summary>
-        /// Initiates a refund for a given Razorpay payment ID.
-        /// </summary>
-        public async Task<RefundResponse> InitiateRefundAsync(RefundRequest request)
-        {
-            var payment = await _paymentRepo.GetByRazorpayPaymentIdAsync(request.PaymentId);
-            if (payment == null)
-                throw new NotFoundException("Payment", request.PaymentId);
-
-            if (request.Amount <= 0 || request.Amount > payment.Amount)
-                throw new ValidationException($"Invalid refund amount. Must be between 0 and {payment.Amount}.");
-
-            var client = new RazorpayClient(_keyId, _keySecret);
-            var options = new Dictionary<string, object>
-            {
-                { "amount", (int)(request.Amount * 100) } // Amount in paise
-            };
-
-            dynamic refund = null;
-            await _razorpayRetry.ExecuteAsync(async ct =>
-            {
-                refund = await Task.Run(() => client.Payment.Fetch(request.PaymentId).Refund(options), ct);
-            });
-
-            var refundId = (string)refund!["id"];
-            _logger.LogInformation("Refund initiated for payment {PaymentId}. Refund ID: {RefundId}, Amount: {Amount}",
-                request.PaymentId, refundId, request.Amount);
-
-            // The webhook will handle DB updates and business logic.
-            return new RefundResponse
-            {
-                RefundId = refundId,
-                PaymentId = request.PaymentId,
-                Amount = request.Amount,
-                Status = (string)refund!["status"]
-            };
-        }
-
-        //Accept raw body + signature; verify before processing; idempotency guard
+        // Fix #3 & #4: Accept raw body + signature; verify before processing; idempotency guard
         /// <summary>
         /// Handles Razorpay payment events. Signature is verified server-side using X-Razorpay-Signature header.
         /// </summary>
         public async Task ProcessWebhookAsync(string rawBody, string signature, WebhookPayload payload)
         {
-            // Fix #3: Verify Razorpay webhook signature before touching any data
             var expectedBytes = Encoding.UTF8.GetBytes(GenerateWebhookSignature(rawBody, _webhookSecret));
             var receivedBytes = Encoding.UTF8.GetBytes(signature);
             var isSignatureValid = expectedBytes.Length == receivedBytes.Length
@@ -264,65 +262,59 @@ namespace SocietyLedger.Infrastructure.Services
             if (!isSignatureValid)
             {
                 _logger.LogWarning("ProcessWebhook: invalid X-Razorpay-Signature. Possible spoofed webhook.");
-                return; // Return 200 to Razorpay so it does not retry; we've rejected the payload silently
+                return new WebhookProcessResult
+                {
+                    Status = WebhookProcessStatus.InvalidSignature,
+                    Message = "Invalid webhook signature"
+                };
             }
 
             switch (payload.Event)
             {
-                case "payment.captured":
-                    await ProcessCapturedWebhookAsync(payload);
-                    break;
-                case "payment.refunded":
-                    await ProcessRefundWebhookAsync(rawBody);
-                    break;
-                default:
-                    _logger.LogInformation("ProcessWebhook: ignoring unhandled event '{Event}'", payload.Event);
-                    break;
+                _logger.LogInformation("ProcessWebhook: ignoring unhandled event '{Event}'", payload.Event);
+                return;
             }
-        }
 
-        private async Task ProcessCapturedWebhookAsync(WebhookPayload payload)
-        {
             var paymentId = payload.Payment?.Id;
             var orderId = payload.Payment?.OrderId;
 
             if (string.IsNullOrEmpty(paymentId) || string.IsNullOrEmpty(orderId))
             {
-                _logger.LogWarning("ProcessWebhook(Captured): missing paymentId or orderId in payload");
+                _logger.LogWarning("ProcessWebhook: missing paymentId or orderId in payload");
                 return;
             }
 
-            // Fix #4: Double idempotency guard — check both by orderId and by paymentId
+            // Fast-path: already processed by paymentId
             var existingByPaymentId = await _paymentRepo.GetByRazorpayPaymentIdAsync(paymentId);
             if (existingByPaymentId != null)
             {
-                _logger.LogInformation("ProcessWebhook(Captured): duplicate webhook for paymentId {PaymentId}, skipping", paymentId);
+                _logger.LogInformation("ProcessWebhook: duplicate webhook for paymentId {PaymentId}, skipping", paymentId);
                 return;
             }
 
             var payment = await _paymentRepo.GetByRazorpayOrderIdAsync(orderId);
             if (payment == null)
             {
-                _logger.LogWarning("ProcessWebhook(Captured): no local payment record for orderId {OrderId}", orderId);
+                _logger.LogWarning("ProcessWebhook: no local payment record for orderId {OrderId}", orderId);
                 return;
             }
 
             if (payment.RazorpayPaymentId != null)
             {
-                _logger.LogInformation("ProcessWebhook(Captured): orderId {OrderId} already processed, skipping", orderId);
+                _logger.LogInformation("ProcessWebhook: orderId {OrderId} already processed, skipping", orderId);
                 return;
             }
 
-            payment.RazorpayPaymentId = paymentId;
-            payment.DatePaid = DateTime.UtcNow;
-            payment.VerifiedAt = DateTime.UtcNow;
+                payment.RazorpayPaymentId = paymentId;
+                payment.DatePaid = DateTime.UtcNow;
+                payment.VerifiedAt = DateTime.UtcNow;
 
-            await _paymentRepo.UpdateAsync(payment);
-            await _paymentRepo.SaveChangesAsync();
+                await _paymentRepo.UpdateAsync(payment);
+                await _paymentRepo.SaveChangesAsync();
 
-            await ActivateSubscriptionAsync(payment, paymentId);
+                await ActivateSubscriptionAsync(payment, paymentId);
 
-            _logger.LogInformation("ProcessWebhook(Captured): subscription activated for orderId {OrderId}, paymentId {PaymentId}",
+            _logger.LogInformation("ProcessWebhook: subscription activated for orderId {OrderId}, paymentId {PaymentId}",
                 orderId, paymentId);
         }
 
@@ -395,20 +387,19 @@ namespace SocietyLedger.Infrastructure.Services
                 throw new InvalidOperationException($"Cannot resolve plan from payment reference '{payment.Reference}'");
 
             var plan = await _planService.GetPlanByIdAsync(planId.Value);
-            if (plan == null)
-                throw new NotFoundException("Plan", planId.Value.ToString());
 
-            var userId = payment.RecordedBy;
-            if (!userId.HasValue || userId.Value <= 0)
-            {
-                throw new InvalidOperationException($"Payment {payment.Id} has no recorded user. Cannot activate subscription securely.");
-            }
+            // Use the user who created the order as the activating user so SubscribeAsync
+            // can resolve the correct society context. RecordedBy should always be set
+            // by CreateOrderAsync; fail-fast if it's missing to avoid subscribing under
+            // the wrong identity.
+            if (!payment.RecordedBy.HasValue)
+                throw new InvalidOperationException($"Cannot activate subscription for order {payment.RazorpayOrderId}: RecordedBy is not set.");
 
-            await _subscriptionService.SubscribeAsync(userId.Value, new Application.DTOs.Subscription.SubscribeRequest
+            await _subscriptionService.SubscribeAsync(payment.SocietyId, new Application.DTOs.Subscription.SubscribeRequest
             {
                 PlanId = plan.Id,
                 Amount = payment.Amount,
-                PaymentMethod = PaymentModeCodes.Razorpay,
+                PaymentMethod = "Razorpay",
                 PaymentReference = paymentReference
             });
         }

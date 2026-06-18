@@ -14,4 +14,6 @@ public partial class expense_category
     public string code { get; set; } = null!;
 
     public string display_name { get; set; } = null!;
+
+    public string? color { get; set; }
 }

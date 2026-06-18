@@ -28,6 +28,8 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                 RoleId = src.role_id,
                 Role = src.role?.ToDomain(),
                 PasswordHash = src.password_hash ?? string.Empty,
+                PasswordResetTokenHash = src.password_reset_token_hash,
+                PasswordResetExpiresAt = src.password_reset_expires_at,
                 IsActive = src.is_active,
                 ForcePasswordChange = src.force_password_change,
                 LastLogin = src.last_login,
@@ -51,6 +53,8 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                 mobile = src.Mobile,
                 role_id = src.RoleId,
                 password_hash = src.PasswordHash,
+                password_reset_token_hash = src.PasswordResetTokenHash,
+                password_reset_expires_at = src.PasswordResetExpiresAt,
                 is_active = src.IsActive,
                 force_password_change = src.ForcePasswordChange,
                 last_login = src.LastLogin,
@@ -69,6 +73,8 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             target.mobile = src.Mobile;
             target.role_id = src.RoleId;
             target.password_hash = src.PasswordHash;
+            target.password_reset_token_hash = src.PasswordResetTokenHash;
+            target.password_reset_expires_at = src.PasswordResetExpiresAt;
             target.is_active = src.IsActive;
             target.force_password_change = src.ForcePasswordChange;
             target.last_login = src.LastLogin;
@@ -89,7 +95,8 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                 city: src.city,
                 state: src.state,
                 country: null,
-                pincode: src.pincode
+                pincode: src.pincode,
+                onboardingDate: src.onboarding_date
             );
 
             // Use reflection to set protected properties from BaseEntity
@@ -113,6 +120,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                 name = src.Name,
                 address = src.Address,
                 //is_active = src.IsActive,
+                onboarding_date = src.OnboardingDate,
                 created_at = src.CreatedAt,
                 updated_at = src.UpdatedAt
             };
@@ -271,19 +279,10 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             {
                 Id = src.id,
                 Name = src.name,
-                Price = price,
-                MonthlyAmount = price,
+                MonthlyAmount = src.monthly_amount,
                 Currency = src.currency,
                 IsActive = src.is_active,
-                CreatedAt = src.created_at,
-                UpdatedAt = src.updated_at,
-                DurationMonths = src.duration_months > 0 ? src.duration_months : 1,
-                MaxFlats = src.max_flats,
-                PlanGroup = src.plan_group,
-                DiscountPercentage = src.discount_percentage,
-                DisplayOrder = src.display_order,
-                IsPopular = src.is_popular,
-                Description = src.description
+                CreatedAt = src.created_at
             };
         }
 
@@ -297,19 +296,10 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             {
                 id = src.Id,
                 name = src.Name,
-                price = price,
-                monthly_amount = price,
+                monthly_amount = src.MonthlyAmount,
                 currency = src.Currency,
                 is_active = src.IsActive,
-                created_at = src.CreatedAt,
-                updated_at = src.UpdatedAt,
-                duration_months = src.DurationMonths > 0 ? src.DurationMonths : 1,
-                max_flats = src.MaxFlats,
-                plan_group = src.PlanGroup,
-                discount_percentage = src.DiscountPercentage,
-                display_order = src.DisplayOrder,
-                is_popular = src.IsPopular,
-                description = src.Description
+                created_at = src.CreatedAt
             };
         }
 
@@ -433,9 +423,9 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                 Reference = src.reference,
                 ReceiptUrl = src.receipt_url,
                 RecordedBy = src.recorded_by,
-                //IdempotencyKey = src.idempotency_key,
-                //ReversedByPaymentId = src.reversed_by_payment_id,
-                //CreatedAt = src.created_at,
+                IdempotencyKey = src.idempotency_key,
+                ReversedByPaymentId = src.reversed_by_payment_id,
+                CreatedAt = src.created_at,
                 RazorpayOrderId = src.razorpay_order_id,
                 RazorpayPaymentId = src.razorpay_payment_id,
                 RazorpaySignature = src.razorpay_signature,

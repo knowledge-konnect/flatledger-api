@@ -6,7 +6,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace SocietyLedger.Infrastructure.Persistence.Entities;
 
-#pragma warning disable CS8981
 [Index("name", Name = "ux_plans_name", IsUnique = true)]
 public partial class plan
 {
@@ -15,9 +14,6 @@ public partial class plan
 
     [StringLength(100)]
     public string name { get; set; } = null!;
-
-    [Precision(10, 2)]
-    public decimal price { get; set; }
 
     [Precision(10, 2)]
     public decimal monthly_amount { get; set; }

@@ -1,5 +1,21 @@
 namespace SocietyLedger.Application.DTOs.Razorpay
 {
+    public enum WebhookProcessStatus
+    {
+        Processed,
+        Ignored,
+        Duplicate,
+        InvalidSignature,
+        InvalidPayload,
+        OrderNotFound
+    }
+
+    public class WebhookProcessResult
+    {
+        public WebhookProcessStatus Status { get; set; }
+        public string Message { get; set; } = null!;
+    }
+
     public class CreateOrderRequest
     {
         /// <summary>
@@ -32,7 +48,19 @@ namespace SocietyLedger.Application.DTOs.Razorpay
     public class WebhookPayload
     {
         public string Event { get; set; } = null!;
-        public PaymentEntity Payment { get; set; } = null!;
+        // Supports both a legacy flat payload and Razorpay's nested payload.entity shape.
+        public PaymentEntity? Payment { get; set; }
+        public WebhookPayloadContainer? Payload { get; set; }
+    }
+
+    public class WebhookPayloadContainer
+    {
+        public WebhookPaymentEnvelope? Payment { get; set; }
+    }
+
+    public class WebhookPaymentEnvelope
+    {
+        public PaymentEntity? Entity { get; set; }
     }
 
     public class PaymentEntity

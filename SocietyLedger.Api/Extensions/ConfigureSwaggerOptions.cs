@@ -3,6 +3,10 @@ using Microsoft.Extensions.Options;
 using Microsoft.OpenApi.Models;
 using Swashbuckle.AspNetCore.SwaggerGen;
 
+/// <summary>
+/// Configures a Swagger document for each discovered API version,
+/// keeping Swagger UI in sync when new versions are added.
+/// </summary>
 public class ConfigureSwaggerOptions : IConfigureNamedOptions<SwaggerGenOptions>
 {
     private readonly IApiVersionDescriptionProvider _provider;

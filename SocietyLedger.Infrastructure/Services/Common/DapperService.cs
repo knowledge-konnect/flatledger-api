@@ -24,9 +24,6 @@ namespace SocietyLedger.Infrastructure.Services.Common
 
         // ── Connection-less helpers ──────────────────────────────────────
 
-        /// <summary>
-        /// Executes a query and returns results.
-        /// </summary>
         public async Task<IEnumerable<T>> QueryAsync<T>(string sql, object? param = null)
         {
             try
@@ -37,14 +34,12 @@ namespace SocietyLedger.Infrastructure.Services.Common
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "QueryAsync failed. SQL: {Sql}", sql);
+                _logger.LogDebug("QueryAsync SQL: {Sql}", sql); // Fix #18: SQL at Debug, not Error
+                _logger.LogError(ex, "QueryAsync failed");
                 throw;
             }
         }
 
-        /// <summary>
-        /// Executes a query and returns the first or default result.
-        /// </summary>
         public async Task<T?> QueryFirstOrDefaultAsync<T>(string sql, object? param = null)
         {
             try
@@ -55,14 +50,12 @@ namespace SocietyLedger.Infrastructure.Services.Common
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "QueryFirstOrDefaultAsync failed. SQL: {Sql}", sql);
+                _logger.LogDebug("QueryFirstOrDefaultAsync SQL: {Sql}", sql);
+                _logger.LogError(ex, "QueryFirstOrDefaultAsync failed");
                 throw;
             }
         }
 
-        /// <summary>
-        /// Executes a command and returns affected rows.
-        /// </summary>
         public async Task<int> ExecuteAsync(string sql, object? param = null)
         {
             try
@@ -73,14 +66,12 @@ namespace SocietyLedger.Infrastructure.Services.Common
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "ExecuteAsync failed. SQL: {Sql}", sql);
+                _logger.LogDebug("ExecuteAsync SQL: {Sql}", sql);
+                _logger.LogError(ex, "ExecuteAsync failed");
                 throw;
             }
         }
 
-        /// <summary>
-        /// Executes a scalar command and returns the result.
-        /// </summary>
         public async Task<T?> ExecuteScalarAsync<T>(string sql, object? param = null)
         {
             try
@@ -91,23 +82,31 @@ namespace SocietyLedger.Infrastructure.Services.Common
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "ExecuteScalarAsync failed. SQL: {Sql}", sql);
+                _logger.LogDebug("ExecuteScalarAsync SQL: {Sql}", sql);
+                _logger.LogError(ex, "ExecuteScalarAsync failed");
                 throw;
             }
         }
 
-        // ── Transactional helpers ────────────────────────────────────────
-
         /// <summary>
-        /// Begins a transaction with specified isolation level.
+        /// Fix #12: disposes the connection if OpenAsync or BeginTransactionAsync throws,
+        /// preventing a connection pool leak.
         /// </summary>
         public async Task<(NpgsqlConnection Connection, NpgsqlTransaction Transaction)> BeginTransactionAsync(
             IsolationLevel isolationLevel = IsolationLevel.RepeatableRead)
         {
             var conn = OpenConnection();
-            await conn.OpenAsync();
-            var tx = await conn.BeginTransactionAsync(isolationLevel);
-            return (conn, tx);
+            try
+            {
+                await conn.OpenAsync();
+                var tx = await conn.BeginTransactionAsync(isolationLevel);
+                return (conn, tx);
+            }
+            catch
+            {
+                await conn.DisposeAsync();
+                throw;
+            }
         }
 
         /// <summary>

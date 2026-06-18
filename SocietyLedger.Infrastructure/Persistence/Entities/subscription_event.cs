@@ -42,4 +42,7 @@ public partial class subscription_event
     [ForeignKey("user_id")]
     [InverseProperty("subscription_events")]
     public virtual user user { get; set; } = null!;
+
+    [ForeignKey("society_id")]
+    public virtual society? society { get; set; }
 }

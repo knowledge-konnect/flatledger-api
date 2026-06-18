@@ -1,7 +1,7 @@
 ﻿using FluentValidation;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Npgsql;
-using Serilog;
 using SocietyLedger.Api.Filters;
 using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Application.Interfaces.Services;
@@ -12,7 +12,6 @@ using SocietyLedger.Infrastructure.Persistence.Repositories;
 using SocietyLedger.Infrastructure.Services;
 using SocietyLedger.Infrastructure.Services.Admin;
 using SocietyLedger.Infrastructure.Services.Common;
-using SocietyLedger.Shared;
 using SocietyLedger.Shared.Jwt;
 namespace SocietyLedger.Api.Extensions
 {
@@ -27,8 +26,10 @@ namespace SocietyLedger.Api.Extensions
 
             // Add application-level services (use cases)
             services.AddScoped<IAuthService, AuthService>();
+            services.AddScoped<IEmailService, EmailService>();
             services.AddScoped<IFlatService, FlatService>();
             services.AddScoped<IUserService, UserService>();
+            services.AddScoped<ISocietyService, SocietyService>();
             services.AddScoped<ISubscriptionService, SubscriptionService>();
             services.AddScoped<IInvoiceService, InvoiceService>();
             services.AddScoped<IPlanService, PlanService>();
@@ -39,9 +40,6 @@ namespace SocietyLedger.Api.Extensions
             services.AddScoped<IBillingService, BillingService>();
             services.AddScoped<IMaintenanceConfigService, MaintenanceConfigService>();
             services.AddScoped<INotificationPreferenceService, NotificationPreferenceService>();
-            services.AddScoped<IEmailService, EmailService>();
-            services.AddScoped<IPasswordResetService, PasswordResetService>();
-            services.AddScoped<IContactUsService, ContactUsService>();
 
             // SaaS Admin module
             services.AddScoped<IAdminAuthService, AdminAuthService>();
@@ -59,8 +57,9 @@ namespace SocietyLedger.Api.Extensions
 
         /// <summary>
         /// Registers infrastructure services: EF Core (Npgsql), Dapper, all repositories,
-        /// security helpers (PasswordHasher, TokenService), and Hangfire job classes.
-        /// Uses pgBouncer-compatible settings with a 120-second command timeout for Supabase cold starts.
+        /// security helpers (PasswordHasher, TokenService), and endpoint filters.
+        /// Uses a 120-second command timeout to handle Supabase free-tier cold starts.
+        /// pgBouncer transaction mode (port 6543) is assumed — savepoints and retries are disabled.
         /// </summary>
         public static IServiceCollection AddInfrastructureServices(this IServiceCollection services, IConfiguration configuration)
         {
@@ -88,14 +87,7 @@ namespace SocietyLedger.Api.Extensions
                     // pgBouncer transaction mode (port 6543): no savepoints, no retry.
                     // 120s to handle Supabase free-tier cold starts.
                     npgsql.CommandTimeout(120);
-                });
-
-                // Log EF Core commands to Serilog
-                // In production, this is filtered to Warning level or higher (see Program.cs Serilog config)
-                options.LogTo(
-                    message => Log.Logger.Information("EF Core: {Message}", message),
-                    new[] { "Microsoft.EntityFrameworkCore.Database.Command" });
-            });
+                }));
 
             // Common infrastructure helpers
             services.AddScoped<IUserContext, UserContext>();
@@ -113,8 +105,12 @@ namespace SocietyLedger.Api.Extensions
             services.AddScoped<IPaymentModeRepository, PaymentModeRepository>();
             services.AddScoped<IExpenseRepository, ExpenseRepository>();
 
+            services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
+            services.AddScoped<IAdjustmentRepository, AdjustmentRepository>();
             services.AddScoped<IMaintenanceConfigRepository, MaintenanceConfigRepository>();
             services.AddScoped<INotificationPreferenceRepository, NotificationPreferenceRepository>();
+            services.AddScoped<IContactRequestRepository, ContactRequestRepository>();
+            services.AddScoped<IBillRepository, BillRepository>();
 
             services.AddSingleton<SocietyLedger.Infrastructure.Data.IDbConnectionFactory, SocietyLedger.Infrastructure.Data.DbConnectionFactory>();
             services.AddScoped<IDapperService, DapperService>();
@@ -132,8 +128,16 @@ namespace SocietyLedger.Api.Extensions
             services.AddScoped<ITokenService, TokenService>();
 
             services.AddSingleton(typeof(FluentValidationFilter<>));
+            services.AddSingleton<ViewerForbiddenFilter>();
 
             services.Configure<JwtSettings>(configuration.GetSection("JwtSettings"));
+
+            // Email (Resend)
+            services.Configure<EmailSettings>(configuration.GetSection("Email"));
+            services.AddResend(options =>
+            {
+                options.ApiToken = configuration["Email:ResendApiKey"] ?? string.Empty;
+            });
 
             return services;
         }
@@ -147,7 +151,5 @@ namespace SocietyLedger.Api.Extensions
             services.AddMemoryCache();
             return services;
         }
-
-        // ...existing code...
     }
 }

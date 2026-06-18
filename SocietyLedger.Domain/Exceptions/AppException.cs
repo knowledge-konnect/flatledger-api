@@ -63,7 +63,7 @@ namespace SocietyLedger.Domain.Exceptions
     {
         public NotFoundException(string resourceName, string? identifier = null)
             : base(
-                $"{resourceName} not found" + (identifier != null ? $" ({identifier})" : "."),
+                $"The requested {resourceName.ToLower()} was not found.",
                 "RESOURCE_NOT_FOUND"
             )
         {

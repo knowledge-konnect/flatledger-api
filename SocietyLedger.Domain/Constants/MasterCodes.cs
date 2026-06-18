@@ -28,23 +28,23 @@ namespace SocietyLedger.Domain.Constants
     /// Centralized expense category codes.
     /// Maps to expense_categories.code in database.
     /// </summary>
+    /// <summary>
+    /// Active expense category codes — matches the expense_categories table exactly.
+    /// </summary>
     public static class ExpenseCategoryCodes
     {
-        public const string Electricity = "electricity";
-        public const string Water = "water";
-        public const string Security = "security";
-        public const string Housekeeping = "housekeeping";
-        public const string Maintenance = "maintenance";
-        public const string Repair = "repair";
-        public const string Lift = "lift";
-        public const string Generator = "generator";
-        public const string Cleaning = "cleaning";
-        public const string Garden = "garden";
-        public const string Salary = "salary";
-        public const string Stationery = "stationery";
-        public const string Insurance = "insurance";
-        public const string Tax = "tax";
-        public const string Others = "others";
+        public const string Electricity          = "electricity";
+        public const string Water                = "water";
+        public const string WatchmanSalary       = "watchman_salary";
+        public const string CleaningSalary       = "cleaning_salary";
+        public const string GeneralMaintenance   = "general_maintenance";
+        public const string Repairs              = "repairs";
+        public const string LiftMaintenance      = "lift_maintenance";
+        public const string CctvMaintenance      = "cctv_maintenance";
+        public const string SolarMaintenance     = "solar_maintenance";
+        public const string GeneratorMaintenance = "generator_maintenance";
+        public const string InternetWifi         = "internet_wifi";
+        public const string Others               = "others";
     }
 
     /// <summary>
@@ -70,7 +70,7 @@ namespace SocietyLedger.Domain.Constants
     public static class FlatStatusCodes
     {
         public const string OwnerOccupied = "owner_occupied";
-        public const string TenantOccupied = "tenant_occupied";
+        public const string TenantOccupied = "rented";
         public const string Vacant = "vacant";
         public const string UnderMaintenance = "under_maintenance";
     }

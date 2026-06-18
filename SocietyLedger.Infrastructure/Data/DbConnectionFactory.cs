@@ -35,8 +35,8 @@ namespace SocietyLedger.Infrastructure.Data
         {
             try
             {
-                using var connection = CreateConnection() as NpgsqlConnection;
-                await connection!.OpenAsync();
+                using var connection = new NpgsqlConnection(_connectionString);
+                await connection.OpenAsync();
                 var result = await connection.ExecuteScalarAsync<T>(sql, param, commandType: commandType);
                 return result!;
             }
@@ -51,8 +51,8 @@ namespace SocietyLedger.Infrastructure.Data
         {
             try
             {
-                using var connection = CreateConnection() as NpgsqlConnection;
-                await connection!.OpenAsync();
+                using var connection = new NpgsqlConnection(_connectionString);
+                await connection.OpenAsync();
                 var result = await connection.QueryAsync<T>(sql, param, commandType: commandType);
                 return result;
             }
@@ -67,8 +67,8 @@ namespace SocietyLedger.Infrastructure.Data
         {
             try
             {
-                using var connection = CreateConnection() as NpgsqlConnection;
-                await connection!.OpenAsync();
+                using var connection = new NpgsqlConnection(_connectionString);
+                await connection.OpenAsync();
                 var result = await connection.QueryFirstOrDefaultAsync<T>(sql, param, commandType: commandType);
                 return result;
             }

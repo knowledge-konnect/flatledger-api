@@ -9,8 +9,9 @@ using SocietyLedger.Api.Filters;
 using SocietyLedger.Application.DTOs.Flat;
 using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Application.Interfaces.Services;
+using SocietyLedger.Domain.Entities;
+using FlatEntity = SocietyLedger.Domain.Entities.Flat;
 using SocietyLedger.Infrastructure.Services.Common;
-using SocietyLedger.Domain.Constants;
 using SocietyLedger.Shared;
 using Swashbuckle.AspNetCore.Annotations;
 
@@ -42,16 +43,15 @@ namespace SocietyLedger.Api.Endpoints
                 }
 
                 if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
-                {
-                    var errorResponse = ErrorResponse.Create(ErrorCodes.INSUFFICIENT_PERMISSIONS, ErrorMessages.INSUFFICIENT_PERMISSIONS, ctx.TraceIdentifier);
-                    return Results.Json(errorResponse, statusCode: 403);
-                }
+                    return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
 
                 var result = await service.CreateAsync(request, userId);
                 Log.Information("Flat created successfully for FlatNo {FlatNo}", request.FlatNo);
-                return Results.Ok(ApiResponse<FlatResponseDto>.Success(result, "Flat created successfully"));
+                return Results.Created($"/flats/{result.PublicId}", ApiResponse<FlatResponseDto>.Success(result, "Flat created successfully"));
             })
             .AddEndpointFilter<FluentValidationFilter<CreateFlatDto>>()
+            .AddEndpointFilter<FlatLimitFilter>()
+            .AddEndpointFilter<ViewerForbiddenFilter>()
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)
             .HasApiVersion(version_1_0)
@@ -60,53 +60,54 @@ namespace SocietyLedger.Api.Endpoints
             .Produces<ErrorResponse>(409)
             .Produces<ErrorResponse>(500);
 
-            app.MapGet("/",[Authorize("ActiveSubscription")]
+            app.MapGet("/", [Authorize("ActiveSubscription")]
             [SwaggerOperation(
-        Summary = "Get all Flats for Current Society",
-        Description = "Fetches the list of all flats that belong to the authenticated user's society."
-    )]
-            async (IFlatService service, IUserRepository userRepository, HttpContext ctx) =>
-    {
-        var userId = ctx.GetUserId();
-        if (userId == 0)
-        {
-            Log.Warning("Unauthorized flat list request - invalid user ID");
-            var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid or missing authentication token", ctx.TraceIdentifier);
-            return Results.Json(errorResponse, statusCode: 401);
-        }
+                Summary = "Get all Flats for Current Society",
+                Description = "Fetches flats for the authenticated user's society. Supports optional pagination, search, and filtering. When no params are provided, returns all flats (backward compatible)."
+            )]
+            async (
+                IFlatService service,
+                HttpContext ctx,
+                [FromQuery] string? search,
+                [FromQuery] string? statusCode,
+                [FromQuery] int? page,
+                [FromQuery] int? size,
+                [FromQuery] string? sortBy,
+                [FromQuery] string? sortDir) =>
+            {
+                var userId = ctx.GetUserId();
 
-        // Get user to extract societyId
-        var user = await userRepository.GetByIdAsync(userId);
-        if (user == null || !user.IsActive)
-        {
-            Log.Warning("Flat list request by inactive or non-existent user {UserId}", userId);
-            var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "User not found or inactive", ctx.TraceIdentifier);
-            return Results.Json(errorResponse, statusCode: 401);
-        }
+                // Validate sortBy
+                var allowedSortBy = new[] { "flatNo", "ownerName", "maintenanceAmount", "createdAt" };
+                var resolvedSortBy = sortBy ?? "createdAt";
+                if (!allowedSortBy.Contains(resolvedSortBy, StringComparer.OrdinalIgnoreCase))
+                    return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, $"Invalid sort field '{resolvedSortBy}'. Allowed values: {string.Join(", ", allowedSortBy)}.", ctx.TraceIdentifier));
 
-        var societyId = user.SocietyId;
-        var flats = await service.GetBySocietyIdAsync(societyId);
+                var resolvedSortDir = sortDir ?? "asc";
+                if (!new[] { "asc", "desc" }.Contains(resolvedSortDir, StringComparer.OrdinalIgnoreCase))
+                    return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, "Invalid sort direction. Use 'asc' or 'desc'.", ctx.TraceIdentifier));
 
         if (flats == null || !flats.Any())
         {
-            Log.Information("No flats found for SocietyId {SocietyId}, returning empty list.", societyId);
-            return Results.Ok(ApiResponse<ListFlatsResponse>.Success(
-                new ListFlatsResponse { Flats = new List<FlatResponseDto>() },
-                "Flats retrieved successfully"));
+            Log.Warning("No flats found for SocietyId {SocietyId}", societyId);
+            var errorResponse = ErrorResponse.Create(ErrorCodes.RESOURCE_NOT_FOUND, ErrorMessages.RESOURCE_NOT_FOUND, ctx.TraceIdentifier);
+            return Results.Json(errorResponse, statusCode: 404);
         }
 
-        Log.Information("Fetched {Count} flats for SocietyId {SocietyId}",
-                        flats.Count(), societyId);
+                if (resolvedPage < 1)
+                    return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, "Page number must be 1 or greater.", ctx.TraceIdentifier));
+                if (resolvedSize <= 0)
+                    return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, "Page size must be greater than 0.", ctx.TraceIdentifier));
 
-        return Results.Ok(ApiResponse<ListFlatsResponse>.Success(
-            new ListFlatsResponse { Flats = flats.ToList() },
-            "Flats retrieved successfully"));
-    })
+                var result = await service.GetPagedAsync(userId, search, statusCode, resolvedPage, resolvedSize, resolvedSortBy, resolvedSortDir);
+                Log.Information("Fetched paginated flats page={Page} size={Size} for user {UserId}", resolvedPage, resolvedSize, userId);
+                return Results.Ok(ApiResponse<PagedFlatsResponse>.Success(result, "Flats retrieved successfully"));
+            })
     .WithName("GetFlatsBySocietyId")
     .WithTags(groupName)
     .WithApiVersionSet(versionSet)
     .HasApiVersion(version_1_0)
-    .Produces<ApiResponse<ListFlatsResponse>>(200)
+    .Produces<ApiResponse<PagedFlatsResponse>>(200)
     .Produces<ErrorResponse>(400)
     .Produces<ErrorResponse>(401)
     .Produces<ErrorResponse>(404)
@@ -150,8 +151,6 @@ namespace SocietyLedger.Api.Endpoints
             async ([FromBody] UpdateFlatDto request, [FromServices] IFlatService service, HttpContext ctx) =>
             {
                 var userId = ctx.GetUserId();
-                if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
-                    return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
                 var result = await service.UpdateAsync(request, userId);
                 if (result == null)
                 {
@@ -164,6 +163,8 @@ namespace SocietyLedger.Api.Endpoints
                 return Results.Ok(ApiResponse<FlatResponseDto>.Success(result, "Flat updated successfully"));
             })
             .AddEndpointFilter<FluentValidationFilter<UpdateFlatDto>>()
+            .AddEndpointFilter<SubscriptionActiveFilter>()
+            .AddEndpointFilter<ViewerForbiddenFilter>()
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)
             .HasApiVersion(version_1_0)
@@ -182,8 +183,6 @@ namespace SocietyLedger.Api.Endpoints
             async (Guid publicId, [FromServices] IFlatService service, HttpContext ctx) =>
             {
                 var userId = ctx.GetUserId();
-                if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
-                    return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
                 var deleted = await service.DeleteByPublicIdAsync(publicId, userId);
                 if (!deleted)
                 {
@@ -195,6 +194,8 @@ namespace SocietyLedger.Api.Endpoints
                 Log.Information("Flat deleted successfully {PublicId}", publicId);
                 return Results.Ok(ApiResponse<EmptyResponse>.Success(null, "Flat deleted successfully"));
             })
+            .AddEndpointFilter<SubscriptionActiveFilter>()
+            .AddEndpointFilter<ViewerForbiddenFilter>()
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)
             .HasApiVersion(version_1_0)
@@ -220,7 +221,7 @@ namespace SocietyLedger.Api.Endpoints
                 if (userId == 0)
                 {
                     Log.Warning("Unauthorized flat ledger request - invalid user ID");
-                    var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid or missing authentication token", ctx.TraceIdentifier);
+                    var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, ErrorMessages.UNAUTHORIZED, ctx.TraceIdentifier);
                     return Results.Json(errorResponse, statusCode: 401);
                 }
 
@@ -240,7 +241,7 @@ namespace SocietyLedger.Api.Endpoints
             app.MapGet("/{publicId:guid}/financial-summary", [Authorize("ActiveSubscription")]
             [SwaggerOperation(
                 Summary = "Get Flat Financial Summary",
-                Description = "Retrieves flat financial summary with opening balance, monthly charges, payments, and outstanding amount."
+                Description = "Retrieves flat financial summary with opening balance, monthly charges, payments, and outstanding amount.\n\nAmounts are signed: Positive = member owes the society; Negative = society owes the member (advance)."
             )]
             async (Guid publicId, [FromServices] IFlatService service, HttpContext ctx) =>
             {
@@ -249,7 +250,7 @@ namespace SocietyLedger.Api.Endpoints
                 if (userId == 0)
                 {
                     Log.Warning("Unauthorized flat financial summary request - invalid user ID");
-                    var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid or missing authentication token", ctx.TraceIdentifier);
+                    var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, ErrorMessages.UNAUTHORIZED, ctx.TraceIdentifier);
                     return Results.Json(errorResponse, statusCode: 401);
                 }
 
@@ -265,8 +266,42 @@ namespace SocietyLedger.Api.Endpoints
             .Produces<ErrorResponse>(404)
             .Produces<ErrorResponse>(500);
 
+            // POST /flats/financial-summary/bulk
+            app.MapPost("/financial-summary/bulk", [Authorize("ActiveSubscription")]
+            [SwaggerOperation(
+                Summary = "Bulk Get Flat Financial Summaries",
+                Description = "Returns financial summaries for multiple flats in a single call. Capped at 500 IDs. Unknown or cross-society IDs are silently skipped.\n\nAmounts are signed: Positive = member owes the society; Negative = society owes the member (advance)."
+            )]
+            async ([FromBody] BulkFinancialSummaryRequest request, [FromServices] IFlatService service, HttpContext ctx) =>
+            {
+                var userId = ctx.GetUserId();
+                if (userId == 0)
+                {
+                    var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, ErrorMessages.UNAUTHORIZED, ctx.TraceIdentifier);
+                    return Results.Json(errorResponse, statusCode: 401);
+                }
+
+                if (request?.FlatPublicIds == null || request.FlatPublicIds.Count == 0)
+                    return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, "At least one flat ID is required.", ctx.TraceIdentifier));
+
+                if (request.FlatPublicIds.Count > 500)
+                    return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, "A maximum of 500 flat IDs can be requested at once.", ctx.TraceIdentifier));
+
+                var result = await service.GetBulkFinancialSummaryAsync(request.FlatPublicIds, userId);
+                Log.Information("Bulk financial summary returned {Count} entries for user {UserId}", result.Summaries.Count, userId);
+                return Results.Ok(ApiResponse<BulkFinancialSummaryResponse>.Success(result, "Bulk financial summaries retrieved successfully"));
+            })
+            .WithTags(groupName)
+            .WithApiVersionSet(versionSet)
+            .HasApiVersion(version_1_0)
+            .WithName("BulkGetFlatFinancialSummaries")
+            .Produces<ApiResponse<BulkFinancialSummaryResponse>>(200)
+            .Produces<ErrorResponse>(400)
+            .Produces<ErrorResponse>(401)
+            .Produces<ErrorResponse>(500);
+
             app.MapGet("/statuses",
-                [Authorize("ActiveSubscription")]
+            [Authorize]
             [SwaggerOperation(
                     Summary = "Get flat statuses",
                     Description = "Returns all flat statuses for use in dropdowns (code + display name)."
@@ -298,88 +333,32 @@ namespace SocietyLedger.Api.Endpoints
             app.MapPost("/bulk", [Authorize("ActiveSubscription")]
             [SwaggerOperation(
                 Summary = "Bulk Create Flats",
-                Description = "Creates multiple flats in a single call. Each flat is processed independently — failures do not abort the batch. Returns succeeded and failed arrays."
+                Description = "Creates multiple flats in a single call. Each flat is processed independently — failures do not abort the batch. Returns succeeded and failed arrays. Set skipBilling=true to skip bill generation for new flats."
             )]
             async ([FromBody] BulkCreateFlatsRequest request,
                    [FromServices] IFlatService service,
-                   [FromServices] IBillingService billingService,
-                   [FromServices] IValidator<BulkCreateFlatItemDto> validator,
-                   [FromServices] IMaintenanceConfigRepository maintenanceConfigRepo,
-                   [FromServices] IUserContext userContext,
                    HttpContext ctx) =>
             {
                 var userId = ctx.GetUserId();
                 if (userId == 0)
                 {
                     Log.Warning("Unauthorized bulk flat create request - invalid user ID");
-                    var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, "Invalid or missing authentication token", ctx.TraceIdentifier);
+                    var errorResponse = ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, ErrorMessages.UNAUTHORIZED, ctx.TraceIdentifier);
                     return Results.Json(errorResponse, statusCode: 401);
                 }
 
-                if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
-                    return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
-
-                if (request.Flats == null || request.Flats.Count == 0)
-                    return Results.BadRequest(ErrorResponse.Create(ErrorCodes.VALIDATION_FAILED, "Flats list cannot be empty.", ctx.TraceIdentifier));
-
-                // Fetch society's maintenance config once — use DefaultMonthlyCharge for all bulk flats
-                var (_, societyId) = await userContext.GetUserContextAsync(userId);
-                var maintenanceConfig = await maintenanceConfigRepo.GetBySocietyIdAsync(societyId);
-                var defaultMaintenanceAmount = maintenanceConfig?.DefaultMonthlyCharge ?? 0m;
-                Log.Information("Bulk create: using maintenance amount {Amount} from config for societyId {SocietyId}", defaultMaintenanceAmount, societyId);
-
-                var succeeded = new List<FlatResponseDto>();
-                var failed = new List<BulkFlatFailure>();
-
-                for (int i = 0; i < request.Flats.Count; i++)
-                {
-                    var item = request.Flats[i];
-                    var flatNo = item?.FlatNo ?? $"(index {i})";
-
-                    try
-                    {
-                        // Validate each item using the bulk-specific validator (no maintenanceAmount)
-                        var validationResult = await validator.ValidateAsync(item!);
-                        if (!validationResult.IsValid)
-                        {
-                            var errorMsg = string.Join("; ", validationResult.Errors.Select(e => e.ErrorMessage));
-                            failed.Add(new BulkFlatFailure(i, flatNo, errorMsg));
-                            Log.Warning("Bulk flat create validation failed at index {Index} FlatNo {FlatNo}: {Error}", i, flatNo, errorMsg);
-                            continue;
-                        }
-
-                        // Map to CreateFlatDto — maintenanceAmount sourced from society maintenance config
-                        var flatDto = new CreateFlatDto(item!.FlatNo, item.OwnerName, item.ContactMobile, item.ContactEmail, defaultMaintenanceAmount, item.StatusCode);
-                        var createdFlat = await service.CreateAsync(flatDto, userId);
-                        succeeded.Add(createdFlat);
-
-                        // Auto-generate current-month bill for the newly created flat
-                        try
-                        {
-                            var billingMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
-                            await billingService.GenerateBillForFlatAsync(createdFlat.PublicId, userId, billingMonth);
-                        }
-                        catch (Exception billingEx)
-                        {
-                            // Billing failure is non-fatal — flat was already created successfully
-                            Log.Warning(billingEx, "Billing generation failed for flat {PublicId} (FlatNo {FlatNo}) during bulk create", createdFlat.PublicId, flatNo);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        failed.Add(new BulkFlatFailure(i, flatNo, ex.Message));
-                        Log.Warning(ex, "Bulk flat create failed at index {Index} FlatNo {FlatNo}", i, flatNo);
-                    }
-                }
-
-                Log.Information("Bulk flat create completed: {SucceededCount} succeeded, {FailedCount} failed", succeeded.Count, failed.Count);
-                return Results.Ok(new BulkCreateFlatsResponse(succeeded, failed));
+                var result = await service.BulkCreateAsync(request, userId, skipBilling: request.SkipBilling);
+                Log.Information("Bulk flat create completed: {SucceededCount} succeeded, {FailedCount} failed", result.Succeeded.Count, result.Failed.Count);
+                return Results.Ok(ApiResponse<BulkCreateFlatsResponse>.Success(result, "Bulk flat creation completed"));
             })
+            .AddEndpointFilter<FluentValidationFilter<BulkCreateFlatsRequest>>()
+            .AddEndpointFilter<FlatLimitFilter>()
+            .AddEndpointFilter<ViewerForbiddenFilter>()
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)
             .HasApiVersion(version_1_0)
             .WithName("BulkCreateFlats")
-            .Produces<BulkCreateFlatsResponse>(200)
+            .Produces<ApiResponse<BulkCreateFlatsResponse>>(200)
             .Produces<ErrorResponse>(400)
             .Produces<ErrorResponse>(401)
             .Produces<ErrorResponse>(403)
