@@ -1,4 +1,4 @@
-﻿using System;
+﻿﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
@@ -55,6 +55,8 @@ public partial class subscription
     [ForeignKey("user_id")]
     [InverseProperty("subscriptions")]
     public virtual user user { get; set; } = null!;
+
+    public long society_id { get; set; }
 
     /// <summary>The society this subscription belongs to. No inverse navigation to keep the society entity lean.</summary>
     [ForeignKey("society_id")]

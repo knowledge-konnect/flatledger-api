@@ -61,6 +61,8 @@ public partial class invoice
 
     public DateTime? updated_at { get; set; }
 
+    public long society_id { get; set; }
+
     [ForeignKey("subscription_id")]
     [InverseProperty("invoices")]
     public virtual subscription? subscription { get; set; }
@@ -68,4 +70,8 @@ public partial class invoice
     [ForeignKey("user_id")]
     [InverseProperty("invoices")]
     public virtual user user { get; set; } = null!;
+
+    [ForeignKey("society_id")]
+    [InverseProperty("invoices")]
+    public virtual society society { get; set; } = null!;
 }

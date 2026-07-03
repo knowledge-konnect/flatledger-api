@@ -6,6 +6,7 @@ using Serilog;
 using SocietyLedger.Api.Extensions;
 using SocietyLedger.Api.Filters;
 using SocietyLedger.Application.DTOs.OpeningBalance;
+using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Application.Interfaces.Services;
 using SocietyLedger.Domain.Constants;
 using SocietyLedger.Infrastructure.Services.Common;
@@ -88,6 +89,7 @@ namespace SocietyLedger.Api.Endpoints
             async ([FromBody] OpeningBalanceRequest request,
                    IOpeningBalanceService openingBalanceService,
                    IUserContext userContext,
+                   IUserRepository userRepository,
                    HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();

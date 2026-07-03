@@ -11,14 +11,14 @@
         public Guid PublicId { get; set; }
         public long SocietyId { get; set; }
         public Guid SocietyPublicId { get; set; }
-        public string SocietyName { get; set; }
+        public string SocietyName { get; set; } = null!;
         public string Name { get; set; } = null!;
 
         public string? Email { get; set; }
         public string? Username { get; set; }
         public string? Mobile { get; set; }
         public short RoleId { get; set; }    
-        public Role Role { get; set; }       
+        public Role Role { get; set; } = null!;
         /// <summary>BCrypt hash of the user's password. Never returned in API responses.</summary>
         public string? PasswordHash { get; set; }
 

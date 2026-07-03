@@ -1,4 +1,4 @@
-﻿using ClosedXML.Excel;
+﻿﻿using ClosedXML.Excel;
 using SocietyLedger.Application.DTOs.Reports;
 using SocietyLedger.Application.Interfaces.Services;
 
@@ -552,92 +552,66 @@ namespace SocietyLedger.Infrastructure.Services
             return row;
         }
 
-        /// Writes an emerald section header spanning colStart:colEnd. Returns next row.
         private static int WriteSectionHeader(IXLWorksheet ws, int row, int colStart, int colEnd, string title)
         {
             ws.Range(row, colStart, row, colEnd).Merge();
             var cell = ws.Cell(row, colStart);
-            cell.Value = $"  {title}";
+            cell.Value = title;
             cell.Style.Font.FontSize = SectionSize;
             cell.Style.Font.Bold = true;
-            cell.Style.Font.FontColor = XLColor.White;
+            cell.Style.Font.FontColor = ColourWhite;
             cell.Style.Fill.BackgroundColor = ColourSectionBg;
             cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
             cell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
-            cell.Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
+            cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
             cell.Style.Border.OutsideBorderColor = ColourBorderDark;
-            ws.Row(row).Height = 26;
-            return row + 1;
-        }
-
-        /// Writes a label/value row: label at colStart, value at colStart+1. Returns next row.
-        private static int WriteKvRow(IXLWorksheet ws, int row, int colStart, string label, object value,
-            bool isAmount = false, bool bold = false, bool highlight = false,
-            XLColor? valueColor = null)
-        {
-            var labelCell = ws.Cell(row, colStart);
-            labelCell.Value = $"  {label}";
-            labelCell.Style.Font.Bold = bold;
-            labelCell.Style.Font.FontSize = DataSize;
-            labelCell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
-            labelCell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
-
-            var valueCell = ws.Cell(row, colStart + 1);
-            switch (value)
-            {
-                case decimal d: valueCell.Value = d; break;
-                case int     i: valueCell.Value = i; break;
-                case long    l: valueCell.Value = l; break;
-                default:        valueCell.Value = value?.ToString() ?? string.Empty; break;
-            }
-            valueCell.Style.Font.Bold = bold;
-            valueCell.Style.Font.FontSize = DataSize;
-            valueCell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
-            valueCell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
-
-            if (isAmount)
-                valueCell.Style.NumberFormat.Format = AmountFormat;
-
-            if (valueColor != null)
-                valueCell.Style.Font.FontColor = valueColor;
-
-            // Enhanced card-style background with borders
-            var bg = highlight ? ColourHighlightBg : ColourCardBg;
-            var cellRange = ws.Range(row, colStart, row, colStart + 1);
-            cellRange.Style.Fill.BackgroundColor = bg;
-            cellRange.Style.Border.TopBorder = XLBorderStyleValues.Thin;
-            cellRange.Style.Border.TopBorderColor = ColourBorder;
-            cellRange.Style.Border.BottomBorder = XLBorderStyleValues.Thin;
-            cellRange.Style.Border.BottomBorderColor = ColourBorder;
-            cellRange.Style.Border.LeftBorder = XLBorderStyleValues.Thin;
-            cellRange.Style.Border.LeftBorderColor = ColourBorder;
-            cellRange.Style.Border.RightBorder = XLBorderStyleValues.Thin;
-            cellRange.Style.Border.RightBorderColor = ColourBorder;
-            
             ws.Row(row).Height = 22;
             return row + 1;
         }
 
-        /// Writes a merged alert row spanning colStart:colEnd. Returns next row.
-        private static int WriteAlertRow(IXLWorksheet ws, int row, int colStart, int colEnd,
-            string message, bool isWarning)
+        private static int WriteKvRow(IXLWorksheet ws, int row, int colStart, string key, object value, bool isAmount = false, XLColor? valueColor = null, bool bold = false, bool highlight = false)
         {
-            ws.Range(row, colStart, row, colEnd).Merge();
-            var cell = ws.Cell(row, colStart);
-            cell.Value = $"  {message}";
-            cell.Style.Font.Bold = true;
-            cell.Style.Font.FontSize = DataSize;
-            cell.Style.Font.FontColor = isWarning ? ColourPendingText : ColourPaidText;
-            cell.Style.Fill.BackgroundColor = isWarning ? ColourPendingBg : XLColor.FromHtml("#F0FDF4");
-            cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
-            cell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
-            cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
-            cell.Style.Border.OutsideBorderColor = isWarning ? ColourPendingText : ColourPaidText;
-            ws.Row(row).Height = 24;
+            ws.Cell(row, colStart).Value = key;
+            ws.Cell(row, colStart).Style.Font.Bold = true;
+            ws.Cell(row, colStart).Style.Fill.BackgroundColor = highlight ? ColourHighlightBg : ColourLightBg;
+            ws.Cell(row, colStart).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+            ws.Cell(row, colStart).Style.Border.OutsideBorderColor = ColourBorder;
+            
+            var valCell = ws.Cell(row, colStart + 1);
+            if (isAmount && value is decimal decimalValue)
+            {
+                valCell.Value = decimalValue;
+                valCell.Style.NumberFormat.Format = AmountFormat;
+            }
+            else
+            {
+                valCell.Value = XLCellValue.FromObject(value);
+            }
+            
+            valCell.Style.Font.Bold = bold;
+            if (valueColor != null) valCell.Style.Font.FontColor = valueColor;
+            valCell.Style.Fill.BackgroundColor = highlight ? ColourHighlightBg : ColourWhite;
+            valCell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+            valCell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+            valCell.Style.Border.OutsideBorderColor = ColourBorder;
+            
             return row + 1;
         }
 
-        /// Writes an emerald-headed table header row starting at colStart.
+        private static int WriteAlertRow(IXLWorksheet ws, int row, int colStart, int colEnd, string alert, bool isWarning)
+        {
+            ws.Range(row, colStart, row, colEnd).Merge();
+            var cell = ws.Cell(row, colStart);
+            cell.Value = alert;
+            cell.Style.Font.FontColor = isWarning ? ColourPendingText : ColourPaidText;
+            cell.Style.Fill.BackgroundColor = isWarning ? ColourPendingBg : ColourPaidBg;
+            cell.Style.Font.Italic = true;
+            cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
+            cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+            cell.Style.Border.OutsideBorderColor = ColourBorder;
+            return row + 1;
+        }
+
         private static void WriteTableHeader(IXLWorksheet ws, int row, int colStart, string[] headers)
         {
             for (int i = 0; i < headers.Length; i++)
@@ -645,93 +619,51 @@ namespace SocietyLedger.Infrastructure.Services
                 var cell = ws.Cell(row, colStart + i);
                 cell.Value = headers[i];
                 cell.Style.Font.Bold = true;
-                cell.Style.Font.FontSize = DataSize;
-                cell.Style.Font.FontColor = XLColor.White;
-                cell.Style.Fill.BackgroundColor = ColourHeaderBg;
-                cell.Style.Alignment.Horizontal = i == 0
-                    ? XLAlignmentHorizontalValues.Left
-                    : XLAlignmentHorizontalValues.Center;
-                cell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
-                cell.Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
+                cell.Style.Font.FontColor = ColourWhite;
+                cell.Style.Fill.BackgroundColor = ColourSectionBg;
+                cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
                 cell.Style.Border.OutsideBorderColor = ColourBorderDark;
             }
-            ws.Row(row).Height = 28;
         }
 
-        /// Applies borders and optional alternating row color to a data row from colStart to colEnd.
-        private static void ApplyRowBorder(IXLWorksheet ws, int row, int colStart, int colEnd, bool isAlternate = false)
+        private static void ApplyRowBorder(IXLWorksheet ws, int row, int colStart, int colEnd, bool isAlternate)
         {
-            var rowRange = ws.Range(row, colStart, row, colEnd);
-            
-            // Apply alternating row background for better readability
+            var range = ws.Range(row, colStart, row, colEnd);
+            range.Style.Border.BottomBorder = XLBorderStyleValues.Thin;
+            range.Style.Border.BottomBorderColor = ColourBorder;
             if (isAlternate)
-                rowRange.Style.Fill.BackgroundColor = ColourAlternateRow;
-            
-            // Apply borders to all cells in the row
-            rowRange.Style.Border.TopBorder = XLBorderStyleValues.Thin;
-            rowRange.Style.Border.TopBorderColor = ColourBorder;
-            rowRange.Style.Border.BottomBorder = XLBorderStyleValues.Thin;
-            rowRange.Style.Border.BottomBorderColor = ColourBorder;
-            rowRange.Style.Border.LeftBorder = XLBorderStyleValues.Thin;
-            rowRange.Style.Border.LeftBorderColor = ColourBorder;
-            rowRange.Style.Border.RightBorder = XLBorderStyleValues.Thin;
-            rowRange.Style.Border.RightBorderColor = ColourBorder;
-            
-            // Vertical alignment
-            rowRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
-            
-            ws.Row(row).Height = 22;
+            {
+                range.Style.Fill.BackgroundColor = ColourAlternateRow;
+            }
         }
 
-        /// Writes a bold emerald total row with SUM formulas from colStart to colEnd.
-        private static void ApplyTotalRow(IXLWorksheet ws, int row, int colStart, int colEnd,
-            Dictionary<int, string> formulas)
+        private static void ApplyTotalRow(IXLWorksheet ws, int row, int colStart, int colEnd, Dictionary<int, string> formulas)
         {
-            var rowRange = ws.Range(row, colStart, row, colEnd);
-            rowRange.Style.Fill.BackgroundColor = ColourTotalRowBg;
-            rowRange.Style.Font.Bold = true;
-            rowRange.Style.Font.FontSize = DataSize;
-            rowRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
-            
-            // Strong borders for emphasis
-            rowRange.Style.Border.TopBorder = XLBorderStyleValues.Medium;
-            rowRange.Style.Border.TopBorderColor = ColourBorderDark;
-            rowRange.Style.Border.BottomBorder = XLBorderStyleValues.Medium;
-            rowRange.Style.Border.BottomBorderColor = ColourBorderDark;
-            rowRange.Style.Border.LeftBorder = XLBorderStyleValues.Thin;
-            rowRange.Style.Border.LeftBorderColor = ColourBorder;
-            rowRange.Style.Border.RightBorder = XLBorderStyleValues.Thin;
-            rowRange.Style.Border.RightBorderColor = ColourBorder;
-            
+            var range = ws.Range(row, colStart, row, colEnd);
+            range.Style.Font.Bold = true;
+            range.Style.Fill.BackgroundColor = ColourTotalRowBg;
+            range.Style.Border.TopBorder = XLBorderStyleValues.Medium;
+            range.Style.Border.TopBorderColor = ColourBorderDark;
+            range.Style.Border.BottomBorder = XLBorderStyleValues.Double;
+            range.Style.Border.BottomBorderColor = ColourBorderDark;
+
             ws.Cell(row, colStart).Value = "Total";
-            ws.Cell(row, colStart).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
-            
-            foreach (var (col, formula) in formulas)
-                ws.Cell(row, col).FormulaA1 = formula;
-            
-            ws.Row(row).Height = 26;
+
+            foreach (var kvp in formulas)
+            {
+                var cell = ws.Cell(row, kvp.Key);
+                cell.FormulaA1 = kvp.Value;
+                cell.Style.Font.Bold = true;
+            }
         }
 
-        /// Sets narrow left-margin columns, auto-fits content columns, and enforces minimum widths.
         private static void FinalizeSheet(IXLWorksheet ws, int colStart, int colEnd)
         {
-            // Narrow left-margin columns (A, B)
-            for (int c = 1; c < colStart; c++)
-                ws.Column(c).Width = 3;
-
-            foreach (var r in ws.RowsUsed())
-                if (r.Height < 18) r.Height = 18;
-
-            // Auto-fit only the content columns
-            for (int c = colStart; c <= colEnd; c++)
-                ws.Column(c).AdjustToContents();
-
-            // Enforce minimum widths for content columns
-            for (int c = colStart; c <= colEnd; c++)
+            ws.Columns(colStart, colEnd).AdjustToContents();
+            for (int i = colStart; i <= colEnd; i++)
             {
-                double minWidth = c == colStart ? 22 : 16;
-                if (ws.Column(c).Width < minWidth)
-                    ws.Column(c).Width = minWidth;
+                ws.Column(i).Width += 2;
             }
         }
     }

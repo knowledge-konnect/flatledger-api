@@ -14,6 +14,7 @@ using FlatEntity = SocietyLedger.Domain.Entities.Flat;
 using SocietyLedger.Infrastructure.Services.Common;
 using SocietyLedger.Shared;
 using Swashbuckle.AspNetCore.Annotations;
+using SocietyLedger.Domain.Constants;
 
 namespace SocietyLedger.Api.Endpoints
 {
@@ -62,18 +63,18 @@ namespace SocietyLedger.Api.Endpoints
 
             app.MapGet("/", [Authorize("ActiveSubscription")]
             [SwaggerOperation(
-                Summary = "Get all Flats for Current Society",
-                Description = "Fetches flats for the authenticated user's society. Supports optional pagination, search, and filtering. When no params are provided, returns all flats (backward compatible)."
-            )]
+      Summary = "Get all Flats for Current Society",
+      Description = "Fetches flats for the authenticated user's society. Supports optional pagination, search, and filtering. When no params are provided, returns all flats (backward compatible)."
+  )]
             async (
-                IFlatService service,
-                HttpContext ctx,
-                [FromQuery] string? search,
-                [FromQuery] string? statusCode,
-                [FromQuery] int? page,
-                [FromQuery] int? size,
-                [FromQuery] string? sortBy,
-                [FromQuery] string? sortDir) =>
+      IFlatService service,
+      HttpContext ctx,
+      [FromQuery] string? search,
+      [FromQuery] string? statusCode,
+      [FromQuery] int? page,
+      [FromQuery] int? size,
+      [FromQuery] string? sortBy,
+      [FromQuery] string? sortDir) =>
             {
                 var userId = ctx.GetUserId();
 
@@ -81,23 +82,24 @@ namespace SocietyLedger.Api.Endpoints
                 var allowedSortBy = new[] { "flatNo", "ownerName", "maintenanceAmount", "createdAt" };
                 var resolvedSortBy = sortBy ?? "createdAt";
                 if (!allowedSortBy.Contains(resolvedSortBy, StringComparer.OrdinalIgnoreCase))
-                    return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, $"Invalid sort field '{resolvedSortBy}'. Allowed values: {string.Join(", ", allowedSortBy)}.", ctx.TraceIdentifier));
+                    return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST,
+                        $"Invalid sort field '{resolvedSortBy}'. Allowed values: {string.Join(", ", allowedSortBy)}.",
+                        ctx.TraceIdentifier));
 
                 var resolvedSortDir = sortDir ?? "asc";
                 if (!new[] { "asc", "desc" }.Contains(resolvedSortDir, StringComparer.OrdinalIgnoreCase))
-                    return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, "Invalid sort direction. Use 'asc' or 'desc'.", ctx.TraceIdentifier));
+                    return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST,
+                        "Invalid sort direction. Use 'asc' or 'desc'.", ctx.TraceIdentifier));
 
-        if (flats == null || !flats.Any())
-        {
-            Log.Warning("No flats found for SocietyId {SocietyId}", societyId);
-            var errorResponse = ErrorResponse.Create(ErrorCodes.RESOURCE_NOT_FOUND, ErrorMessages.RESOURCE_NOT_FOUND, ctx.TraceIdentifier);
-            return Results.Json(errorResponse, statusCode: 404);
-        }
+                var resolvedPage = page ?? 1;
+                var resolvedSize = size ?? 20;
 
                 if (resolvedPage < 1)
-                    return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, "Page number must be 1 or greater.", ctx.TraceIdentifier));
+                    return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST,
+                        "Page number must be 1 or greater.", ctx.TraceIdentifier));
                 if (resolvedSize <= 0)
-                    return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST, "Page size must be greater than 0.", ctx.TraceIdentifier));
+                    return Results.BadRequest(ErrorResponse.Create(ErrorCodes.INVALID_REQUEST,
+                        "Page size must be greater than 0.", ctx.TraceIdentifier));
 
                 var result = await service.GetPagedAsync(userId, search, statusCode, resolvedPage, resolvedSize, resolvedSortBy, resolvedSortDir);
                 Log.Information("Fetched paginated flats page={Page} size={Size} for user {UserId}", resolvedPage, resolvedSize, userId);
@@ -210,14 +212,14 @@ namespace SocietyLedger.Api.Endpoints
                 Summary = "Get Flat Ledger",
                 Description = "Retrieves flat ledger with all maintenance charges, payments, and running balance."
             )]
-            async (Guid publicId, 
-                   [FromQuery] DateTime? startDate, 
+            async (Guid publicId,
+                   [FromQuery] DateTime? startDate,
                    [FromQuery] DateTime? endDate,
-                   [FromServices] IFlatService service, 
+                   [FromServices] IFlatService service,
                    HttpContext ctx) =>
             {
                 var userId = ctx.GetUserId();
-                
+
                 if (userId == 0)
                 {
                     Log.Warning("Unauthorized flat ledger request - invalid user ID");
@@ -246,7 +248,7 @@ namespace SocietyLedger.Api.Endpoints
             async (Guid publicId, [FromServices] IFlatService service, HttpContext ctx) =>
             {
                 var userId = ctx.GetUserId();
-                
+
                 if (userId == 0)
                 {
                     Log.Warning("Unauthorized flat financial summary request - invalid user ID");

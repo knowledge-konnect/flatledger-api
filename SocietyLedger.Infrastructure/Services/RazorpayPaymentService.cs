@@ -11,10 +11,11 @@ using SocietyLedger.Application.Interfaces.Services;
 using SocietyLedger.Domain.Constants;
 using SocietyLedger.Domain.Entities;
 using SocietyLedger.Domain.Exceptions;
+using SocietyLedger.Infrastructure.Persistence.Entities;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using System.Linq;
 
 namespace SocietyLedger.Infrastructure.Services
 {
@@ -60,40 +61,31 @@ namespace SocietyLedger.Infrastructure.Services
             // Circuit breaker opens after 50% failure rate over 10 requests in a 30-second window,
             // preventing cascading failures when Razorpay is down.
             _razorpayRetry = new ResiliencePipelineBuilder()
-                .AddCircuitBreaker(new CircuitBreakerStrategyOptions
-                {
-                    FailureRatio = 0.5,
-                    MinimumThroughput = 10,
-                    SamplingDuration = TimeSpan.FromSeconds(30),
-                    BreakDuration = TimeSpan.FromSeconds(30),
-                    OnOpened = args =>
-                    {
-                        logger.LogError("Razorpay circuit breaker opened — requests will be rejected for {Duration}s",
-                            args.BreakDuration.TotalSeconds);
-                        return ValueTask.CompletedTask;
-                    },
-                    OnClosed = args =>
-                    {
-                        logger.LogInformation("Razorpay circuit breaker closed — resuming normal operation");
-                        return ValueTask.CompletedTask;
-                    }
-                })
-                .AddRetry(new RetryStrategyOptions
-                {
-                    MaxRetryAttempts = 3,
-                    Delay = TimeSpan.FromSeconds(1),
-                    BackoffType = DelayBackoffType.Exponential,
-                    ShouldHandle = new PredicateBuilder().Handle<Exception>(),
-                    OnRetry = args =>
-                    {
-                        logger.LogWarning(
-                            "Razorpay SDK transient failure (attempt {Attempt}/{Max}): {Error}",
-                            args.AttemptNumber + 1, 3, args.Outcome.Exception?.Message);
-                        return ValueTask.CompletedTask;
-                    }
-                })
-                .AddTimeout(TimeSpan.FromSeconds(15))
-                .Build();
+                             .AddRetry(new RetryStrategyOptions
+                             {
+                                 MaxRetryAttempts = 3,
+                                 Delay = TimeSpan.FromSeconds(1),
+                                 BackoffType = DelayBackoffType.Exponential,
+                                 ShouldHandle = new PredicateBuilder()
+                                     .Handle<Exception>(ex => ex is not BrokenCircuitException),
+                                 OnRetry = args =>
+                                 {
+                                     logger.LogWarning("Razorpay transient failure (attempt {Attempt}/3): {Error}",
+                                         args.AttemptNumber + 1, args.Outcome.Exception?.Message);
+                                     return ValueTask.CompletedTask;
+                                 }
+                             })
+                             .AddCircuitBreaker(new CircuitBreakerStrategyOptions
+                             {
+                                 FailureRatio = 0.5,
+                                 MinimumThroughput = 5,          
+                                 SamplingDuration = TimeSpan.FromSeconds(30),
+                                 BreakDuration = TimeSpan.FromSeconds(60), 
+                                 OnOpened = args => { logger.LogError("Razorpay circuit breaker opened"); return ValueTask.CompletedTask; },
+                                 OnClosed = args => { logger.LogInformation("Razorpay circuit breaker closed"); return ValueTask.CompletedTask; }
+                             })
+                             .AddTimeout(TimeSpan.FromSeconds(15))
+                             .Build();
         }
 
         /// <summary>
@@ -104,8 +96,14 @@ namespace SocietyLedger.Infrastructure.Services
             // Resolve authoritative price from the plan — never trust a client-supplied amount
             var plan = await _planService.GetPlanByIdAsync(planId);
 
+            var user = await _userRepo.GetByIdAsync(userId);
+            if (user == null)
+            {
+                throw new NotFoundException("User", userId.ToString());
+            }
+
             // Reuse a recent pending order to avoid duplicates (skip if expired)
-            var existingPending = await _paymentRepo.GetPendingSubscriptionPaymentByUserIdAsync(userId);
+            var existingPending = await _paymentRepo.GetPendingSubscriptionPaymentBySocietyIdAsync(user.SocietyId);
             if (existingPending != null && existingPending.CreatedAt >= DateTime.UtcNow - OrderExpiry)
             {
                 _logger.LogInformation("Reusing existing pending order {OrderId} for user {UserId}", existingPending.RazorpayOrderId, userId);
@@ -119,7 +117,8 @@ namespace SocietyLedger.Infrastructure.Services
             }
 
             var client = new RazorpayClient(_keyId, _keySecret);
-            var serverAmount = plan.MonthlyAmount;
+            // Use plan.Price (the actual billed amount per cycle) — not MonthlyAmount (display only)
+            var serverAmount = plan.Price;
 
             var options = new Dictionary<string, object>
             {
@@ -147,7 +146,6 @@ namespace SocietyLedger.Infrastructure.Services
             {
                 PublicId = Guid.NewGuid(),
                 SocietyId = user.SocietyId,
-                RecordedBy = userId,
                 Amount = serverAmount,
                 ModeCode = PaymentModeCodes.Razorpay,
                 // Encode planId into Reference so it can be resolved without guessing at verification
@@ -180,21 +178,12 @@ namespace SocietyLedger.Infrastructure.Services
         /// Advisory lock on orderId prevents concurrent activation when both
         /// VerifyPaymentAsync and ProcessWebhookAsync fire at the same time.
         /// </summary>
-        public async Task<VerifyPaymentResponse> VerifyPaymentAsync(VerifyPaymentRequest request, long userId)
+        public async Task<VerifyPaymentResponse> VerifyPaymentAsync(VerifyPaymentRequest request)
         {
             var payment = await _paymentRepo.GetByRazorpayOrderIdAsync(request.OrderId);
             if (payment == null)
             {
                 _logger.LogWarning("VerifyPayment: order {OrderId} not found", request.OrderId);
-                return new VerifyPaymentResponse { IsValid = false, Message = "Order not found" };
-            }
-
-            // Ownership check: only the user who created the order can verify it.
-            if (payment.RecordedBy.HasValue && payment.RecordedBy.Value != userId)
-            {
-                _logger.LogWarning(
-                    "VerifyPayment: user {UserId} attempted to verify order {OrderId} owned by user {OwnerId}",
-                    userId, request.OrderId, payment.RecordedBy.Value);
                 return new VerifyPaymentResponse { IsValid = false, Message = "Order not found" };
             }
 
@@ -252,7 +241,7 @@ namespace SocietyLedger.Infrastructure.Services
         /// <summary>
         /// Handles Razorpay payment events. Signature is verified server-side using X-Razorpay-Signature header.
         /// </summary>
-        public async Task ProcessWebhookAsync(string rawBody, string signature, WebhookPayload payload)
+        public async Task<WebhookProcessResult> ProcessWebhookAsync(string rawBody, string signature, WebhookPayload payload)
         {
             var expectedBytes = Encoding.UTF8.GetBytes(GenerateWebhookSignature(rawBody, _webhookSecret));
             var receivedBytes = Encoding.UTF8.GetBytes(signature);
@@ -271,8 +260,15 @@ namespace SocietyLedger.Infrastructure.Services
 
             switch (payload.Event)
             {
-                _logger.LogInformation("ProcessWebhook: ignoring unhandled event '{Event}'", payload.Event);
-                return;
+                case "payment.captured":
+                case "order.paid":
+                    break;
+                case "refund.processed":
+                    await ProcessRefundWebhookAsync(rawBody);
+                    return new WebhookProcessResult { Status = WebhookProcessStatus.Processed, Message = "Refund processed" };
+                default:
+                    _logger.LogInformation("ProcessWebhook: ignoring unhandled event '{Event}'", payload.Event);
+                    return new WebhookProcessResult { Status = WebhookProcessStatus.Ignored, Message = "Unhandled event" };
             }
 
             var paymentId = payload.Payment?.Id;
@@ -281,7 +277,7 @@ namespace SocietyLedger.Infrastructure.Services
             if (string.IsNullOrEmpty(paymentId) || string.IsNullOrEmpty(orderId))
             {
                 _logger.LogWarning("ProcessWebhook: missing paymentId or orderId in payload");
-                return;
+                return new WebhookProcessResult { Status = WebhookProcessStatus.Ignored, Message = "Missing paymentId or orderId" };
             }
 
             // Fast-path: already processed by paymentId
@@ -289,35 +285,105 @@ namespace SocietyLedger.Infrastructure.Services
             if (existingByPaymentId != null)
             {
                 _logger.LogInformation("ProcessWebhook: duplicate webhook for paymentId {PaymentId}, skipping", paymentId);
-                return;
+                return new WebhookProcessResult { Status = WebhookProcessStatus.Duplicate, Message = "Duplicate webhook" };
             }
 
             var payment = await _paymentRepo.GetByRazorpayOrderIdAsync(orderId);
             if (payment == null)
             {
                 _logger.LogWarning("ProcessWebhook: no local payment record for orderId {OrderId}", orderId);
-                return;
+                return new WebhookProcessResult { Status = WebhookProcessStatus.Ignored, Message = "Order not found" };
             }
 
             if (payment.RazorpayPaymentId != null)
             {
                 _logger.LogInformation("ProcessWebhook: orderId {OrderId} already processed, skipping", orderId);
-                return;
+                return new WebhookProcessResult { Status = WebhookProcessStatus.Duplicate, Message = "Order already processed" };
             }
 
-                payment.RazorpayPaymentId = paymentId;
-                payment.DatePaid = DateTime.UtcNow;
-                payment.VerifiedAt = DateTime.UtcNow;
+            payment.RazorpayPaymentId = paymentId;
+            payment.DatePaid = DateTime.UtcNow;
+            payment.VerifiedAt = DateTime.UtcNow;
 
-                await _paymentRepo.UpdateAsync(payment);
-                await _paymentRepo.SaveChangesAsync();
+            await _paymentRepo.UpdateAsync(payment);
+            await _paymentRepo.SaveChangesAsync();
 
-                await ActivateSubscriptionAsync(payment, paymentId);
+            await ActivateSubscriptionAsync(payment, paymentId);
 
             _logger.LogInformation("ProcessWebhook: subscription activated for orderId {OrderId}, paymentId {PaymentId}",
                 orderId, paymentId);
+
+            return new WebhookProcessResult { Status = WebhookProcessStatus.Processed, Message = "Processed successfully" };
         }
 
+
+        /// <summary>
+        /// Initiates a refund for a Razorpay payment.
+        /// The subscription is reverted only after the refund.processed webhook is received.
+        /// </summary>
+        public async Task<RefundResponse> InitiateRefundAsync(RefundRequest request)
+        {
+            if (string.IsNullOrWhiteSpace(request.PaymentId))
+                throw new ValidationException("PaymentId is required.");
+
+            var payment = await _paymentRepo.GetByRazorpayPaymentIdAsync(request.PaymentId);
+
+            if (payment == null)
+                throw new NotFoundException("Payment", request.PaymentId);
+
+            if (payment.PaymentType != PaymentTypeCodes.Subscription)
+                throw new ValidationException("Only subscription payments can be refunded.");
+
+            // Prevent duplicate refunds
+            var existingRefund = await _paymentRepo.GetRefundByOriginalPaymentIdAsync(request.PaymentId);
+
+            if (existingRefund != null)
+                throw new ConflictException("A refund has already been initiated for this payment.");
+
+            var client = new RazorpayClient(_keyId, _keySecret);
+
+            dynamic? refund = null;
+
+            await _razorpayRetry.ExecuteAsync(async ct =>
+            {
+                refund = await Task.Run(() =>
+                {
+                    var options = new Dictionary<string, object>
+            {
+                { "amount", (int)(payment.Amount * 100) }, // Razorpay expects paise
+                { "speed", "normal" },
+                {
+                    "notes", new Dictionary<string, string>
+                    {
+                        { "society_id", payment.SocietyId.ToString() },
+                        { "payment_type", payment.PaymentType }
+                    }
+                }
+            };
+
+                    var paymentResource = client.Payment.Fetch(request.PaymentId);
+
+                    return paymentResource.Refund(options);
+                }, ct);
+            });
+
+            var refundId = (string)refund["id"];
+            var status = (string)refund["status"];
+
+            _logger.LogInformation(
+                "Refund {RefundId} initiated for payment {PaymentId}. Status: {Status}",
+                refundId,
+                request.PaymentId,
+                status);
+
+            return new RefundResponse
+            {
+                RefundId = refundId,
+                PaymentId = request.PaymentId,
+                Amount = payment.Amount,
+                Status = status
+            };
+        }
         private async Task ProcessRefundWebhookAsync(string rawBody)
         {
             using var jsonDoc = JsonDocument.Parse(rawBody);
@@ -395,10 +461,9 @@ namespace SocietyLedger.Infrastructure.Services
             if (!payment.RecordedBy.HasValue)
                 throw new InvalidOperationException($"Cannot activate subscription for order {payment.RazorpayOrderId}: RecordedBy is not set.");
 
-            await _subscriptionService.SubscribeAsync(payment.SocietyId, new Application.DTOs.Subscription.SubscribeRequest
+            await _subscriptionService.SubscribeAsync(payment.RecordedBy.Value, new Application.DTOs.Subscription.SubscribeRequest
             {
                 PlanId = plan.Id,
-                Amount = payment.Amount,
                 PaymentMethod = "Razorpay",
                 PaymentReference = paymentReference
             });
@@ -471,6 +536,14 @@ namespace SocietyLedger.Infrastructure.Services
         }
 
         private static string BytesToHex(byte[] bytes)
-            => BitConverter.ToString(bytes).Replace("-", "").ToLower();
+        {
+            return Convert.ToHexString(bytes).ToLowerInvariant();
+        }
+
+        private static long StableAdvisoryLockKey(string input)
+        {
+            var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(input));
+            return BitConverter.ToInt64(bytes, 0);
+        }
     }
 }

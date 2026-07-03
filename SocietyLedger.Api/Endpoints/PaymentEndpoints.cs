@@ -61,7 +61,7 @@ namespace SocietyLedger.Api.Endpoints
                     var userId = ctx.GetUserId();
                     if (userId == 0)
                         return Results.Json(ErrorResponse.Create(ErrorCodes.UNAUTHORIZED, ErrorMessages.UNAUTHORIZED, ctx.TraceIdentifier), statusCode: 401);
-                    var result = await paymentService.VerifyPaymentAsync(request, userId);
+                    var result = await paymentService.VerifyPaymentAsync(request);
                     return Results.Ok(ApiResponse<VerifyPaymentResponse>.Success(result, "Payment verification completed"));
                 })
             .RequireRateLimiting("PaymentPolicy")

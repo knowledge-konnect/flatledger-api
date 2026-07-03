@@ -20,20 +20,20 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
         /// Returns the latest active or trial subscription for the society.
         /// Ordered by creation date descending so the most-recent row is returned.
         /// </summary>
-        public async Task<Subscription?> GetBySocietyIdAsync(long societyId)
-        {
-            var efSubscription = await _db.subscriptions
-                .Include(s => s.plan)
-                .AsNoTracking()
-                .Where(s => s.society_id == societyId
-                         && (s.status == SubscriptionStatusCodes.Active
-                          || s.status == SubscriptionStatusCodes.Trial
-                          || s.status == SubscriptionStatusCodes.Cancelled))
-                .OrderByDescending(s => s.created_at)
-                .FirstOrDefaultAsync();
+        //public async Task<Subscription?> GetBySocietyIdAsync(long societyId)
+        //{
+        //    var efSubscription = await _db.subscriptions
+        //        .Include(s => s.plan)
+        //        .AsNoTracking()
+        //        .Where(s => s.society_id == societyId
+        //                 && (s.status == SubscriptionStatusCodes.Active
+        //                  || s.status == SubscriptionStatusCodes.Trial
+        //                  || s.status == SubscriptionStatusCodes.Cancelled))
+        //        .OrderByDescending(s => s.created_at)
+        //        .FirstOrDefaultAsync();
 
-            return efSubscription?.ToDomain();
-        }
+        //    return efSubscription?.ToDomain();
+        //}
 
         public async Task<Subscription?> GetByUserIdAsync(long userId)
         {

@@ -9,6 +9,7 @@ namespace SocietyLedger.Domain.Entities
     {
         public Guid Id { get; set; }
         public long UserId { get; set; }
+        public long SocietyId { get; set; }
         public Guid PlanId { get; set; }
         public string Status { get; set; } = null!;
         public decimal SubscribedAmount { get; set; }
@@ -31,10 +32,16 @@ namespace SocietyLedger.Domain.Entities
     {
         public Guid Id { get; set; }
         public string Name { get; set; } = null!;
+        /// <summary>Total price charged per billing cycle (e.g. ₹2999/year). Used for billing and Razorpay orders.</summary>
+        public decimal Price { get; set; }
+        /// <summary>Per-month display amount shown on pricing cards. Not used for billing.</summary>
         public decimal MonthlyAmount { get; set; }
         public string Currency { get; set; } = null!;
         public bool? IsActive { get; set; }
         public DateTime? CreatedAt { get; set; }
+        public int? MaxFlats { get; set; }
+        /// <summary>Number of months this plan covers per billing cycle (1 = monthly, 12 = annual).</summary>
+        public int DurationMonths { get; set; } = 1;
     }
 
     /// <summary>

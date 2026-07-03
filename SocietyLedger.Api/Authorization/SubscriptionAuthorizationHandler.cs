@@ -67,12 +67,8 @@ namespace SocietyLedger.Api.Authorization
                     var isTrial = status.Status == SubscriptionStatusCodes.Trial && status.TrialEndDate > DateTime.UtcNow;
                     isActive = status.Status == SubscriptionStatusCodes.Active || isTrial;
 
-                // Allow access if subscription is active or trial is still valid
-                if (subscriptionStatus.Status == SubscriptionStatusCodes.Active ||
-                    (subscriptionStatus.Status == SubscriptionStatusCodes.Trial && subscriptionStatus.TrialEndDate > DateTime.UtcNow))
-                {
-                    context.Succeed(requirement);
-                    return;
+                    var ttl = isTrial ? CacheTtlTrial : CacheTtlPaid;
+                    _cache.Set(cacheKey, isActive, ttl);
                 }
 
                 if (isActive)

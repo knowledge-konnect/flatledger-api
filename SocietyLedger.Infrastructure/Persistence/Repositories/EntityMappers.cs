@@ -273,16 +273,17 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
         {
             if (src == null) return null;
 
-            var price = src.price > 0 ? src.price : src.monthly_amount;
-
             return new Plan
             {
                 Id = src.id,
                 Name = src.name,
+                Price = src.price,
                 MonthlyAmount = src.monthly_amount,
                 Currency = src.currency,
                 IsActive = src.is_active,
-                CreatedAt = src.created_at
+                CreatedAt = src.created_at,
+                MaxFlats = src.max_flats > 0 ? src.max_flats : (int?)null,
+                DurationMonths = src.duration_months > 0 ? src.duration_months : 1
             };
         }
 
@@ -290,16 +291,17 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
         {
             if (src == null) throw new ArgumentNullException(nameof(src));
 
-            var price = src.Price > 0 ? src.Price : src.MonthlyAmount;
-
             return new plan
             {
                 id = src.Id,
                 name = src.Name,
+                price = src.Price,
                 monthly_amount = src.MonthlyAmount,
                 currency = src.Currency,
                 is_active = src.IsActive,
-                created_at = src.CreatedAt
+                created_at = src.CreatedAt,
+                duration_months = src.DurationMonths > 0 ? src.DurationMonths : 1,
+                max_flats = src.MaxFlats ?? 0
             };
         }
 
