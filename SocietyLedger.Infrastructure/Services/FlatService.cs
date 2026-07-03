@@ -133,7 +133,60 @@ namespace SocietyLedger.Infrastructure.Services
             _logger.LogInformation("Flat created successfully for FlatNo {FlatNo}", dto.FlatNo);
             return MapToDto(domain);
         }
-        
+
+        public async Task<BulkCreateFlatsResponse> BulkCreateAsync(BulkCreateFlatsRequest request, long userId, bool skipBilling = false)
+        {
+            var societyId = await _userContext.GetSocietyIdAsync(userId);
+            var societyPublicId = await _db.societies
+                .Where(s => s.id == societyId)
+                .Select(s => s.public_id)
+                .FirstOrDefaultAsync();
+
+            var failed = new List<BulkFlatFailure>();
+            var succeeded = new List<FlatResponseDto>();
+            var validFlats = new List<(int Index, string FlatNo, Flat FlatEntity)>();
+
+            if (request?.Flats == null || !request.Flats.Any())
+                return new BulkCreateFlatsResponse(succeeded, failed);
+
+            await EnsureFlatLimitAsync(societyId, request.Flats.Count);
+
+            var existingFlats = await _repo.GetBySocietyIdAsync(societyId);
+            var existingFlatNoSet = existingFlats.Select(f => f.FlatNo).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var existingEmailSet = existingFlats.Where(f => !string.IsNullOrEmpty(f.ContactEmail)).Select(f => f.ContactEmail!).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var existingMobileSet = existingFlats.Where(f => !string.IsNullOrEmpty(f.ContactMobile)).Select(f => f.ContactMobile!).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var batchFlatNos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var batchEmails = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var batchMobiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            var maintenanceConfig = await _maintenanceConfigRepo.GetBySocietyIdAsync(societyId);
+            var defaultMaintenanceAmount = maintenanceConfig?.DefaultMonthlyCharge ?? 0m;
+
+            var statuses = await _repo.GetAllAsync();
+            var statusCache = statuses.ToDictionary(s => s.Code, StringComparer.OrdinalIgnoreCase);
+
+            var now = DateTime.UtcNow;
+
+            for (int i = 0; i < request.Flats.Count; i++)
+            {
+                var item = request.Flats[i];
+                var flatNo = item.FlatNo;
+
+                try
+                {
+                    if (string.IsNullOrWhiteSpace(flatNo))
+                    {
+                        failed.Add(new BulkFlatFailure(i, flatNo ?? "Unknown", "Flat number is required"));
+                        continue;
+                    }
+
+                    if (existingFlatNoSet.Contains(flatNo) || !batchFlatNos.Add(flatNo))
+                    {
+                        failed.Add(new BulkFlatFailure(i, flatNo, "Flat number already exists in this society"));
+                        _logger.LogWarning("Bulk flat create: duplicate flat number {FlatNo} at index {Index}", flatNo, i);
+                        continue;
+                    }
 
                     if (!string.IsNullOrWhiteSpace(item.ContactEmail))
                     {

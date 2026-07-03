@@ -20,7 +20,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
         {
             var efPayment = await _db.payments
                 .AsNoTracking()
-                .Where(p => p.payment_type == PaymentTypeCodes.Subscription && p.razorpay_payment_id == null && p.society_id == userId && !p.is_deleted)
+                .Where(p => p.payment_type == PaymentTypeCodes.Subscription && p.razorpay_payment_id == null && p.society_id == societyId && !p.is_deleted)
                 .OrderByDescending(p => p.created_at)
                 .FirstOrDefaultAsync();
             return efPayment?.ToDomain();
@@ -39,6 +39,19 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             var efPayment = await _db.payments
                 .AsNoTracking()
                 .FirstOrDefaultAsync(p => p.razorpay_payment_id == paymentId && !p.is_deleted);
+
+            return efPayment?.ToDomain();
+        }
+
+        public async Task<Payment?> GetRefundByOriginalPaymentIdAsync(string paymentId)
+        {
+            var efPayment = await _db.payments
+                .AsNoTracking()
+                .FirstOrDefaultAsync(p =>
+                    p.payment_type == PaymentTypeCodes.Refund &&
+                    p.reference != null &&
+                    p.reference.Contains($"original_payment_id:{paymentId}") &&
+                    !p.is_deleted);
 
             return efPayment?.ToDomain();
         }
@@ -70,6 +83,8 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
         {
             await _db.SaveChangesAsync();
         }
+
+
 
         /// <summary>
         /// Acquires a transaction-level PostgreSQL advisory lock, runs the action inside that

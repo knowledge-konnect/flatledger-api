@@ -96,7 +96,7 @@ namespace SocietyLedger.Infrastructure.Services
         /// <inheritdoc />
         public void InvalidateDashboardCache(long societyId)
         {
-            // No-op: dashboard cache removed in favour of live DB reads.
+            // No-op: data is fetched live
         }
     }
 }

@@ -21,15 +21,7 @@ namespace SocietyLedger.Infrastructure.Services
         public async Task<IEnumerable<PlanResponse>> GetActivePlansAsync()
         {
             var plans = await _planRepository.GetActivePlansAsync();
-            return plans.Select(p => new PlanResponse
-            {
-                Id = p.Id,
-                Name = p.Name,
-                MonthlyAmount = p.MonthlyAmount,
-                Currency = p.Currency,
-                IsActive = p.IsActive,
-                CreatedAt = p.CreatedAt
-            });
+            return plans.Select(p => p.ToResponse());
         }
 
         public async Task<PlanResponse> GetPlanByIdAsync(Guid id)
@@ -38,15 +30,7 @@ namespace SocietyLedger.Infrastructure.Services
             if (plan == null)
                 throw new NotFoundException("Plan", id.ToString());
 
-            return new PlanResponse
-            {
-                Id = plan.Id,
-                Name = plan.Name,
-                MonthlyAmount = plan.MonthlyAmount,
-                Currency = plan.Currency,
-                IsActive = plan.IsActive,
-                CreatedAt = plan.CreatedAt
-            };
+            return plan.ToResponse();
         }
     }
 }

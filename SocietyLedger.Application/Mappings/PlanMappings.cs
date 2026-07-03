@@ -11,18 +11,12 @@ namespace SocietyLedger.Application.Mappings
             Id = plan.Id,
             Name = plan.Name,
             Price = plan.Price,
-            MonthlyAmount = plan.Price,
+            MonthlyAmount = plan.MonthlyAmount,
             Currency = plan.Currency,
             IsActive = plan.IsActive,
-            CreatedAt = plan.CreatedAt,
-            UpdatedAt = plan.UpdatedAt,
-            DurationMonths = plan.DurationMonths,
             MaxFlats = plan.MaxFlats,
-            PlanGroup = plan.PlanGroup,
-            DiscountPercentage = plan.DiscountPercentage,
-            DisplayOrder = plan.DisplayOrder,
-            IsPopular = plan.IsPopular,
-            Description = plan.Description
+            DurationMonths = plan.DurationMonths,
+            CreatedAt = plan.CreatedAt
         };
 
         public static AdminPlanDto ToAdminDto(this Plan plan) => new()
@@ -30,18 +24,12 @@ namespace SocietyLedger.Application.Mappings
             Id = plan.Id,
             Name = plan.Name,
             Price = plan.Price,
-            MonthlyAmount = plan.Price,
+            MonthlyAmount = plan.MonthlyAmount,
             Currency = plan.Currency,
             IsActive = plan.IsActive,
-            CreatedAt = plan.CreatedAt,
-            UpdatedAt = plan.UpdatedAt,
-            DurationMonths = plan.DurationMonths,
             MaxFlats = plan.MaxFlats,
-            PlanGroup = plan.PlanGroup,
-            DiscountPercentage = plan.DiscountPercentage,
-            DisplayOrder = plan.DisplayOrder,
-            IsPopular = plan.IsPopular,
-            Description = plan.Description
+            DurationMonths = plan.DurationMonths,
+            CreatedAt = plan.CreatedAt
         };
     }
 }

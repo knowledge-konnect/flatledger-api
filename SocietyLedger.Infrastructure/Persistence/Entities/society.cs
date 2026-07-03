@@ -62,6 +62,9 @@ public partial class society
     public virtual ICollection<flat> flats { get; set; } = new List<flat>();
 
     [InverseProperty("society")]
+    public virtual ICollection<invoice> invoices { get; set; } = new List<invoice>();
+
+    [InverseProperty("society")]
     public virtual ICollection<maintenance_component> maintenance_components { get; set; } = new List<maintenance_component>();
 
     [InverseProperty("society")]

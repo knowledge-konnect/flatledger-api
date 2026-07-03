@@ -34,15 +34,9 @@ namespace SocietyLedger.Api.Endpoints
             DateTime expiresAt,
             IWebHostEnvironment env)
         {
-            ctx.Response.Cookies.Append(RefreshTokenCookieName, refreshToken, new CookieOptions
-            {
-                HttpOnly = true,
-                // For cross-origin support, SameSite=None and Secure must be true
-                Secure   = true,
-                SameSite = SameSiteMode.None,
-                Path     = RefreshTokenCookiePath,
-                Expires  = new DateTimeOffset(DateTime.SpecifyKind(expiresAt, DateTimeKind.Utc))
-            });
+            var options = SocietyLedger.Api.Utilities.CookieHelper.GetRefreshTokenCookieOptions(env);
+            options.Expires = new DateTimeOffset(DateTime.SpecifyKind(expiresAt, DateTimeKind.Utc));
+            ctx.Response.Cookies.Append(RefreshTokenCookieName, refreshToken, options);
         }
 
         /// <summary>
@@ -52,15 +46,10 @@ namespace SocietyLedger.Api.Endpoints
         /// </summary>
         private static void ClearRefreshTokenCookie(HttpContext ctx, IWebHostEnvironment env)
         {
-            ctx.Response.Cookies.Append(RefreshTokenCookieName, string.Empty, new CookieOptions
-            {
-                HttpOnly = true,
-                Secure   = true,
-                SameSite = SameSiteMode.None,
-                Path     = RefreshTokenCookiePath,
-                Expires  = DateTimeOffset.UnixEpoch,
-                MaxAge   = TimeSpan.Zero
-            });
+            var options = SocietyLedger.Api.Utilities.CookieHelper.GetRefreshTokenCookieOptions(env);
+            options.Expires = DateTimeOffset.UnixEpoch;
+            options.MaxAge = TimeSpan.Zero;
+            ctx.Response.Cookies.Append(RefreshTokenCookieName, string.Empty, options);
         }
 
         /// <summary>

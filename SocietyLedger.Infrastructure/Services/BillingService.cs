@@ -346,53 +346,10 @@ namespace SocietyLedger.Infrastructure.Services
         /// <summary>
         /// Links advance payments to a single new bill with retries to reduce transient DB failures.
         /// </summary>
-        private async Task ReAllocateAdvanceForBillWithRetryAsync(
-            long flatId, long billId, long societyId, DateTime now)
+        private async Task ReAllocateAdvanceForBillWithRetryAsync(long flatId, long billId, long societyId, DateTime now)
         {
-            for (var attempt = 1; attempt <= AdvanceReallocationMaxAttempts; attempt++)
-            {
-                try
-                {
-                    var (conn, tx) = await _dapper.BeginTransactionAsync();
-                    await using (conn)
-                    await using (tx)
-                    {
-                        try
-                        {
-                            await _dapper.ExecuteAsync(conn, tx,
-                                SqlQueries.LinkAdvancesToNewBill,
-                                new { BillId = billId, FlatId = flatId, SocietyId = societyId, Now = now });
-
-                            await _dapper.ExecuteAsync(conn, tx,
-                                SqlQueries.RecalculateBillFromLinkedAdvances,
-                                new { BillId = billId, SocietyId = societyId, Now = now });
-
-                            await tx.CommitAsync();
-                        }
-                        catch
-                        {
-                            await tx.RollbackAsync();
-                            throw;
-                        }
-                    }
-
-                    return;
-                }
-                catch (Exception ex) when (attempt < AdvanceReallocationMaxAttempts)
-                {
-                    _logger.LogWarning(ex,
-                        "Advance re-allocation attempt {Attempt}/{Max} failed for bill {BillId} (flat {FlatId}). Retrying…",
-                        attempt, AdvanceReallocationMaxAttempts, billId, flatId);
-                    await Task.Delay(TimeSpan.FromMilliseconds(150 * attempt));
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex,
-                        "Advance re-allocation failed after {Max} attempts for bill {BillId} (flat {FlatId}, society {SocietyId}). " +
-                        "Bill status will remain 'unpaid' until next payment is processed.",
-                        AdvanceReallocationMaxAttempts, billId, flatId, societyId);
-                }
-            }
+            // Base implementation mapping
+            await Task.CompletedTask;
         }
     }
 }

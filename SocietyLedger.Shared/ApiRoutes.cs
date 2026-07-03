@@ -10,6 +10,7 @@ namespace SocietyLedger.Shared
     {
         public const string AUTH = "/api/auth";
         public const string USERS = "/api/users";
+        public const string DASHBOARD = "/api/dashboard";
         public const string SOCIETIES = "/api/societies";
         public const string NOTIFICATIONS = "/api/notifications";
         public const string FLATS = "/api/flats";

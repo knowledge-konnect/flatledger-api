@@ -9,5 +9,6 @@ namespace SocietyLedger.Application.Interfaces.Services
         Task<VerifyPaymentResponse> VerifyPaymentAsync(VerifyPaymentRequest request);
         /// <summary>Processes a Razorpay webhook event after verifying the HMAC-SHA256 signature.</summary>
         Task<WebhookProcessResult> ProcessWebhookAsync(string rawBody, string signature, WebhookPayload payload);
+        Task<RefundResponse> InitiateRefundAsync(RefundRequest request);
     }
 }

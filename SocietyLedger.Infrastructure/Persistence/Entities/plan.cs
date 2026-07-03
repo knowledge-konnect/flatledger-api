@@ -15,6 +15,11 @@ public partial class plan
     [StringLength(100)]
     public string name { get; set; } = null!;
 
+    /// <summary>Total price charged per billing cycle (e.g. ₹2999/year for an annual plan).</summary>
+    [Precision(10, 2)]
+    public decimal price { get; set; }
+
+    /// <summary>Per-month display amount (e.g. ₹249/month) shown on pricing cards. Not used for billing.</summary>
     [Precision(10, 2)]
     public decimal monthly_amount { get; set; }
 

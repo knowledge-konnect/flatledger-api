@@ -276,7 +276,8 @@ namespace SocietyLedger.Infrastructure.Services
                         new { SocietyId = societyId, IdempotencyKey = idempotencyKey, OutstandingAfterPayment = outstandingAfterPayment });
 
                     // ── Step 9: Commit ────────────────────────────────────────────────────
-                    await tx.CommitAsync();                    _dashboardService.InvalidateDashboardCache(societyId);
+                    await tx.CommitAsync();
+                    _dashboardService.InvalidateDashboardCache(societyId);
                     // #1 — Inform the caller when all bills are already paid and
                     //        the full amount was recorded as advance credit.
                     var paymentMessage = allocations.Count == 0 && remaining > 0

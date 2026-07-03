@@ -31,9 +31,6 @@ namespace SocietyLedger.Application.DTOs.Email
         public string Message { get; set; } = string.Empty;
         public string? Phone { get; set; }
         public DateTime SubmittedAt { get; set; }
-
-        // Semantic aliases — the base class RecipientName/Email here represent
-        // the form submitter, not the notification email recipient (which is SupportEmail).
         public string SubmitterName
         {
             get => RecipientName;

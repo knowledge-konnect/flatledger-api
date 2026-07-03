@@ -319,20 +319,14 @@ namespace SocietyLedger.Infrastructure.Services
             await _userRepo.AddAsync(user);
             await _userRepo.SaveChangesAsync();
 
-                _logger.LogInformation("User {Email} created in society {SocietyId}", user.Email, societyId);
+            _logger.LogInformation("User {Email} created in society {SocietyId}", user.Email, societyId);
 
-                return new CreateUserResponseDto(
-                    PublicId: user.PublicId,
-                    Email: user.Email ?? string.Empty,
-                    Username: user.Username ?? string.Empty,
-                    Message: "User created successfully"
-                );
-            }
-            catch
-            {
-                await transaction.RollbackAsync();
-                throw;
-            }
+            return new CreateUserResponseDto(
+                PublicId: user.PublicId,
+                Email: user.Email ?? string.Empty,
+                Username: user.Username ?? string.Empty,
+                Message: "User created successfully"
+            );
         }
 
         /// <summary>

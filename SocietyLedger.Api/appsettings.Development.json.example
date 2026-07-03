@@ -1,0 +1,34 @@
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Debug",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "ConnectionStrings": {
+    "DefaultConnection": "Host=localhost;Port=5432;Database=societyledger_dev;Username=postgres;Password=YOUR_LOCAL_DB_PASSWORD"
+  },
+  "JwtSettings": {
+    "Issuer": "flatledger-dev",
+    "Audience": "flatledger-frontend",
+    "Key": "YOUR_LOCAL_32_PLUS_BYTE_SECRET_HERE_BASE64_OR_RAW",
+    "AccessTokenExpirationMinutes": 15,
+    "RefreshTokenExpirationDays": 30
+  },
+  "Razorpay": {
+    "KeyId": "rzp_test_xxxxx",
+    "KeySecret": "rzp_test_secret_xxxxx",
+    "WebhookSecret": "rzp_webhook_secret"
+  },
+  "AllowedOrigins": [
+    "http://localhost:5173",
+    "https://localhost:5173"
+  ],
+  "Email": {
+    "ResendApiKey": "re_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "FromAddress": "noreply@flatledger.local",
+    "FromName": "FlatLedger (Dev)",
+    "FrontendUrl": "http://localhost:5173",
+    "PasswordResetTokenExpiryMinutes": 15
+  }
+}

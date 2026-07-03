@@ -5,12 +5,14 @@ using SocietyLedger.Domain.Exceptions;
 using SocietyLedger.Infrastructure.Persistence.Contexts;
 using SocietyLedger.Infrastructure.Persistence.Entities;
 using SocietyLedger.Shared;
+
 namespace SocietyLedger.Infrastructure.Services.Admin
 {
     public class AdminPlanService : IAdminPlanService
     {
         private const int MaxPageSize = 200;
         private readonly AppDbContext _db;
+
         public AdminPlanService(AppDbContext db) { _db = db; }
 
         public async Task<PagedResult<AdminPlanDto>> GetPlansAsync(int page, int pageSize, string? search = null, bool? isActive = null)
@@ -21,57 +23,51 @@ namespace SocietyLedger.Infrastructure.Services.Admin
                 query = query.Where(p => EF.Functions.ILike(p.name, $"%{search}%"));
             if (isActive.HasValue)
                 query = query.Where(p => p.is_active == isActive);
+
             var total = await query.CountAsync();
-            var items = await query.OrderBy(p => p.display_order).ThenByDescending(p => p.created_at)
+            var items = await query
+                .OrderBy(p => p.display_order)
+                .ThenByDescending(p => p.created_at)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
-                .Select(p => new AdminPlanDto
-                {
-                    Id = p.id,
-                    Name = p.name,
-                    MonthlyAmount = p.monthly_amount,
-                    Currency = p.currency,
-                    IsActive = p.is_active,
-                    CreatedAt = p.created_at,
-                    DurationMonths = p.duration_months
-                })
                 .ToListAsync();
-            return new PagedResult<AdminPlanDto>(items, total, page, pageSize);
+
+            return new PagedResult<AdminPlanDto>(items.Select(MapToDto).ToList(), total, page, pageSize);
         }
 
         public async Task<AdminPlanDto?> GetPlanByIdAsync(Guid id)
         {
             var p = await _db.plans.AsNoTracking().FirstOrDefaultAsync(x => x.id == id);
-            if (p == null) return null;
-            return new AdminPlanDto
-            {
-                Id = p.id,
-                Name = p.name,
-                MonthlyAmount = p.monthly_amount,
-                Currency = p.currency,
-                IsActive = p.is_active,
-                CreatedAt = p.created_at,
-                DurationMonths = p.duration_months
-            };
+            return p == null ? null : MapToDto(p);
         }
 
         public async Task<AdminPlanDto> CreatePlanAsync(AdminPlanCreateRequest request)
         {
             if (await _db.plans.AnyAsync(x => x.name == request.Name))
                 throw new ConflictException($"Plan with name '{request.Name}' already exists.");
+
             var plan = new plan
             {
                 id = Guid.NewGuid(),
                 name = request.Name,
+                description = request.Description,
+                price = request.Price,
                 monthly_amount = request.MonthlyAmount,
                 currency = request.Currency,
-                is_active = true,
+                is_active = request.IsActive,
+                is_popular = request.IsPopular,
+                plan_group = request.PlanGroup,
+                display_order = request.DisplayOrder,
+                max_flats = request.MaxFlats ?? 0,
+                discount_percentage = (int?)request.DiscountPercentage,
+                duration_months = request.DurationMonths,
                 created_at = DateTime.UtcNow,
-                duration_months = request.DurationMonths
+                updated_at = DateTime.UtcNow
             };
+
             _db.plans.Add(plan);
             await _db.SaveChangesAsync();
-            return await GetPlanByIdAsync(plan.id) ?? throw new AppException("Failed to retrieve plan after creation.");
+            return MapToDto(plan);
         }
 
         public async Task<AdminPlanDto> UpdatePlanAsync(Guid id, AdminPlanUpdateRequest request)
@@ -79,13 +75,22 @@ namespace SocietyLedger.Infrastructure.Services.Admin
             var plan = await _db.plans.FirstOrDefaultAsync(x => x.id == id);
             if (plan == null) throw new NotFoundException("Plan", id.ToString());
 
-            plan.name = request.Name;
-            plan.monthly_amount = request.MonthlyAmount;
-            plan.currency = request.Currency;
-            plan.is_active = request.IsActive;
-            plan.duration_months = request.DurationMonths;
+            if (request.Name != null) plan.name = request.Name;
+            if (request.Description != null) plan.description = request.Description;
+            if (request.Price.HasValue) plan.price = request.Price.Value;
+            if (request.MonthlyAmount.HasValue) plan.monthly_amount = request.MonthlyAmount.Value;
+            if (request.Currency != null) plan.currency = request.Currency;
+            if (request.IsActive.HasValue) plan.is_active = request.IsActive.Value;
+            if (request.IsPopular.HasValue) plan.is_popular = request.IsPopular.Value;
+            if (request.PlanGroup != null) plan.plan_group = request.PlanGroup;
+            if (request.DisplayOrder.HasValue) plan.display_order = request.DisplayOrder.Value;
+            if (request.MaxFlats.HasValue) plan.max_flats = request.MaxFlats.Value;
+            if (request.DiscountPercentage.HasValue) plan.discount_percentage = (int?)request.DiscountPercentage.Value;
+            if (request.DurationMonths.HasValue) plan.duration_months = request.DurationMonths.Value;
+            plan.updated_at = DateTime.UtcNow;
+
             await _db.SaveChangesAsync();
-            return await GetPlanByIdAsync(plan.id) ?? throw new AppException("Failed to retrieve plan after update.");
+            return MapToDto(plan);
         }
 
         public async Task DeletePlanAsync(Guid id)
@@ -96,27 +101,23 @@ namespace SocietyLedger.Infrastructure.Services.Admin
             await _db.SaveChangesAsync();
         }
 
-        private static AdminPlanDto MapToDto(plan p)
+        private static AdminPlanDto MapToDto(plan p) => new()
         {
-            var price = p.price > 0 ? p.price : p.monthly_amount;
-            return new AdminPlanDto
-            {
-                Id = p.id,
-                Name = p.name,
-                Price = price,
-                MonthlyAmount = price,
-                Currency = p.currency,
-                IsActive = p.is_active,
-                CreatedAt = p.created_at,
-                UpdatedAt = p.updated_at,
-                DurationMonths = p.duration_months,
-                MaxFlats = p.max_flats,
-                PlanGroup = p.plan_group,
-                DiscountPercentage = p.discount_percentage,
-                DisplayOrder = p.display_order,
-                IsPopular = p.is_popular,
-                Description = p.description
-            };
-        }
+            Id = p.id,
+            Name = p.name,
+            Description = p.description,
+            Price = p.price,
+            MonthlyAmount = p.monthly_amount,
+            Currency = p.currency,
+            IsActive = p.is_active,
+            IsPopular = p.is_popular,
+            PlanGroup = p.plan_group,
+            DisplayOrder = p.display_order,
+            MaxFlats = p.max_flats > 0 ? p.max_flats : (int?)null,
+            DiscountPercentage = p.discount_percentage,
+            DurationMonths = p.duration_months,
+            CreatedAt = p.created_at,
+            UpdatedAt = p.updated_at
+        };
     }
 }

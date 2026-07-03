@@ -95,6 +95,7 @@ namespace SocietyLedger.Domain.Constants
     {
         public const string Bill = "bill";
         public const string Subscription = "subscription";
+        public const string Refund = "refund";
     }
 
     /// <summary>

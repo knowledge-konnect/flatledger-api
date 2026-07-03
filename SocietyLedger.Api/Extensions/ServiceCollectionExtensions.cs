@@ -2,6 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Npgsql;
+using Resend;
 using SocietyLedger.Api.Filters;
 using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Application.Interfaces.Services;
@@ -12,6 +13,7 @@ using SocietyLedger.Infrastructure.Persistence.Repositories;
 using SocietyLedger.Infrastructure.Services;
 using SocietyLedger.Infrastructure.Services.Admin;
 using SocietyLedger.Infrastructure.Services.Common;
+using SocietyLedger.Shared;
 using SocietyLedger.Shared.Jwt;
 namespace SocietyLedger.Api.Extensions
 {
@@ -40,6 +42,8 @@ namespace SocietyLedger.Api.Extensions
             services.AddScoped<IBillingService, BillingService>();
             services.AddScoped<IMaintenanceConfigService, MaintenanceConfigService>();
             services.AddScoped<INotificationPreferenceService, NotificationPreferenceService>();
+            services.AddScoped<IContactService, ContactService>();
+            services.AddScoped<IPasswordResetService, PasswordResetService>();
 
             // SaaS Admin module
             services.AddScoped<IAdminAuthService, AdminAuthService>();
@@ -65,14 +69,15 @@ namespace SocietyLedger.Api.Extensions
         {
             services.AddHttpContextAccessor();
 
-            // Configure EmailSettings
-            services.Configure<EmailSettings>(configuration.GetSection("EmailSettings"));
+            // Configure EmailSettings — bound once from the "Email" section in appsettings.json.
+            // All services that inject IOptions<EmailSettings> receive the same configured instance.
+            services.Configure<EmailSettings>(configuration.GetSection("Email"));
 
             // Configure HttpClient for Resend
             services.AddHttpClient("Resend", client =>
             {
                 client.BaseAddress = new Uri("https://api.resend.com/emails");
-                client.DefaultRequestHeaders.Add("Authorization", $"Bearer {configuration["EmailSettings:ResendApiKey"]}");
+                client.DefaultRequestHeaders.Add("Authorization", $"Bearer {configuration["Email:ResendApiKey"]}");
                 client.DefaultRequestHeaders.Add("Accept", "application/json");
             });
 
@@ -87,8 +92,8 @@ namespace SocietyLedger.Api.Extensions
                     // pgBouncer transaction mode (port 6543): no savepoints, no retry.
                     // 120s to handle Supabase free-tier cold starts.
                     npgsql.CommandTimeout(120);
-                }));
-
+                });
+            });
             // Common infrastructure helpers
             services.AddScoped<IUserContext, UserContext>();
 
@@ -132,8 +137,7 @@ namespace SocietyLedger.Api.Extensions
 
             services.Configure<JwtSettings>(configuration.GetSection("JwtSettings"));
 
-            // Email (Resend)
-            services.Configure<EmailSettings>(configuration.GetSection("Email"));
+            // Resend email client
             services.AddResend(options =>
             {
                 options.ApiToken = configuration["Email:ResendApiKey"] ?? string.Empty;

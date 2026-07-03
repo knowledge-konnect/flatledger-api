@@ -1,11 +1,8 @@
-﻿using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using SocietyLedger.Application.DTOs;
 using SocietyLedger.Application.DTOs.Auth;
-using SocietyLedger.Application.DTOs.Email;
 using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Application.Interfaces.Services;
 using SocietyLedger.Domain.Constants;
@@ -30,6 +27,7 @@ namespace SocietyLedger.Infrastructure.Services
         private readonly IRefreshTokenRepository _refreshTokenRepo;
         private readonly IConfiguration _configuration;
         private readonly IHostEnvironment _environment;
+        private readonly IEmailService _emailService;
 
         private const string PasswordResetGenericMessage =
             "If an account exists for this email, password reset instructions have been sent.";
@@ -45,7 +43,8 @@ namespace SocietyLedger.Infrastructure.Services
             AppDbContext db,
             IRefreshTokenRepository refreshTokenRepo,
             IConfiguration configuration,
-            IHostEnvironment environment)
+            IHostEnvironment environment,
+            IEmailService emailService)
         {
             _userRepo = userRepo;
             _roleRepo = roleRepo;
@@ -58,6 +57,7 @@ namespace SocietyLedger.Infrastructure.Services
             _refreshTokenRepo = refreshTokenRepo;
             _configuration = configuration;
             _environment = environment;
+            _emailService = emailService;
         }
 
         /// <summary>
@@ -200,10 +200,9 @@ namespace SocietyLedger.Infrastructure.Services
 
             // Trial creation is inside the transaction — if it fails the whole registration
             // rolls back, preventing orphaned users with no subscription.
-            SocietyLedger.Domain.Entities.Subscription? trialSubscription = null;
             try
             {
-                trialSubscription = await _subscriptionService.CreateTrialSubscriptionAsync(user.Id);
+                await _subscriptionService.CreateTrialSubscriptionAsync(user.Id);
             }
             catch (Exception ex)
             {

@@ -341,6 +341,8 @@ public partial class AppDbContext : DbContext
                 .HasConstraintName("invoices_subscription_id_fkey");
 
             entity.HasOne(d => d.user).WithMany(p => p.invoices).HasConstraintName("invoices_user_id_fkey");
+
+            entity.HasOne(d => d.society).WithMany(p => p.invoices).HasConstraintName("invoices_society_id_fkey");
         });
 
         modelBuilder.Entity<job>(entity =>
@@ -555,7 +557,7 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.currency).HasDefaultValueSql("'INR'::character varying");
             entity.Property(e => e.duration_months).HasDefaultValue(1);
             entity.Property(e => e.is_active).HasDefaultValue(true);
-            entity.Property(e => e.price).HasPrecision(10, 2);
+            //entity.Property(e => e.price).HasPrecision(10, 2);
             entity.Property(e => e.max_flats).HasDefaultValue(1);
             entity.Property(e => e.display_order).HasDefaultValue(0);
             entity.Property(e => e.is_popular).HasDefaultValue(false);
@@ -572,6 +574,16 @@ public partial class AppDbContext : DbContext
             entity.HasOne(d => d.maintenance_component).WithMany(p => p.plan_components).HasConstraintName("plan_components_maintenance_component_id_fkey");
 
             entity.HasOne(d => d.maintenance_plan).WithMany(p => p.plan_components).HasConstraintName("plan_components_maintenance_plan_id_fkey");
+        });
+
+        modelBuilder.Entity<password_reset_token>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("password_reset_tokens_pkey");
+
+            entity.Property(e => e.created_at).HasDefaultValueSql("now()");
+            entity.Property(e => e.is_used).HasDefaultValue(false);
+
+            entity.HasOne(d => d.user).WithMany().HasConstraintName("password_reset_tokens_user_id_fkey");
         });
 
         modelBuilder.Entity<refresh_token>(entity =>
@@ -669,6 +681,8 @@ public partial class AppDbContext : DbContext
                 .HasConstraintName("subscriptions_plan_id_fkey");
 
             entity.HasOne(d => d.user).WithMany(p => p.subscriptions).HasConstraintName("subscriptions_user_id_fkey");
+
+            entity.HasOne(d => d.society).WithMany().HasConstraintName("subscriptions_society_id_fkey");
         });
 
         modelBuilder.Entity<subscription_event>(entity =>
