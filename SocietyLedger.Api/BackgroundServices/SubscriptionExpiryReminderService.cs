@@ -72,7 +72,7 @@ namespace SocietyLedger.Api.BackgroundServices
             using var scope = _serviceProvider.CreateScope();
             var subscriptionRepo = scope.ServiceProvider.GetRequiredService<ISubscriptionRepository>();
             var eventRepo = scope.ServiceProvider.GetRequiredService<ISubscriptionEventRepository>();
-            var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
+            var emailGatewayService = scope.ServiceProvider.GetRequiredService<IEmailGatewayService>();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
             var today = DateTime.UtcNow.Date;
@@ -124,7 +124,7 @@ namespace SocietyLedger.Api.BackgroundServices
                             continue;
                         }
 
-                        await emailService.SendSubscriptionExpiryReminderAsync(
+                        await emailGatewayService.SendSubscriptionExpiryReminderAsync(
                             info.UserEmail,
                             info.SocietyName,
                             info.PlanName,

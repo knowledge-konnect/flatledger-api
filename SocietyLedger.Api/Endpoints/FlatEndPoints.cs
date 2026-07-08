@@ -1,4 +1,4 @@
-﻿using Asp.Versioning;
+using Asp.Versioning;
 using Asp.Versioning.Builder;
 using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
@@ -44,7 +44,7 @@ namespace SocietyLedger.Api.Endpoints
                 }
 
                 if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
-                    return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
+                    return Results.Json(ErrorResponse.Create(ErrorCodes.FORBIDDEN, "You do not have permission to perform this action.", ctx.TraceIdentifier), statusCode: 403);
 
                 var result = await service.CreateAsync(request, userId);
                 Log.Information("Flat created successfully for FlatNo {FlatNo}", request.FlatNo);
@@ -335,7 +335,7 @@ namespace SocietyLedger.Api.Endpoints
             app.MapPost("/bulk", [Authorize("ActiveSubscription")]
             [SwaggerOperation(
                 Summary = "Bulk Create Flats",
-                Description = "Creates multiple flats in a single call. Each flat is processed independently — failures do not abort the batch. Returns succeeded and failed arrays. Set skipBilling=true to skip bill generation for new flats."
+                Description = "Creates multiple flats in a single call. Each flat is processed independently � failures do not abort the batch. Returns succeeded and failed arrays. Set skipBilling=true to skip bill generation for new flats."
             )]
             async ([FromBody] BulkCreateFlatsRequest request,
                    [FromServices] IFlatService service,

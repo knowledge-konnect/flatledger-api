@@ -131,7 +131,7 @@ namespace SocietyLedger.Api.Endpoints
                 {
                     var userId = ctx.GetUserId();
                     if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
-                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
+                        return Results.Json(ErrorResponse.Create(ErrorCodes.FORBIDDEN, "You do not have permission to perform this action.", ctx.TraceIdentifier), statusCode: 403);
                     await subscriptionService.CancelSubscriptionAsync(userId, request);
                     return Results.Ok(ApiResponse<EmptyResponse>.Success(null, "Subscription cancelled successfully"));
                 })

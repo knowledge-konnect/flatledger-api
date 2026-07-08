@@ -8,16 +8,16 @@ namespace SocietyLedger.Infrastructure.Services
     public class ContactService : IContactService
     {
         private readonly IContactRequestRepository _repo;
-        private readonly IEmailService _emailService;
+        private readonly IEmailGatewayService _emailGatewayService;
         private readonly ILogger<ContactService> _logger;
 
         public ContactService(
             IContactRequestRepository repo,
-            IEmailService emailService,
+            IEmailGatewayService emailGatewayService,
             ILogger<ContactService> logger)
         {
             _repo = repo;
-            _emailService = emailService;
+            _emailGatewayService = emailGatewayService;
             _logger = logger;
         }
 
@@ -26,11 +26,11 @@ namespace SocietyLedger.Infrastructure.Services
             // Persist first — the record must survive even if the email fails.
             var record = new ContactRequestRecord
             {
-                Name    = request.Name.Trim(),
-                Email   = request.Email.Trim().ToLowerInvariant(),
+                Name = request.Name.Trim(),
+                Email = request.Email.Trim().ToLowerInvariant(),
                 Subject = string.IsNullOrWhiteSpace(request.Subject) ? null : request.Subject.Trim(),
                 Message = request.Message.Trim(),
-                Status  = "New"
+                Status = "New"
             };
 
             await _repo.AddAsync(record, cancellationToken);
@@ -42,7 +42,7 @@ namespace SocietyLedger.Infrastructure.Services
             // Send notification email. Failure is isolated — submission is already committed.
             try
             {
-                await _emailService.SendContactUsNotificationAsync(
+                await _emailGatewayService.SendContactUsNotificationAsync(
                     record.Name,
                     record.Email,
                     record.Subject ?? string.Empty,

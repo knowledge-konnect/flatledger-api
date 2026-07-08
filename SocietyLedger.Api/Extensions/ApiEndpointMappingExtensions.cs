@@ -17,6 +17,7 @@ public static class ApiEndpointMappingExtensions
         api.MapGroup("/expenses").MapExpenseRoutes("Expenses", versionSet);
         api.MapGroup("/dashboard").MapDashboardRoutes("Dashboard", versionSet);
         api.MapGroup("/contact").MapContactRoutes("Contact", versionSet);
+        api.MapGroup("/email-gateway").MapEmailGatewayRoutes("EmailGateway", versionSet);
         api.MapGroup("/users").MapUserRoutes("Users", versionSet);
         api.MapGroup("/subscriptions").MapSubscriptionRoutes("Subscriptions", versionSet);
         api.MapGroup("/societies").MapSocietyRoutes("Societies", versionSet);

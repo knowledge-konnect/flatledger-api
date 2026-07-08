@@ -46,7 +46,7 @@ namespace SocietyLedger.Api.BackgroundServices
                 try
                 {
                     var now = DateTime.UtcNow;
-                    
+
                     // Run once per day
                     if (_lastRunDate.Date != now.Date)
                     {
@@ -74,7 +74,7 @@ namespace SocietyLedger.Api.BackgroundServices
         {
             using var scope = _serviceProvider.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
+            var emailGatewayService = scope.ServiceProvider.GetRequiredService<IEmailGatewayService>();
 
             try
             {
@@ -88,7 +88,7 @@ namespace SocietyLedger.Api.BackgroundServices
 
                 foreach (var reminderDate in reminderDates)
                 {
-                    await ProcessRemindersForDateAsync(dbContext, emailService, reminderDate, currentDate);
+                    await ProcessRemindersForDateAsync(dbContext, emailGatewayService, reminderDate, currentDate);
                 }
             }
             catch (Exception ex)
@@ -99,7 +99,7 @@ namespace SocietyLedger.Api.BackgroundServices
 
         private async Task ProcessRemindersForDateAsync(
             AppDbContext dbContext,
-            IEmailService emailService,
+            IEmailGatewayService emailGatewayService,
             DateTime expiryDateToCheck,
             DateTime currentDate)
         {
@@ -114,7 +114,7 @@ namespace SocietyLedger.Api.BackgroundServices
                 .Where(s => s.current_period_end.HasValue && s.current_period_end.Value.Date == expiryDateToCheck.Date)
                 .ToListAsync();
 
-            _logger.LogInformation("Found {Count} subscriptions expiring on {ExpiryDate} ({Days} days from now)", 
+            _logger.LogInformation("Found {Count} subscriptions expiring on {ExpiryDate} ({Days} days from now)",
                 expiringSubscriptions.Count, expiryDateToCheck.Date, daysUntilExpiry);
 
             foreach (var subscription in expiringSubscriptions)
@@ -131,7 +131,7 @@ namespace SocietyLedger.Api.BackgroundServices
 
                     if (reminderAlreadySent)
                     {
-                        _logger.LogDebug("Reminder already sent today for subscription {SubscriptionId} (days: {Days})", 
+                        _logger.LogDebug("Reminder already sent today for subscription {SubscriptionId} (days: {Days})",
                             subscription.id, daysUntilExpiry);
                         continue;
                     }
@@ -151,7 +151,7 @@ namespace SocietyLedger.Api.BackgroundServices
                             DaysUntilExpiry = daysUntilExpiry
                         };
 
-                        var emailSent = await emailService.SendSubscriptionReminderEmailAsync(
+                        var emailSent = await emailGatewayService.SendSubscriptionReminderEmailAsync(
                             subscription.user.email,
                             subscription.user.name,
                             reminderData);

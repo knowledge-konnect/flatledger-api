@@ -56,6 +56,8 @@ else
 
 app.UseApiSecurityHeaders();
 
+app.UseApiExceptionHandling();
+
 // Correlation ID middleware
 app.UseMiddleware<SocietyLedger.Api.CorrelationIdMiddleware>();
 

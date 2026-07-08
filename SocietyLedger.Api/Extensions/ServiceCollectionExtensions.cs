@@ -29,6 +29,7 @@ namespace SocietyLedger.Api.Extensions
             // Add application-level services (use cases)
             services.AddScoped<IAuthService, AuthService>();
             services.AddScoped<IEmailService, EmailService>();
+            services.AddScoped<IEmailGatewayService, EmailGatewayService>();
             services.AddScoped<IFlatService, FlatService>();
             services.AddScoped<IUserService, UserService>();
             services.AddScoped<ISocietyService, SocietyService>();

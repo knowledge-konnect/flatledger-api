@@ -40,7 +40,7 @@ namespace SocietyLedger.Api.Endpoints
                     }
 
                     if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
-                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
+                        return Results.Json(ErrorResponse.Create(ErrorCodes.FORBIDDEN, "You do not have permission to perform this action.", ctx.TraceIdentifier), statusCode: 403);
 
                     var result = await expenseService.CreateExpenseAsync(userId, request);
                     Log.Information("Expense created successfully by user {UserId}", userId);
@@ -215,7 +215,7 @@ namespace SocietyLedger.Api.Endpoints
                 {
                     var userId = ctx.GetUserId();
                     if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
-                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
+                        return Results.Json(ErrorResponse.Create(ErrorCodes.FORBIDDEN, "You do not have permission to perform this action.", ctx.TraceIdentifier), statusCode: 403);
                     var result = await expenseService.UpdateExpenseAsync(publicId, userId, request);
                     return Results.Ok(ApiResponse<ExpenseResponse>.Success(result, "Expense updated successfully"));
                 })
@@ -241,7 +241,7 @@ namespace SocietyLedger.Api.Endpoints
                 {
                     var userId = ctx.GetUserId();
                     if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
-                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
+                        return Results.Json(ErrorResponse.Create(ErrorCodes.FORBIDDEN, "You do not have permission to perform this action.", ctx.TraceIdentifier), statusCode: 403);
                     await expenseService.DeleteExpenseAsync(publicId, userId);
                     return Results.Ok(ApiResponse<EmptyResponse>.Success(new EmptyResponse(), "Expense deleted successfully"));
                 })

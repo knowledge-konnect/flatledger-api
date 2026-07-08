@@ -27,7 +27,7 @@ namespace SocietyLedger.Infrastructure.Services
         private readonly IRefreshTokenRepository _refreshTokenRepo;
         private readonly IConfiguration _configuration;
         private readonly IHostEnvironment _environment;
-        private readonly IEmailService _emailService;
+        private readonly IEmailGatewayService _emailGatewayService;
 
         private const string PasswordResetGenericMessage =
             "If an account exists for this email, password reset instructions have been sent.";
@@ -44,7 +44,7 @@ namespace SocietyLedger.Infrastructure.Services
             IRefreshTokenRepository refreshTokenRepo,
             IConfiguration configuration,
             IHostEnvironment environment,
-            IEmailService emailService)
+            IEmailGatewayService emailGatewayService)
         {
             _userRepo = userRepo;
             _roleRepo = roleRepo;
@@ -57,7 +57,7 @@ namespace SocietyLedger.Infrastructure.Services
             _refreshTokenRepo = refreshTokenRepo;
             _configuration = configuration;
             _environment = environment;
-            _emailService = emailService;
+            _emailGatewayService = emailGatewayService;
         }
 
         /// <summary>
@@ -72,6 +72,9 @@ namespace SocietyLedger.Infrastructure.Services
 
             var user = await _userRepo.GetByUsernameOrEmailAsync(request.UsernameOrEmail);
             if (user == null)
+                throw new AuthenticationException("Invalid credentials.");
+
+            if (string.IsNullOrWhiteSpace(user.PasswordHash))
                 throw new AuthenticationException("Invalid credentials.");
 
             if (!_hasher.Verify(user.PasswordHash, request.Password))
@@ -95,13 +98,13 @@ namespace SocietyLedger.Infrastructure.Services
 
             var refreshEntity = new RefreshTokenEntity
             {
-                UserId        = user.Id,
-                TokenHash     = _tokenService.HashToken(refreshPair.Token),
-                JwtId         = Guid.NewGuid().ToString(),
-                ExpiresAt     = refreshPair.ExpiresAt,
-                CreatedAt     = DateTime.UtcNow,
-                CreatedByIp   = ipAddress,
-                IsRevoked     = false
+                UserId = user.Id,
+                TokenHash = _tokenService.HashToken(refreshPair.Token),
+                JwtId = Guid.NewGuid().ToString(),
+                ExpiresAt = refreshPair.ExpiresAt,
+                CreatedAt = DateTime.UtcNow,
+                CreatedByIp = ipAddress,
+                IsRevoked = false
             };
 
             var now = DateTime.UtcNow;
@@ -186,13 +189,13 @@ namespace SocietyLedger.Infrastructure.Services
 
             var refreshEntity = new RefreshTokenEntity
             {
-                UserId        = user.Id,
-                TokenHash     = _tokenService.HashToken(refreshPair.Token),
-                JwtId         = Guid.NewGuid().ToString(),
-                ExpiresAt     = refreshPair.ExpiresAt,
-                CreatedAt     = DateTime.UtcNow,
-                CreatedByIp   = ipAddress,
-                IsRevoked     = false
+                UserId = user.Id,
+                TokenHash = _tokenService.HashToken(refreshPair.Token),
+                JwtId = Guid.NewGuid().ToString(),
+                ExpiresAt = refreshPair.ExpiresAt,
+                CreatedAt = DateTime.UtcNow,
+                CreatedByIp = ipAddress,
+                IsRevoked = false
             };
 
             await _refreshTokenRepo.AddAsync(refreshEntity);
@@ -253,13 +256,13 @@ namespace SocietyLedger.Infrastructure.Services
 
             var newRt = new RefreshTokenEntity
             {
-                UserId              = rt.UserId,
-                TokenHash           = _tokenService.HashToken(newPair.Token),
-                JwtId               = Guid.NewGuid().ToString(),
-                ExpiresAt           = newPair.ExpiresAt,
-                CreatedAt           = DateTime.UtcNow,
-                CreatedByIp         = ipAddress,
-                IsRevoked           = false,
+                UserId = rt.UserId,
+                TokenHash = _tokenService.HashToken(newPair.Token),
+                JwtId = Guid.NewGuid().ToString(),
+                ExpiresAt = newPair.ExpiresAt,
+                CreatedAt = DateTime.UtcNow,
+                CreatedByIp = ipAddress,
+                IsRevoked = false,
                 ReplacedByTokenHash = rt.TokenHash
             };
 
@@ -338,6 +341,14 @@ namespace SocietyLedger.Infrastructure.Services
             if (!user.IsActive)
                 throw new ConflictException("User account is inactive.");
 
+            if (string.IsNullOrWhiteSpace(user.PasswordHash))
+                throw new ValidationException(
+                    ErrorMessages.VALIDATION_FAILED,
+                    new Dictionary<string, string[]>
+                    {
+                        ["currentPassword"] = ["Current password is incorrect."]
+                    });
+
             if (!_hasher.Verify(user.PasswordHash, request.CurrentPassword))
                 throw new ValidationException(
                     ErrorMessages.VALIDATION_FAILED,
@@ -391,7 +402,7 @@ namespace SocietyLedger.Infrastructure.Services
 
                 try
                 {
-                    await _emailService.SendPasswordResetEmailAsync(
+                    await _emailGatewayService.SendPasswordResetEmailAsync(
                         user.Email ?? email,
                         user.Name,
                         resetLink,

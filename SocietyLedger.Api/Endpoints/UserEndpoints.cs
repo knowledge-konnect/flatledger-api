@@ -94,7 +94,7 @@ namespace SocietyLedger.Api.Endpoints
                     }
 
                     if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
-                        return Results.Json(new { error = "Forbidden", message = "You do not have permission to perform this action." }, statusCode: 403);
+                        return Results.Json(ErrorResponse.Create(ErrorCodes.FORBIDDEN, "You do not have permission to perform this action.", ctx.TraceIdentifier), statusCode: 403);
 
                     var created = await userService.CreateUserForAdminAsync(request, authUserId);
                     Log.Information("User {Email} created by {UserId}", request.Email, authUserId);

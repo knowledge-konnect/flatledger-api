@@ -10,6 +10,8 @@ using SocietyLedger.Infrastructure.Persistence.Entities;
 using SocietyLedger.Infrastructure.Services;
 using SocietyLedger.Infrastructure.Services.Common;
 using Xunit;
+using System.Linq;
+using System.Text;
 
 namespace SocietyLedger.Tests.Services;
 
@@ -383,5 +385,43 @@ public class InvoiceServiceTests
 
         // Assert — same society, should succeed
         await act.Should().NotThrowAsync();
+    }
+
+    [Fact]
+    public async Task GenerateInvoicePdfAsync_ReturnsPdfBytesAndFilename()
+    {
+        // Arrange
+        var invoiceId = Guid.NewGuid();
+        var invoice = new Invoice
+        {
+            Id = invoiceId,
+            UserId = 2,
+            InvoiceNumber = "INV-1001",
+            InvoiceType = PaymentTypeCodes.Subscription,
+            Amount = 499,
+            TotalAmount = 499,
+            Currency = "INR",
+            Status = InvoiceStatusCodes.Paid,
+            DueDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(30)),
+            Description = "Subscription to Pro plan"
+        };
+
+        var invoiceRepo = new Mock<IInvoiceRepository>();
+        invoiceRepo.Setup(r => r.GetByIdAsync(invoiceId)).ReturnsAsync(invoice);
+
+        var userContext = new Mock<IUserContext>();
+        userContext.Setup(c => c.GetSocietyIdAsync(1)).ReturnsAsync(10L);
+        userContext.Setup(c => c.GetSocietyIdAsync(2)).ReturnsAsync(10L);
+
+        var svc = BuildService(invoiceRepo: invoiceRepo, userContext: userContext);
+
+        // Act
+        var (bytes, fileName) = await svc.GenerateInvoicePdfAsync(invoiceId, 1);
+
+        // Assert
+        bytes.Should().NotBeEmpty();
+        fileName.Should().Contain("INV-1001");
+        fileName.Should().EndWith(".pdf");
+        Encoding.ASCII.GetString(bytes.Take(5).ToArray()).Should().Be("%PDF-");
     }
 }

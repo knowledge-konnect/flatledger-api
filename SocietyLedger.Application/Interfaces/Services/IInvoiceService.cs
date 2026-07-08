@@ -6,5 +6,6 @@ namespace SocietyLedger.Application.Interfaces.Services
     {
         Task<IEnumerable<InvoiceResponse>> GetUserInvoicesAsync(long userId);
         Task<InvoiceResponse> PayInvoiceAsync(Guid invoiceId, long userId, PayInvoiceRequest request);
+        Task<(byte[] Bytes, string FileName)> GenerateInvoicePdfAsync(Guid invoiceId, long userId);
     }
 }

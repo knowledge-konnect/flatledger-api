@@ -16,7 +16,7 @@ namespace SocietyLedger.Infrastructure.Services
     public class PasswordResetService : IPasswordResetService
     {
         private readonly IUserRepository _userRepository;
-        private readonly IEmailService _emailService;
+        private readonly IEmailGatewayService _emailGatewayService;
         private readonly EmailSettings _emailSettings;
         private readonly PasswordHasher _passwordHasher;
         private readonly ILogger<PasswordResetService> _logger;
@@ -24,14 +24,14 @@ namespace SocietyLedger.Infrastructure.Services
 
         public PasswordResetService(
             IUserRepository userRepository,
-            IEmailService emailService,
+            IEmailGatewayService emailGatewayService,
             IOptions<EmailSettings> emailSettings,
             PasswordHasher passwordHasher,
             ILogger<PasswordResetService> logger,
             AppDbContext dbContext)
         {
             _userRepository = userRepository;
-            _emailService = emailService;
+            _emailGatewayService = emailGatewayService;
             _emailSettings = emailSettings.Value;
             _passwordHasher = passwordHasher;
             _logger = logger;
@@ -44,11 +44,11 @@ namespace SocietyLedger.Infrastructure.Services
             {
                 // Don't reveal whether email exists in the system
                 // Always return success even if email doesn't exist
-                
+
                 var user = await _userRepository.GetByEmailAsync(request.Email);
                 if (user == null || !user.IsActive)
                 {
-                    _logger.LogInformation("Password reset requested for non-existent or inactive email: {Email} from IP: {IP}", 
+                    _logger.LogInformation("Password reset requested for non-existent or inactive email: {Email} from IP: {IP}",
                         request.Email, ipAddress);
                     return true; // Return success to avoid email enumeration
                 }
@@ -76,11 +76,11 @@ namespace SocietyLedger.Infrastructure.Services
                 // Send reset email
                 var frontendUrl = _emailSettings.FrontendUrl.TrimEnd('/');
                 var resetUrl = $"{frontendUrl}/reset-password?token={resetToken}";
-                var emailSent = await _emailService.SendPasswordResetEmailAsync(user.Email!, resetToken, resetUrl);
+                var emailSent = await _emailGatewayService.SendPasswordResetEmailAsync(user.Email!, resetToken, resetUrl);
 
                 if (emailSent)
                 {
-                    _logger.LogInformation("Password reset initiated successfully for user {UserId} from IP: {IP}", 
+                    _logger.LogInformation("Password reset initiated successfully for user {UserId} from IP: {IP}",
                         user.Id, ipAddress);
 
                     await _dbContext.email_notification_logs.AddAsync(new Persistence.Entities.email_notification_log
@@ -134,9 +134,9 @@ namespace SocietyLedger.Infrastructure.Services
                 var tokenHash = HashToken(request.Token);
                 var resetToken = await _dbContext.password_reset_tokens
                     .Include(prt => prt.user)
-                    .FirstOrDefaultAsync(prt => 
-                        prt.token_hash == tokenHash && 
-                        !prt.is_used && 
+                    .FirstOrDefaultAsync(prt =>
+                        prt.token_hash == tokenHash &&
+                        !prt.is_used &&
                         prt.expires_at > DateTime.UtcNow);
 
                 if (resetToken == null)
@@ -182,7 +182,7 @@ namespace SocietyLedger.Infrastructure.Services
 
                 await _dbContext.SaveChangesAsync();
 
-                _logger.LogInformation("Password reset completed successfully for user {UserId} from IP: {IP}", 
+                _logger.LogInformation("Password reset completed successfully for user {UserId} from IP: {IP}",
                     resetToken.user_id, ipAddress);
 
                 return true;

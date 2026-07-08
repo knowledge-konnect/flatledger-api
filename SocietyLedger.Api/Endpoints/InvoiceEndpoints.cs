@@ -68,6 +68,28 @@ namespace SocietyLedger.Api.Endpoints
             .Produces<ErrorResponse>(400)
             .Produces<ErrorResponse>(401)
             .Produces<ErrorResponse>(500);
+
+            // Download invoice as PDF
+            app.MapGet("/{invoiceId}/download",
+                [Authorize("ActiveSubscription")]
+            [SwaggerOperation(
+                    Summary = "Download invoice PDF",
+                    Description = "Downloads the invoice as a PDF file for the authenticated user."
+                )]
+            async (Guid invoiceId, IInvoiceService invoiceService, HttpContext ctx) =>
+                {
+                    var userId = ctx.GetUserId();
+                    var (bytes, fileName) = await invoiceService.GenerateInvoicePdfAsync(invoiceId, userId);
+                    return Results.File(bytes, "application/pdf", fileName);
+                })
+            .WithTags(groupName)
+            .WithApiVersionSet(versionSet)
+            .HasApiVersion(version_1_0)
+            .WithName("DownloadInvoicePdf")
+            .Produces(statusCode: 200, contentType: "application/pdf")
+            .Produces<ErrorResponse>(400)
+            .Produces<ErrorResponse>(401)
+            .Produces<ErrorResponse>(500);
         }
     }
 }
