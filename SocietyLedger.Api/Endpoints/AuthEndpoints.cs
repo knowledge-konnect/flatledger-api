@@ -202,6 +202,51 @@ namespace SocietyLedger.Api.Endpoints
             .Produces<ErrorResponse>(404)
             .Produces<ErrorResponse>(500);
 
+            // Forgot Password
+            app.MapPost("/forgot-password",
+                [AllowAnonymous]
+            [SwaggerOperation(
+                    Summary = "Request password reset",
+                    Description = "Sends a reset link when an active account exists for the provided email. Always returns a generic message."
+                )]
+            async ([FromBody] ForgotPasswordRequest request, IAuthService authService) =>
+                {
+                    var res = await authService.RequestPasswordResetAsync(request);
+                    return Results.Ok(ApiResponse<ForgotPasswordResponse>.Success(res, res.Message));
+                })
+            .AddEndpointFilter<FluentValidationFilter<ForgotPasswordRequest>>()
+            .RequireRateLimiting("AuthPolicy")
+            .WithTags(groupName)
+            .WithApiVersionSet(versionSet)
+            .HasApiVersion(version_1_0)
+            .WithName("ForgotPassword")
+            .Produces<ApiResponse<ForgotPasswordResponse>>(200)
+            .Produces<ErrorResponse>(400)
+            .Produces<ErrorResponse>(500);
+
+            // Reset Password (token)
+            app.MapPost("/reset-password",
+                [AllowAnonymous]
+            [SwaggerOperation(
+                    Summary = "Reset password with token",
+                    Description = "Validates the reset token and sets a new password."
+                )]
+            async ([FromBody] ResetPasswordRequest request, IAuthService authService, HttpContext ctx) =>
+                {
+                    var ip = ctx.GetClientIp();
+                    var res = await authService.ResetPasswordWithTokenAsync(request, ip);
+                    return Results.Ok(ApiResponse<PasswordResetResponse>.Success(res, res.Message));
+                })
+            .AddEndpointFilter<FluentValidationFilter<ResetPasswordRequest>>()
+            .RequireRateLimiting("AuthPolicy")
+            .WithTags(groupName)
+            .WithApiVersionSet(versionSet)
+            .HasApiVersion(version_1_0)
+            .WithName("ResetPassword")
+            .Produces<ApiResponse<PasswordResetResponse>>(200)
+            .Produces<ErrorResponse>(400)
+            .Produces<ErrorResponse>(500);
+
             // Change Password
             app.MapPost("/change-password",
                 [Authorize]
@@ -237,11 +282,11 @@ namespace SocietyLedger.Api.Endpoints
             // Update own profile (self-service)
             app.MapPatch("/profile",
                 [Authorize]
-                [SwaggerOperation(
+            [SwaggerOperation(
                     Summary = "Update own profile",
                     Description = "Allows an authenticated user to update their own mobile number. Email and role changes are not permitted."
                 )]
-                async ([FromBody] UpdateProfileRequest request, IUserService userService, HttpContext ctx) =>
+            async ([FromBody] UpdateProfileRequest request, IUserService userService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetAuthenticatedUserId();
                     if (userId == 0)

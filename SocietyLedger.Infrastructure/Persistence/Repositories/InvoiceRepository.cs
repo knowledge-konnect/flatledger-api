@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Domain.Entities;
 using SocietyLedger.Infrastructure.Persistence.Contexts;
@@ -39,7 +40,12 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
 
         public async Task CreateAsync(Invoice invoice)
         {
-            await using var tx = await _db.Database.BeginTransactionAsync();
+            IDbContextTransaction? localTx = null;
+            var ownsTransaction = _db.Database.CurrentTransaction == null;
+
+            if (ownsTransaction)
+                localTx = await _db.Database.BeginTransactionAsync();
+
             try
             {
                 // Acquire a transaction-level advisory lock keyed by year+month so concurrent
@@ -58,13 +64,22 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                 _db.invoices.Add(efInvoice);
                 await _db.SaveChangesAsync();
 
-                await tx.CommitAsync();
+                if (ownsTransaction && localTx != null)
+                    await localTx.CommitAsync();
+
                 invoice.Id = efInvoice.id;
             }
             catch
             {
-                await tx.RollbackAsync();
+                if (ownsTransaction && localTx != null)
+                    await localTx.RollbackAsync();
+
                 throw;
+            }
+            finally
+            {
+                if (localTx != null)
+                    await localTx.DisposeAsync();
             }
         }
 
@@ -100,11 +115,11 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             var efInvoice = await _db.invoices.FirstOrDefaultAsync(i => i.id == invoice.Id);
             if (efInvoice == null) return;
 
-            efInvoice.status           = invoice.Status;
-            efInvoice.paid_date        = invoice.PaidDate;
-            efInvoice.payment_method   = invoice.PaymentMethod;
+            efInvoice.status = invoice.Status;
+            efInvoice.paid_date = invoice.PaidDate;
+            efInvoice.payment_method = invoice.PaymentMethod;
             efInvoice.payment_reference = invoice.PaymentReference;
-            efInvoice.updated_at       = DateTime.UtcNow;
+            efInvoice.updated_at = DateTime.UtcNow;
 
             await _db.SaveChangesAsync();
         }
