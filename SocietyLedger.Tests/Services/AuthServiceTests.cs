@@ -24,12 +24,19 @@ public class AuthServiceTests
 
     private static User ActiveUser(string? hash = "hash") => new()
     {
-        Id = 1, PublicId = Guid.NewGuid(), SocietyId = 10,
-        SocietyPublicId = Guid.NewGuid(), SocietyName = "Test Society",
-        Name = "Alice", Email = "alice@test.com",
-        PasswordHash = hash, IsActive = true,
-        Role = AdminRole(), RoleId = 1,
-        CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
+        Id = 1,
+        PublicId = Guid.NewGuid(),
+        SocietyId = 10,
+        SocietyPublicId = Guid.NewGuid(),
+        SocietyName = "Test Society",
+        Name = "Alice",
+        Email = "alice@test.com",
+        PasswordHash = hash,
+        IsActive = true,
+        Role = AdminRole(),
+        RoleId = 1,
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow
     };
 
     private static AppDbContext InMemoryDb()
@@ -54,19 +61,19 @@ public class AuthServiceTests
         IConfiguration? configuration = null,
         IHostEnvironment? environment = null)
     {
-        userRepo     ??= new Mock<IUserRepository>();
-        roleRepo     ??= new Mock<IRoleRepository>();
-        societyRepo  ??= new Mock<ISocietyRepository>();
+        userRepo ??= new Mock<IUserRepository>();
+        roleRepo ??= new Mock<IRoleRepository>();
+        societyRepo ??= new Mock<ISocietyRepository>();
         tokenService ??= new Mock<ITokenService>();
-        subService   ??= new Mock<ISubscriptionService>();
+        subService ??= new Mock<ISubscriptionService>();
         emailService ??= new Mock<IEmailService>();
-        hasher       ??= new PasswordHasher();
-        refreshRepo  ??= new Mock<IRefreshTokenRepository>();
-        db           ??= InMemoryDb();
+        hasher ??= new PasswordHasher();
+        refreshRepo ??= new Mock<IRefreshTokenRepository>();
+        db ??= InMemoryDb();
         configuration ??= new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Frontend:BaseUrl"] = "http://localhost:5173"
+                ["Email:FrontendUrl"] = "http://localhost:5173"
             })
             .Build();
         environment ??= Mock.Of<IHostEnvironment>(e =>
@@ -84,11 +91,11 @@ public class AuthServiceTests
     [Fact]
     public async Task LoginAsync_ValidCredentials_ReturnsLoginResponse()
     {
-        var hasher       = new PasswordHasher();
-        var user         = ActiveUser(hasher.Hash("pass123"));
-        var userRepo     = new Mock<IUserRepository>();
+        var hasher = new PasswordHasher();
+        var user = ActiveUser(hasher.Hash("pass123"));
+        var userRepo = new Mock<IUserRepository>();
         var tokenService = new Mock<ITokenService>();
-        var refreshRepo  = new Mock<IRefreshTokenRepository>();
+        var refreshRepo = new Mock<IRefreshTokenRepository>();
 
         userRepo.Setup(x => x.GetByUsernameOrEmailAsync("alice@test.com")).ReturnsAsync(user);
         tokenService.Setup(x => x.GenerateAccessToken(It.IsAny<TokenClaims>(), out It.Ref<DateTime>.IsAny))
@@ -101,7 +108,7 @@ public class AuthServiceTests
         refreshRepo.Setup(x => x.SaveChangesAsync()).Returns(Task.CompletedTask);
 
         var service = Build(userRepo, tokenService: tokenService, hasher: hasher, refreshRepo: refreshRepo);
-        var result  = await service.LoginAsync(new LoginRequest { UsernameOrEmail = "alice@test.com", Password = "pass123" }, IP);
+        var result = await service.LoginAsync(new LoginRequest { UsernameOrEmail = "alice@test.com", Password = "pass123" }, IP);
 
         result.Should().NotBeNull();
         result.AccessToken.Should().Be("access-token");
@@ -116,7 +123,7 @@ public class AuthServiceTests
         userRepo.Setup(x => x.GetByUsernameOrEmailAsync(It.IsAny<string>())).ReturnsAsync((User?)null);
 
         var service = Build(userRepo);
-        var act     = () => service.LoginAsync(new LoginRequest { UsernameOrEmail = "ghost@test.com", Password = "x" }, IP);
+        var act = () => service.LoginAsync(new LoginRequest { UsernameOrEmail = "ghost@test.com", Password = "x" }, IP);
 
         await act.Should().ThrowAsync<AuthenticationException>();
     }
@@ -124,14 +131,14 @@ public class AuthServiceTests
     [Fact]
     public async Task LoginAsync_WrongPassword_ThrowsAuthenticationException()
     {
-        var hasher   = new PasswordHasher();
-        var user     = ActiveUser(hasher.Hash("pass123"));
+        var hasher = new PasswordHasher();
+        var user = ActiveUser(hasher.Hash("pass123"));
         var userRepo = new Mock<IUserRepository>();
 
         userRepo.Setup(x => x.GetByUsernameOrEmailAsync("alice@test.com")).ReturnsAsync(user);
 
         var service = Build(userRepo, hasher: hasher);
-        var act     = () => service.LoginAsync(new LoginRequest { UsernameOrEmail = "alice@test.com", Password = "wrong" }, IP);
+        var act = () => service.LoginAsync(new LoginRequest { UsernameOrEmail = "alice@test.com", Password = "wrong" }, IP);
 
         await act.Should().ThrowAsync<AuthenticationException>();
     }
@@ -139,14 +146,14 @@ public class AuthServiceTests
     [Fact]
     public async Task LoginAsync_InactiveUser_ThrowsAuthenticationException()
     {
-        var hasher   = new PasswordHasher();
+        var hasher = new PasswordHasher();
         var user = ActiveUser(hasher.Hash("pass")); user.IsActive = false;
         var userRepo = new Mock<IUserRepository>();
 
         userRepo.Setup(x => x.GetByUsernameOrEmailAsync("alice@test.com")).ReturnsAsync(user);
 
         var service = Build(userRepo, hasher: hasher);
-        var act     = () => service.LoginAsync(new LoginRequest { UsernameOrEmail = "alice@test.com", Password = "pass" }, IP);
+        var act = () => service.LoginAsync(new LoginRequest { UsernameOrEmail = "alice@test.com", Password = "pass" }, IP);
 
         await act.Should().ThrowAsync<AuthenticationException>().WithMessage("*inactive*");
     }
@@ -155,21 +162,21 @@ public class AuthServiceTests
     public async Task LoginAsync_NullRequest_ThrowsArgumentNullException()
     {
         var service = Build();
-        var act     = () => service.LoginAsync(null!, IP);
+        var act = () => service.LoginAsync(null!, IP);
         await act.Should().ThrowAsync<ArgumentNullException>();
     }
 
     [Fact]
     public async Task LoginAsync_UserWithNoRole_ThrowsAuthenticationException()
     {
-        var hasher   = new PasswordHasher();
+        var hasher = new PasswordHasher();
         var user = ActiveUser(hasher.Hash("pass")); user.Role = null!;
         var userRepo = new Mock<IUserRepository>();
 
         userRepo.Setup(x => x.GetByUsernameOrEmailAsync("alice@test.com")).ReturnsAsync(user);
 
         var service = Build(userRepo, hasher: hasher);
-        var act     = () => service.LoginAsync(new LoginRequest { UsernameOrEmail = "alice@test.com", Password = "pass" }, IP);
+        var act = () => service.LoginAsync(new LoginRequest { UsernameOrEmail = "alice@test.com", Password = "pass" }, IP);
 
         await act.Should().ThrowAsync<AuthenticationException>();
     }
@@ -180,7 +187,7 @@ public class AuthServiceTests
     public async Task RegisterAsync_NullRequest_ThrowsArgumentNullException()
     {
         var service = Build();
-        var act     = () => service.RegisterAsync(null!, IP);
+        var act = () => service.RegisterAsync(null!, IP);
         await act.Should().ThrowAsync<ArgumentNullException>();
     }
 
@@ -191,7 +198,7 @@ public class AuthServiceTests
         userRepo.Setup(x => x.GetByUsernameOrEmailAsync("alice@test.com")).ReturnsAsync(ActiveUser());
 
         var service = Build(userRepo, db: InMemoryDb());
-        var req     = new RegisterRequest { Email = "alice@test.com", Password = "pass", Name = "Alice", SocietyName = "Test" };
+        var req = new RegisterRequest { Email = "alice@test.com", Password = "pass", Name = "Alice", SocietyName = "Test" };
 
         var act = () => service.RegisterAsync(req, IP);
         await act.Should().ThrowAsync<DuplicateException>().WithMessage("*email*");
@@ -207,7 +214,7 @@ public class AuthServiceTests
         var emailService = new Mock<IEmailService>();
 
         var service = Build(userRepo, emailService: emailService);
-        var result  = await service.RequestPasswordResetAsync(new ForgotPasswordRequest { Email = "nobody@test.com" });
+        var result = await service.RequestPasswordResetAsync(new ForgotPasswordRequest { Email = "nobody@test.com" });
 
         result.Message.Should().Contain("If an account exists");
         emailService.Verify(
@@ -231,7 +238,7 @@ public class AuthServiceTests
             .Returns(Task.CompletedTask);
 
         var service = Build(userRepo, emailService: emailService);
-        var result  = await service.RequestPasswordResetAsync(new ForgotPasswordRequest { Email = user.Email! });
+        var result = await service.RequestPasswordResetAsync(new ForgotPasswordRequest { Email = user.Email! });
 
         result.Message.Should().Contain("If an account exists");
         userRepo.Verify(x => x.SetPasswordResetTokenAsync(user.Id, It.IsAny<string>(), It.IsAny<DateTime>()), Times.Once);

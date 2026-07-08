@@ -396,7 +396,8 @@ namespace SocietyLedger.Infrastructure.Services
 
                 await _userRepo.SetPasswordResetTokenAsync(user.Id, tokenHash, expiresAt);
 
-                var frontendBase = _configuration["Frontend:BaseUrl"]?.TrimEnd('/') ?? string.Empty;
+                var frontendBase = (_configuration["Email:FrontendUrl"]
+                    ?? string.Empty).TrimEnd('/');
                 var resetLink = $"{frontendBase}/reset-password?token={Uri.EscapeDataString(rawToken)}";
                 var isDev = _environment.IsDevelopment();
 

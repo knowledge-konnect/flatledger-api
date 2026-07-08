@@ -37,7 +37,8 @@ Document your provider’s restore steps in your internal ops wiki.
 | `JwtSettings__Key` | ≥ 32 bytes, HMAC secret |
 | `JwtSettings__Issuer` / `Audience` | Token validation |
 | `Razorpay__KeyId` / `KeySecret` / `WebhookSecret` | Subscriptions |
-| `Frontend__BaseUrl` | Password reset links (e.g. `https://app.flatledger.com`) |
+| `Email__ResendApiKey` | Resend API key for outgoing emails |
+| `Email__FrontendUrl` | Password reset links (e.g. `https://app.flatledger.com`) |
 | `AllowedOrigins__N` | Each frontend origin (Vercel URLs) |
 
 ## Password reset (development)

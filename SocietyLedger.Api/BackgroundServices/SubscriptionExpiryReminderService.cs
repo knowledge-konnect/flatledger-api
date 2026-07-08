@@ -77,7 +77,8 @@ namespace SocietyLedger.Api.BackgroundServices
 
             var today = DateTime.UtcNow.Date;
 
-            var frontendBase = _configuration["Frontend:BaseUrl"]?.TrimEnd('/') ?? string.Empty;
+            var frontendBase = (_configuration["Email:FrontendUrl"]
+                ?? string.Empty).TrimEnd('/');
             var renewUrl = $"{frontendBase}/subscriptions";
 
             foreach (var (stage, daysAhead) in Stages)
