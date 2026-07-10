@@ -76,7 +76,7 @@ namespace SocietyLedger.Api.Endpoints
                         return Results.Json(ErrorResponse.Create(ErrorCodes.FORBIDDEN, "You do not have permission to perform this action.", ctx.TraceIdentifier), statusCode: 403);
 
                     var billingMonthDate = request.GetBillingMonthDate();
-                    var period           = billingMonthDate.ToString("yyyy-MM");
+                    var period = billingMonthDate.ToString("yyyy-MM");
 
                     Log.Information(
                         "Manual billing trigger. UserId={UserId}, Period={Period}, TraceId={TraceId}",
@@ -143,13 +143,13 @@ namespace SocietyLedger.Api.Endpoints
             // POST /billing/catchup
             app.MapPost("/catchup",
                 [Authorize("SuperAdmin")]
-                [SwaggerOperation(
-                    Summary     = "Trigger catch-up billing for a past period (SuperAdmin only)",
+            [SwaggerOperation(
+                    Summary = "Trigger catch-up billing for a past period (SuperAdmin only)",
                     Description = "Generates bills for all active societies for the specified past period. " +
                                   "Defaults to the previous calendar month when period is omitted. " +
                                   "Returns 400 if the period is in the future or more than 12 months in the past."
                 )]
-                async ([FromBody] CatchupBillingRequest request, IBillingService billingService, HttpContext ctx) =>
+            async ([FromBody] CatchupBillingRequest request, IBillingService billingService, HttpContext ctx) =>
                 {
                     var billingMonth = request.GetBillingMonthDate();
                     var period = billingMonth.ToString("yyyy-MM");
@@ -197,11 +197,15 @@ namespace SocietyLedger.Api.Endpoints
             async ([FromBody] GenerateBillForFlatRequest request, IBillingService billingService, HttpContext ctx) =>
                 {
                     var userId = ctx.GetUserId();
+                    if (ctx.GetUserRoleCode() == RoleCodes.Viewer)
+                        return Results.Json(ErrorResponse.Create(ErrorCodes.FORBIDDEN, "You do not have permission to perform this action.", ctx.TraceIdentifier), statusCode: 403);
+
                     var billingMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
                     await billingService.GenerateBillForFlatAsync(request.FlatPublicId, userId, billingMonth);
                     return Results.Ok(ApiResponse<string>.Success(null, $"Bill generated for flat {request.FlatPublicId} for {billingMonth:yyyy-MM} (if not already present)."));
                 })
             .AddEndpointFilter<SubscriptionActiveFilter>()
+            .AddEndpointFilter<ViewerForbiddenFilter>()
             .WithTags(groupName)
             .WithApiVersionSet(versionSet)
             .HasApiVersion(version_1_0)

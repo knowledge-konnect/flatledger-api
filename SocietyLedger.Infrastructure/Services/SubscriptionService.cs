@@ -41,7 +41,13 @@ namespace SocietyLedger.Infrastructure.Services
         /// </summary>
         public async Task<SubscriptionStatusResponse> GetSubscriptionStatusAsync(long userId)
         {
-            var subscription = await _subscriptionRepo.GetByUserIdAsync(userId);
+            // Subscriptions are society-scoped. Resolve caller's society first so
+            // non-admin users (e.g. viewers) receive the same subscription status.
+            var user = await _userRepo.GetByIdAsync(userId);
+            if (user == null)
+                return new SubscriptionStatusResponse { Status = "none", AccessAllowed = false };
+
+            var subscription = await _subscriptionRepo.GetBySocietyIdAsync(user.SocietyId);
 
             if (subscription == null)
                 return new SubscriptionStatusResponse { Status = "none", AccessAllowed = false };
@@ -107,7 +113,7 @@ namespace SocietyLedger.Infrastructure.Services
                 throw new NotFoundException("User", userId.ToString());
             var societyId = user.SocietyId;
 
-            var existingSubscription = await _subscriptionRepo.GetByUserIdAsync(userId);
+            var existingSubscription = await _subscriptionRepo.GetBySocietyIdAsync(societyId);
             if (existingSubscription != null && existingSubscription.Status == SubscriptionStatusCodes.Active)
                 throw new ConflictException("Society already has an active subscription.");
 
@@ -211,9 +217,13 @@ namespace SocietyLedger.Infrastructure.Services
         /// </summary>
         public async Task CancelSubscriptionAsync(long userId, CancelSubscriptionRequest request)
         {
-            var subscription = await _subscriptionRepo.GetByUserIdAsync(userId);
+            var user = await _userRepo.GetByIdAsync(userId);
+            if (user == null)
+                throw new NotFoundException("User", userId.ToString());
+
+            var subscription = await _subscriptionRepo.GetBySocietyIdAsync(user.SocietyId);
             if (subscription == null)
-                throw new NotFoundException("Subscription", $"user {userId}");
+                throw new NotFoundException("Subscription", $"society {user.SocietyId}");
 
             if (subscription.Status != SubscriptionStatusCodes.Active
                 && subscription.Status != SubscriptionStatusCodes.Trial)
@@ -248,14 +258,14 @@ namespace SocietyLedger.Infrastructure.Services
         /// </summary>
         public async Task<Subscription?> CreateTrialSubscriptionAsync(long userId)
         {
-            var existingSubscription = await _subscriptionRepo.GetByUserIdAsync(userId);
-            if (existingSubscription != null)
-                return existingSubscription; // Already has a subscription
-
             var user = await _userRepo.GetByIdAsync(userId);
             if (user == null)
                 throw new NotFoundException("User", userId.ToString());
             var societyId = user.SocietyId;
+
+            var existingSubscription = await _subscriptionRepo.GetBySocietyIdAsync(societyId);
+            if (existingSubscription != null)
+                return existingSubscription; // Already has a subscription
 
             var plans = await _planRepo.GetActivePlansAsync();
             var defaultPlan = plans.FirstOrDefault(p => p.Name.Contains("Basic") || p.Name.Contains("Free")) ?? plans.FirstOrDefault();
@@ -290,8 +300,8 @@ namespace SocietyLedger.Infrastructure.Services
                 _logger.LogInformation(
                     "Trial subscription already exists for user {UserId} — concurrent creation, skipping",
                     userId);
-                return await _subscriptionRepo.GetByUserIdAsync(userId);
-            } 
+                return await _subscriptionRepo.GetBySocietyIdAsync(societyId);
+            }
 
             var eventMeta = JsonSerializer.Serialize(new
             {
@@ -316,7 +326,11 @@ namespace SocietyLedger.Infrastructure.Services
 
         public async Task<(bool IsValid, string? Message)> ValidateSubscriptionAsync(long userId)
         {
-            var subscription = await _subscriptionRepo.GetByUserIdAsync(userId);
+            var user = await _userRepo.GetByIdAsync(userId);
+            if (user == null)
+                return (false, "User not found.");
+
+            var subscription = await _subscriptionRepo.GetBySocietyIdAsync(user.SocietyId);
             if (subscription == null)
                 return (false, "No subscription found.");
 
