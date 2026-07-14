@@ -1235,6 +1235,10 @@ BEGIN
     FROM (
         SELECT
             COALESCE(ec.display_name, e.category_code) AS category_name,
+            string_agg(
+                DISTINCT NULLIF(trim(e.description), ''),
+                E'\n' ORDER BY NULLIF(trim(e.description), '')
+            )                                         AS descriptions,
             SUM(e.amount)                               AS total_amount
         FROM   expenses e
         LEFT   JOIN expense_categories ec ON ec.code = e.category_code
@@ -1455,6 +1459,10 @@ BEGIN
     FROM (
         SELECT
             COALESCE(ec.display_name, e.category_code) AS category_name,
+            string_agg(
+                DISTINCT NULLIF(trim(e.description), ''),
+                E'\n' ORDER BY NULLIF(trim(e.description), '')
+            )                                         AS descriptions,
             SUM(e.amount)                               AS total_amount
         FROM   expenses e
         LEFT   JOIN expense_categories ec ON ec.code = e.category_code

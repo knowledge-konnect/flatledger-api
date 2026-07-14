@@ -199,6 +199,10 @@ namespace SocietyLedger.Application.DTOs.Reports
         [STJJsonPropertyName("category_name")]
         public string CategoryName { get; set; } = string.Empty;
 
+        [JsonProperty("descriptions")]
+        [STJJsonPropertyName("descriptions")]
+        public string? Descriptions { get; set; }
+
         [JsonProperty("total_amount")]
         [STJJsonPropertyName("total_amount")]
         [STJJsonConverter(typeof(ZeroOnNullDecimalConverter))]

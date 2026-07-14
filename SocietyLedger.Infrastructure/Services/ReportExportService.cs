@@ -7,32 +7,32 @@ namespace SocietyLedger.Infrastructure.Services
     public class ReportExportService : IReportExportService
     {
         // ── Design tokens ─────────────────────────────────────────────────────
-        private const string FontName       = "Calibri";
-        private const int    TitleFontSize  = 22;
-        private const int    SubtitleSize   = 14;
-        private const int    SectionSize    = 12;
-        private const int    DataSize       = 11;
-        private const string AmountFormat   = "₹#,##0";
+        private const string FontName = "Calibri";
+        private const int TitleFontSize = 22;
+        private const int SubtitleSize = 14;
+        private const int SectionSize = 12;
+        private const int DataSize = 11;
+        private const string AmountFormat = "₹#,##0";
 
         // Layout: A–B are left-margin columns; all content starts at column C (index 3).
         // Right margin begins at column I (index 9) and beyond.
         private const int ColStart = 3; // Column C — first content column
 
         // Emerald palette - Enhanced for professional appearance
-        private static readonly XLColor ColourHeaderBg      = XLColor.FromHtml("#064E3B"); // dark emerald - main headers
-        private static readonly XLColor ColourSectionBg     = XLColor.FromHtml("#065F46"); // section headers
-        private static readonly XLColor ColourLightBg       = XLColor.FromHtml("#D1FAE5"); // light green backgrounds
-        private static readonly XLColor ColourHighlightBg   = XLColor.FromHtml("#A7F3D0"); // important highlights
-        private static readonly XLColor ColourAlternateRow  = XLColor.FromHtml("#F0FDF4"); // alternating table rows
-        private static readonly XLColor ColourBorder        = XLColor.FromHtml("#D1D5DB"); // borders
-        private static readonly XLColor ColourBorderDark    = XLColor.FromHtml("#9CA3AF"); // stronger borders
-        private static readonly XLColor ColourPaidText      = XLColor.FromHtml("#059669"); // paid / positive
-        private static readonly XLColor ColourPaidBg        = XLColor.FromHtml("#ECFDF5"); // paid status background
-        private static readonly XLColor ColourPendingText   = XLColor.FromHtml("#DC2626"); // pending / negative
-        private static readonly XLColor ColourPendingBg     = XLColor.FromHtml("#FEF2F2"); // pending status background
-        private static readonly XLColor ColourTotalRowBg    = XLColor.FromHtml("#A7F3D0"); // total row - darker for emphasis
-        private static readonly XLColor ColourCardBg        = XLColor.FromHtml("#ECFDF5"); // card-style sections
-        private static readonly XLColor ColourWhite         = XLColor.White;
+        private static readonly XLColor ColourHeaderBg = XLColor.FromHtml("#064E3B"); // dark emerald - main headers
+        private static readonly XLColor ColourSectionBg = XLColor.FromHtml("#065F46"); // section headers
+        private static readonly XLColor ColourLightBg = XLColor.FromHtml("#D1FAE5"); // light green backgrounds
+        private static readonly XLColor ColourHighlightBg = XLColor.FromHtml("#A7F3D0"); // important highlights
+        private static readonly XLColor ColourAlternateRow = XLColor.FromHtml("#F0FDF4"); // alternating table rows
+        private static readonly XLColor ColourBorder = XLColor.FromHtml("#D1D5DB"); // borders
+        private static readonly XLColor ColourBorderDark = XLColor.FromHtml("#9CA3AF"); // stronger borders
+        private static readonly XLColor ColourPaidText = XLColor.FromHtml("#059669"); // paid / positive
+        private static readonly XLColor ColourPaidBg = XLColor.FromHtml("#ECFDF5"); // paid status background
+        private static readonly XLColor ColourPendingText = XLColor.FromHtml("#DC2626"); // pending / negative
+        private static readonly XLColor ColourPendingBg = XLColor.FromHtml("#FEF2F2"); // pending status background
+        private static readonly XLColor ColourTotalRowBg = XLColor.FromHtml("#A7F3D0"); // total row - darker for emphasis
+        private static readonly XLColor ColourCardBg = XLColor.FromHtml("#ECFDF5"); // card-style sections
+        private static readonly XLColor ColourWhite = XLColor.White;
 
         // ── Monthly report (3 sheets) ────────────────────────────────────────
         public byte[] GenerateMonthlyReport(MonthlyReportDto data)
@@ -89,20 +89,20 @@ namespace SocietyLedger.Infrastructure.Services
             // Fund Position
             row = WriteSectionHeader(ws, row, ColStart, colEnd, "Fund Position");
             row = WriteKvRow(ws, row, ColStart, "Opening Balance", data.FundPosition.OpeningBalance, isAmount: true);
-            row = WriteKvRow(ws, row, ColStart, "Collected",       data.FundPosition.Collected,       isAmount: true);
-            row = WriteKvRow(ws, row, ColStart, "Expenses",        data.FundPosition.Expenses,        isAmount: true);
-            row = WriteKvRow(ws, row, ColStart, "Closing Balance", data.FundPosition.ClosingBalance,  isAmount: true, bold: true, highlight: true);
+            row = WriteKvRow(ws, row, ColStart, "Collected", data.FundPosition.Collected, isAmount: true);
+            row = WriteKvRow(ws, row, ColStart, "Expenses", data.FundPosition.Expenses, isAmount: true);
+            row = WriteKvRow(ws, row, ColStart, "Closing Balance", data.FundPosition.ClosingBalance, isAmount: true, bold: true, highlight: true);
             row++;
 
             // Payment Summary
             var ps = data.PaymentSummary ?? new PaymentSummaryDto();
             row = WriteSectionHeader(ws, row, ColStart, colEnd, "Payment Summary");
             row = WriteKvRow(ws, row, ColStart, "Total Flats", ps.TotalFlats);
-            row = WriteKvRow(ws, row, ColStart, "Paid",        ps.Paid,    valueColor: ColourPaidText);
-            row = WriteKvRow(ws, row, ColStart, "Pending",           ps.Pending,                 valueColor: ps.Pending > 0 ? ColourPendingText : null);
-            row = WriteKvRow(ws, row, ColStart, "Total Billed",       ps.TotalBilled,             isAmount: true);
-            row = WriteKvRow(ws, row, ColStart, "Total Collected",    ps.TotalCollected,          isAmount: true, valueColor: ColourPaidText);
-            row = WriteKvRow(ws, row, ColStart, "Pending Amount",     ps.PendingAmount,           isAmount: true, valueColor: ps.PendingAmount > 0 ? ColourPendingText : null);
+            row = WriteKvRow(ws, row, ColStart, "Paid", ps.Paid, valueColor: ColourPaidText);
+            row = WriteKvRow(ws, row, ColStart, "Pending", ps.Pending, valueColor: ps.Pending > 0 ? ColourPendingText : null);
+            row = WriteKvRow(ws, row, ColStart, "Total Billed", ps.TotalBilled, isAmount: true);
+            row = WriteKvRow(ws, row, ColStart, "Total Collected", ps.TotalCollected, isAmount: true, valueColor: ColourPaidText);
+            row = WriteKvRow(ws, row, ColStart, "Pending Amount", ps.PendingAmount, isAmount: true, valueColor: ps.PendingAmount > 0 ? ColourPendingText : null);
             row = WriteKvRow(ws, row, ColStart, "Collection Efficiency", $"{ps.CollectionEfficiency}%");
             row++;
 
@@ -269,16 +269,16 @@ namespace SocietyLedger.Infrastructure.Services
 
         private static void BuildMonthlyExpensesSheet(XLWorkbook wb, MonthlyReportDto data)
         {
-            // Data cols: C(3)=Category  D(4)=Amount; title/headers span C:G for visual balance
-            const int colEnd     = ColStart + 4; // column G (used for title & section headers)
-            const int dataColEnd = ColStart + 1; // column D (used for data rows & total)
+            // Data cols: C(3)=Category D(4)=Description E(5)=Amount; title/headers span C:H for visual balance
+            const int colEnd = ColStart + 5; // column H (used for title & section headers)
+            const int dataColEnd = ColStart + 2; // column E (used for data rows & total)
             var ws = wb.AddWorksheet("Expenses");
             SetSheetDefaults(ws);
             int row = 1;
 
             row = WriteReportTitle(ws, row, ColStart, colEnd, data.SocietyName, $"Expenses - {data.PeriodLabel}");
 
-            WriteTableHeader(ws, row, ColStart, new[] { "Category", "Amount" });
+            WriteTableHeader(ws, row, ColStart, new[] { "Category", "Description", "Amount" });
             ws.SheetView.FreezeRows(row); // freeze through table header row
             row++;
 
@@ -289,11 +289,14 @@ namespace SocietyLedger.Infrastructure.Services
             foreach (var exp in expenses)
             {
                 bool isAlternate = (row - dataStart) % 2 == 1; // Alternate every other row
-                
-                ws.Cell(row, ColStart).Value     = exp.CategoryName;
-                ws.Cell(row, ColStart + 1).Value = exp.TotalAmount;
-                ws.Cell(row, ColStart + 1).Style.NumberFormat.Format = AmountFormat;
-                ws.Cell(row, ColStart + 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+
+                ws.Cell(row, ColStart).Value = exp.CategoryName;
+                ws.Cell(row, ColStart + 1).Value = string.IsNullOrWhiteSpace(exp.Descriptions) ? "-" : exp.Descriptions;
+                ws.Cell(row, ColStart + 1).Style.Alignment.WrapText = true;
+                ws.Cell(row, ColStart + 1).Style.Alignment.Vertical = XLAlignmentVerticalValues.Top;
+                ws.Cell(row, ColStart + 2).Value = exp.TotalAmount;
+                ws.Cell(row, ColStart + 2).Style.NumberFormat.Format = AmountFormat;
+                ws.Cell(row, ColStart + 2).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
                 ApplyRowBorder(ws, row, ColStart, dataColEnd, isAlternate);
                 row++;
             }
@@ -306,12 +309,12 @@ namespace SocietyLedger.Infrastructure.Services
                 ApplyTotalRow(ws, row, ColStart, dataColEnd, new Dictionary<int, string>
                 {
                     // keep a formula for Excel if desired, but we'll overwrite it with the computed value
-                    [ColStart + 1] = $"SUM({ws.Cell(dataStart, ColStart + 1).Address}:{ws.Cell(dataEnd, ColStart + 1).Address})",
+                    [ColStart + 2] = $"SUM({ws.Cell(dataStart, ColStart + 2).Address}:{ws.Cell(dataEnd, ColStart + 2).Address})",
                 });
                 // Overwrite formula with computed numeric value so the amount always shows
-                ws.Cell(row, ColStart + 1).Value = total;
-                ws.Cell(row, ColStart + 1).Style.NumberFormat.Format = AmountFormat;
-                ws.Cell(row, ColStart + 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+                ws.Cell(row, ColStart + 2).Value = total;
+                ws.Cell(row, ColStart + 2).Style.NumberFormat.Format = AmountFormat;
+                ws.Cell(row, ColStart + 2).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
             }
 
             FinalizeSheet(ws, ColStart, colEnd);
@@ -334,11 +337,11 @@ namespace SocietyLedger.Infrastructure.Services
 
             // Fund Position
             row = WriteSectionHeader(ws, row, ColStart, colEnd, "Fund Position");
-            row = WriteKvRow(ws, row, ColStart, "Opening Balance", data.FundPosition.OpeningBalance,  isAmount: true);
-            row = WriteKvRow(ws, row, ColStart, "Total Billed",    data.FundPosition.TotalBilled,     isAmount: true);
-            row = WriteKvRow(ws, row, ColStart, "Total Collected", data.FundPosition.TotalCollected,  isAmount: true, valueColor: ColourPaidText);
-            row = WriteKvRow(ws, row, ColStart, "Total Expenses",  data.FundPosition.TotalExpenses,   isAmount: true);
-            row = WriteKvRow(ws, row, ColStart, "Closing Balance", data.FundPosition.ClosingBalance,  isAmount: true, bold: true, highlight: true);
+            row = WriteKvRow(ws, row, ColStart, "Opening Balance", data.FundPosition.OpeningBalance, isAmount: true);
+            row = WriteKvRow(ws, row, ColStart, "Total Billed", data.FundPosition.TotalBilled, isAmount: true);
+            row = WriteKvRow(ws, row, ColStart, "Total Collected", data.FundPosition.TotalCollected, isAmount: true, valueColor: ColourPaidText);
+            row = WriteKvRow(ws, row, ColStart, "Total Expenses", data.FundPosition.TotalExpenses, isAmount: true);
+            row = WriteKvRow(ws, row, ColStart, "Closing Balance", data.FundPosition.ClosingBalance, isAmount: true, bold: true, highlight: true);
             row++;
 
             // Alerts
@@ -394,7 +397,7 @@ namespace SocietyLedger.Infrastructure.Services
             foreach (var m in data.MonthSummary ?? new List<MonthSummaryDto>())
             {
                 bool isAlternate = (row - dataStart) % 2 == 1; // Alternate every other row
-                
+
                 ws.Cell(row, ColStart + 0).Value = m.MonthLabel;
                 ws.Cell(row, ColStart + 1).Value = m.Billed;
                 ws.Cell(row, ColStart + 2).Value = m.Collected;
@@ -440,16 +443,16 @@ namespace SocietyLedger.Infrastructure.Services
 
         private static void BuildYearlyExpensesSheet(XLWorkbook wb, YearlyReportDto data)
         {
-            // Data cols: C(3)=Category  D(4)=Amount; title/headers span C:G for visual balance
-            const int colEnd     = ColStart + 4; // column G (used for title & section headers)
-            const int dataColEnd = ColStart + 1; // column D (used for data rows & total)
+            // Data cols: C(3)=Category D(4)=Description E(5)=Amount; title/headers span C:H for visual balance
+            const int colEnd = ColStart + 5; // column H (used for title & section headers)
+            const int dataColEnd = ColStart + 2; // column E (used for data rows & total)
             var ws = wb.AddWorksheet("Expenses");
             SetSheetDefaults(ws);
             int row = 1;
 
             row = WriteReportTitle(ws, row, ColStart, colEnd, data.SocietyName, $"Expenses - {data.YearLabel}");
 
-            WriteTableHeader(ws, row, ColStart, new[] { "Category", "Total Amount" });
+            WriteTableHeader(ws, row, ColStart, new[] { "Category", "Description", "Total Amount" });
             ws.SheetView.FreezeRows(row); // freeze through table header row
             row++;
 
@@ -462,11 +465,14 @@ namespace SocietyLedger.Infrastructure.Services
             foreach (var exp in expenses)
             {
                 bool isAlternate = (row - dataStart) % 2 == 1; // Alternate every other row
-                
-                ws.Cell(row, ColStart).Value     = exp.CategoryName;
-                ws.Cell(row, ColStart + 1).Value = exp.TotalAmount;
-                ws.Cell(row, ColStart + 1).Style.NumberFormat.Format = AmountFormat;
-                ws.Cell(row, ColStart + 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+
+                ws.Cell(row, ColStart).Value = exp.CategoryName;
+                ws.Cell(row, ColStart + 1).Value = string.IsNullOrWhiteSpace(exp.Descriptions) ? "-" : exp.Descriptions;
+                ws.Cell(row, ColStart + 1).Style.Alignment.WrapText = true;
+                ws.Cell(row, ColStart + 1).Style.Alignment.Vertical = XLAlignmentVerticalValues.Top;
+                ws.Cell(row, ColStart + 2).Value = exp.TotalAmount;
+                ws.Cell(row, ColStart + 2).Style.NumberFormat.Format = AmountFormat;
+                ws.Cell(row, ColStart + 2).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
                 ApplyRowBorder(ws, row, ColStart, dataColEnd, isAlternate);
                 row++;
             }
@@ -479,12 +485,12 @@ namespace SocietyLedger.Infrastructure.Services
                 ApplyTotalRow(ws, row, ColStart, dataColEnd, new Dictionary<int, string>
                 {
                     // keep a formula for Excel if desired, but we'll overwrite it with the computed value
-                    [ColStart + 1] = $"SUM({ws.Cell(dataStart, ColStart + 1).Address}:{ws.Cell(dataEnd, ColStart + 1).Address})",
+                    [ColStart + 2] = $"SUM({ws.Cell(dataStart, ColStart + 2).Address}:{ws.Cell(dataEnd, ColStart + 2).Address})",
                 });
                 // Overwrite formula with computed numeric value so the amount always shows
-                ws.Cell(row, ColStart + 1).Value = total;
-                ws.Cell(row, ColStart + 1).Style.NumberFormat.Format = AmountFormat;
-                ws.Cell(row, ColStart + 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+                ws.Cell(row, ColStart + 2).Value = total;
+                ws.Cell(row, ColStart + 2).Style.NumberFormat.Format = AmountFormat;
+                ws.Cell(row, ColStart + 2).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
             }
 
             FinalizeSheet(ws, ColStart, colEnd);
@@ -498,7 +504,7 @@ namespace SocietyLedger.Infrastructure.Services
         {
             ws.Style.Font.FontName = FontName;
             ws.Style.Font.FontSize = DataSize;
-            
+
             // Enhanced print settings for professional appearance
             ws.PageSetup.PaperSize = XLPaperSize.A4Paper;
             ws.PageSetup.CenterHorizontally = true;
@@ -576,7 +582,7 @@ namespace SocietyLedger.Infrastructure.Services
             ws.Cell(row, colStart).Style.Fill.BackgroundColor = highlight ? ColourHighlightBg : ColourLightBg;
             ws.Cell(row, colStart).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
             ws.Cell(row, colStart).Style.Border.OutsideBorderColor = ColourBorder;
-            
+
             var valCell = ws.Cell(row, colStart + 1);
             if (isAmount && value is decimal decimalValue)
             {
@@ -587,14 +593,14 @@ namespace SocietyLedger.Infrastructure.Services
             {
                 valCell.Value = XLCellValue.FromObject(value);
             }
-            
+
             valCell.Style.Font.Bold = bold;
             if (valueColor != null) valCell.Style.Font.FontColor = valueColor;
             valCell.Style.Fill.BackgroundColor = highlight ? ColourHighlightBg : ColourWhite;
             valCell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
             valCell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
             valCell.Style.Border.OutsideBorderColor = ColourBorder;
-            
+
             return row + 1;
         }
 
