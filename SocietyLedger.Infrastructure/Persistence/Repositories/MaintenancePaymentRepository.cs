@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Serilog.Sinks.File;
 using SocietyLedger.Application.DTOs.MaintenancePayment;
 using SocietyLedger.Application.Interfaces.Repositories;
 using SocietyLedger.Infrastructure.Persistence.Contexts;
@@ -35,7 +34,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
         public async Task<IEnumerable<MaintenancePaymentEntity>> GetBySocietyIdAsync(long societyId, string? period = null, int page = 1, int pageSize = 50)
         {
             // Clamp to safe bounds
-            page     = Math.Max(1, page);
+            page = Math.Max(1, page);
             pageSize = Math.Clamp(pageSize, 1, 200);
 
             var query = _db.maintenance_payments
@@ -50,9 +49,11 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                     DateTimeKind.Utc);
                 var periodEnd = periodStart.AddMonths(1);
 
+                // Period filter for payment history must follow the actual payment date,
+                // not the allocated bill period. A backdated April payment may be allocated
+                // to a newer bill, but should still appear in April view.
                 query = query.Where(mp =>
-                    (mp.bill_id != null  && mp.bill != null && mp.bill.period == period) ||
-                    (mp.bill_id == null  && mp.payment_date >= periodStart && mp.payment_date < periodEnd));
+                    mp.payment_date >= periodStart && mp.payment_date < periodEnd);
             }
 
             var payments = await query
@@ -77,7 +78,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                     RecordedByName = mp.recorded_byNavigation != null ? mp.recorded_byNavigation.name : null,
                     CreatedAt = mp.created_at,
                     BillPublicId = mp.bill != null ? mp.bill.public_id : null,
-                    Period = mp.bill != null ? mp.bill.period : mp.payment_date.ToString("yyyy-MM"),
+                    Period = mp.payment_date.ToString("yyyy-MM"),
                     BillStatus = mp.bill != null ? mp.bill.status_code : null,
                     OutstandingAfterPayment = mp.outstanding_after_payment
                 })
@@ -240,7 +241,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                 .AsQueryable();
 
             if (startDate.HasValue) query = query.Where(p => p.payment_date >= startDate.Value);
-            if (endDate.HasValue)   query = query.Where(p => p.payment_date < endDate.Value.Date.AddDays(1));
+            if (endDate.HasValue) query = query.Where(p => p.payment_date < endDate.Value.Date.AddDays(1));
 
             return await query
                 .OrderBy(p => p.payment_date)
