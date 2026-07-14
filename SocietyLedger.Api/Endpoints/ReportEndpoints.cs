@@ -25,11 +25,11 @@ namespace SocietyLedger.Api.Endpoints
             // Collection Summary
             app.MapGet("/collection-summary",
                 [Authorize("ActiveSubscription")]
-                [SwaggerOperation(
+            [SwaggerOperation(
                     Summary = "Collection Summary",
                     Description = "Total billed vs collected vs outstanding per period. Optionally filter by period range (format: YYYY-MM)."
                 )]
-                async (
+            async (
                     IReportService reportService,
                     HttpContext ctx,
                     [FromQuery] string? startPeriod,
@@ -53,11 +53,11 @@ namespace SocietyLedger.Api.Endpoints
             // Defaulters Report
             app.MapGet("/defaulters",
                 [Authorize("ActiveSubscription")]
-                [SwaggerOperation(
+            [SwaggerOperation(
                     Summary = "Defaulters Report",
                     Description = "Lists all flats with pending dues sorted by outstanding amount. Use minOutstanding to filter (default: 0)."
                 )]
-                async (
+            async (
                     IReportService reportService,
                     HttpContext ctx,
                     [FromQuery] decimal minOutstanding = 0,
@@ -80,11 +80,11 @@ namespace SocietyLedger.Api.Endpoints
             // Income vs Expense
             app.MapGet("/income-vs-expense",
                 [Authorize("ActiveSubscription")]
-                [SwaggerOperation(
+            [SwaggerOperation(
                     Summary = "Income vs Expense",
                     Description = "Monthly income (collections) vs expenses with net surplus/deficit. Filter by date range."
                 )]
-                async (
+            async (
                     IReportService reportService,
                     HttpContext ctx,
                     [FromQuery] DateOnly? startDate,
@@ -108,11 +108,11 @@ namespace SocietyLedger.Api.Endpoints
             // Fund Ledger
             app.MapGet("/fund-ledger",
                 [Authorize("ActiveSubscription")]
-                [SwaggerOperation(
+            [SwaggerOperation(
                     Summary = "Society Fund Ledger",
                     Description = "Full transaction history of the society fund with running balance. Filter by date range."
                 )]
-                async (
+            async (
                     IReportService reportService,
                     HttpContext ctx,
                     [FromQuery] DateOnly? startDate,
@@ -136,17 +136,17 @@ namespace SocietyLedger.Api.Endpoints
             // Payment Collection Register
             app.MapGet("/payment-register",
                 [Authorize("ActiveSubscription")]
-                [SwaggerOperation(
+            [SwaggerOperation(
                     Summary = "Payment Collection Register",
                     Description = "Paginated list of all payments received — flat, owner, amount, mode and reference. " +
                                   "Filter by date range. Use 'page' and 'pageSize' for pagination (defaults: 1 / 50)."
                 )]
-                async (
+            async (
                     IReportService reportService,
                     HttpContext ctx,
                     [FromQuery] DateOnly? startDate,
                     [FromQuery] DateOnly? endDate,
-                    [FromQuery] int page     = 1,
+                    [FromQuery] int page = 1,
                     [FromQuery] int pageSize = 50,
                     CancellationToken ct = default) =>
                 {
@@ -167,11 +167,11 @@ namespace SocietyLedger.Api.Endpoints
             // Download Monthly Report
             app.MapGet("/download/monthly",
                 [Authorize("ActiveSubscription")]
-                [SwaggerOperation(
+            [SwaggerOperation(
                     Summary = "Download Monthly Report",
-                    Description = "Downloads an Excel report for the given month with fund position, flat payment status, and expenses by category.\n\nAll monetary balances are signed: Positive = member owes the society; Negative = society owes the member (advance)."
+                    Description = "Downloads an Excel report for the given month with fund position, flat payment status, and detailed expense entries (date-wise, ungrouped).\n\nAll monetary balances are signed: Positive = member owes the society; Negative = society owes the member (advance)."
                 )]
-                async (
+            async (
                     IReportService reportService,
                     HttpContext ctx,
                     [FromQuery] int year,
@@ -204,12 +204,12 @@ namespace SocietyLedger.Api.Endpoints
             // Download Yearly Report
             app.MapGet("/download/yearly",
                 [Authorize("ActiveSubscription")]
-                [SwaggerOperation(
+            [SwaggerOperation(
                     Summary = "Download Yearly Report",
-                    Description = "Downloads an Excel report for the given year with fund position, month-by-month breakdown, and expenses by category. " +
+                    Description = "Downloads an Excel report for the given year with fund position, month-by-month breakdown, and detailed expense entries (date-wise, ungrouped). " +
                                   "Use yearType=financial (Apr-Mar, default) or yearType=calendar (Jan-Dec)."
                 )]
-                async (
+            async (
                     IReportService reportService,
                     HttpContext ctx,
                     [FromQuery] int? year,

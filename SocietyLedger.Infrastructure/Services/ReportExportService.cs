@@ -269,34 +269,37 @@ namespace SocietyLedger.Infrastructure.Services
 
         private static void BuildMonthlyExpensesSheet(XLWorkbook wb, MonthlyReportDto data)
         {
-            // Data cols: C(3)=Category D(4)=Description E(5)=Amount; title/headers span C:H for visual balance
+            // Data cols: C(3)=Date D(4)=Category E(5)=Description F(6)=Amount; title/headers span C:H for visual balance
             const int colEnd = ColStart + 5; // column H (used for title & section headers)
-            const int dataColEnd = ColStart + 2; // column E (used for data rows & total)
+            const int dataColEnd = ColStart + 3; // column F (used for data rows & total)
             var ws = wb.AddWorksheet("Expenses");
             SetSheetDefaults(ws);
             int row = 1;
 
             row = WriteReportTitle(ws, row, ColStart, colEnd, data.SocietyName, $"Expenses - {data.PeriodLabel}");
 
-            WriteTableHeader(ws, row, ColStart, new[] { "Category", "Description", "Amount" });
+            WriteTableHeader(ws, row, ColStart, new[] { "Date", "Category", "Description", "Amount" });
             ws.SheetView.FreezeRows(row); // freeze through table header row
             row++;
 
             var expenses = (data.Expenses ?? new List<ExpenseDto>())
-                .OrderByDescending(e => e.TotalAmount)
+                .OrderByDescending(e => e.DateIncurred)
+                .ThenBy(e => e.CategoryName)
                 .ToList();
             int dataStart = row;
             foreach (var exp in expenses)
             {
                 bool isAlternate = (row - dataStart) % 2 == 1; // Alternate every other row
 
-                ws.Cell(row, ColStart).Value = exp.CategoryName;
-                ws.Cell(row, ColStart + 1).Value = string.IsNullOrWhiteSpace(exp.Descriptions) ? "-" : exp.Descriptions;
-                ws.Cell(row, ColStart + 1).Style.Alignment.WrapText = true;
-                ws.Cell(row, ColStart + 1).Style.Alignment.Vertical = XLAlignmentVerticalValues.Top;
-                ws.Cell(row, ColStart + 2).Value = exp.TotalAmount;
-                ws.Cell(row, ColStart + 2).Style.NumberFormat.Format = AmountFormat;
-                ws.Cell(row, ColStart + 2).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+                ws.Cell(row, ColStart).Value = exp.DateIncurred.ToDateTime(TimeOnly.MinValue);
+                ws.Cell(row, ColStart).Style.DateFormat.Format = "dd-mmm-yyyy";
+                ws.Cell(row, ColStart + 1).Value = exp.CategoryName;
+                ws.Cell(row, ColStart + 2).Value = string.IsNullOrWhiteSpace(exp.Description) ? "-" : exp.Description;
+                ws.Cell(row, ColStart + 2).Style.Alignment.WrapText = true;
+                ws.Cell(row, ColStart + 2).Style.Alignment.Vertical = XLAlignmentVerticalValues.Top;
+                ws.Cell(row, ColStart + 3).Value = exp.TotalAmount;
+                ws.Cell(row, ColStart + 3).Style.NumberFormat.Format = AmountFormat;
+                ws.Cell(row, ColStart + 3).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
                 ApplyRowBorder(ws, row, ColStart, dataColEnd, isAlternate);
                 row++;
             }
@@ -309,12 +312,12 @@ namespace SocietyLedger.Infrastructure.Services
                 ApplyTotalRow(ws, row, ColStart, dataColEnd, new Dictionary<int, string>
                 {
                     // keep a formula for Excel if desired, but we'll overwrite it with the computed value
-                    [ColStart + 2] = $"SUM({ws.Cell(dataStart, ColStart + 2).Address}:{ws.Cell(dataEnd, ColStart + 2).Address})",
+                    [ColStart + 3] = $"SUM({ws.Cell(dataStart, ColStart + 3).Address}:{ws.Cell(dataEnd, ColStart + 3).Address})",
                 });
                 // Overwrite formula with computed numeric value so the amount always shows
-                ws.Cell(row, ColStart + 2).Value = total;
-                ws.Cell(row, ColStart + 2).Style.NumberFormat.Format = AmountFormat;
-                ws.Cell(row, ColStart + 2).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+                ws.Cell(row, ColStart + 3).Value = total;
+                ws.Cell(row, ColStart + 3).Style.NumberFormat.Format = AmountFormat;
+                ws.Cell(row, ColStart + 3).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
             }
 
             FinalizeSheet(ws, ColStart, colEnd);
@@ -443,22 +446,22 @@ namespace SocietyLedger.Infrastructure.Services
 
         private static void BuildYearlyExpensesSheet(XLWorkbook wb, YearlyReportDto data)
         {
-            // Data cols: C(3)=Category D(4)=Description E(5)=Amount; title/headers span C:H for visual balance
+            // Data cols: C(3)=Date D(4)=Category E(5)=Description F(6)=Amount; title/headers span C:H for visual balance
             const int colEnd = ColStart + 5; // column H (used for title & section headers)
-            const int dataColEnd = ColStart + 2; // column E (used for data rows & total)
+            const int dataColEnd = ColStart + 3; // column F (used for data rows & total)
             var ws = wb.AddWorksheet("Expenses");
             SetSheetDefaults(ws);
             int row = 1;
 
             row = WriteReportTitle(ws, row, ColStart, colEnd, data.SocietyName, $"Expenses - {data.YearLabel}");
 
-            WriteTableHeader(ws, row, ColStart, new[] { "Category", "Description", "Total Amount" });
+            WriteTableHeader(ws, row, ColStart, new[] { "Date", "Category", "Description", "Amount" });
             ws.SheetView.FreezeRows(row); // freeze through table header row
             row++;
 
-            // Sort by highest amount
             var expenses = (data.Expenses ?? new List<ExpenseDto>())
-                .OrderByDescending(e => e.TotalAmount)
+                .OrderByDescending(e => e.DateIncurred)
+                .ThenBy(e => e.CategoryName)
                 .ToList();
 
             int dataStart = row;
@@ -466,13 +469,15 @@ namespace SocietyLedger.Infrastructure.Services
             {
                 bool isAlternate = (row - dataStart) % 2 == 1; // Alternate every other row
 
-                ws.Cell(row, ColStart).Value = exp.CategoryName;
-                ws.Cell(row, ColStart + 1).Value = string.IsNullOrWhiteSpace(exp.Descriptions) ? "-" : exp.Descriptions;
-                ws.Cell(row, ColStart + 1).Style.Alignment.WrapText = true;
-                ws.Cell(row, ColStart + 1).Style.Alignment.Vertical = XLAlignmentVerticalValues.Top;
-                ws.Cell(row, ColStart + 2).Value = exp.TotalAmount;
-                ws.Cell(row, ColStart + 2).Style.NumberFormat.Format = AmountFormat;
-                ws.Cell(row, ColStart + 2).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+                ws.Cell(row, ColStart).Value = exp.DateIncurred.ToDateTime(TimeOnly.MinValue);
+                ws.Cell(row, ColStart).Style.DateFormat.Format = "dd-mmm-yyyy";
+                ws.Cell(row, ColStart + 1).Value = exp.CategoryName;
+                ws.Cell(row, ColStart + 2).Value = string.IsNullOrWhiteSpace(exp.Description) ? "-" : exp.Description;
+                ws.Cell(row, ColStart + 2).Style.Alignment.WrapText = true;
+                ws.Cell(row, ColStart + 2).Style.Alignment.Vertical = XLAlignmentVerticalValues.Top;
+                ws.Cell(row, ColStart + 3).Value = exp.TotalAmount;
+                ws.Cell(row, ColStart + 3).Style.NumberFormat.Format = AmountFormat;
+                ws.Cell(row, ColStart + 3).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
                 ApplyRowBorder(ws, row, ColStart, dataColEnd, isAlternate);
                 row++;
             }
@@ -485,12 +490,12 @@ namespace SocietyLedger.Infrastructure.Services
                 ApplyTotalRow(ws, row, ColStart, dataColEnd, new Dictionary<int, string>
                 {
                     // keep a formula for Excel if desired, but we'll overwrite it with the computed value
-                    [ColStart + 2] = $"SUM({ws.Cell(dataStart, ColStart + 2).Address}:{ws.Cell(dataEnd, ColStart + 2).Address})",
+                    [ColStart + 3] = $"SUM({ws.Cell(dataStart, ColStart + 3).Address}:{ws.Cell(dataEnd, ColStart + 3).Address})",
                 });
                 // Overwrite formula with computed numeric value so the amount always shows
-                ws.Cell(row, ColStart + 2).Value = total;
-                ws.Cell(row, ColStart + 2).Style.NumberFormat.Format = AmountFormat;
-                ws.Cell(row, ColStart + 2).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+                ws.Cell(row, ColStart + 3).Value = total;
+                ws.Cell(row, ColStart + 3).Style.NumberFormat.Format = AmountFormat;
+                ws.Cell(row, ColStart + 3).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
             }
 
             FinalizeSheet(ws, ColStart, colEnd);

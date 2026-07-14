@@ -195,13 +195,17 @@ namespace SocietyLedger.Application.DTOs.Reports
 
     public class ExpenseDto
     {
+        [JsonProperty("date_incurred")]
+        [STJJsonPropertyName("date_incurred")]
+        public DateOnly DateIncurred { get; set; }
+
         [JsonProperty("category_name")]
         [STJJsonPropertyName("category_name")]
         public string CategoryName { get; set; } = string.Empty;
 
-        [JsonProperty("descriptions")]
-        [STJJsonPropertyName("descriptions")]
-        public string? Descriptions { get; set; }
+        [JsonProperty("description")]
+        [STJJsonPropertyName("description")]
+        public string? Description { get; set; }
 
         [JsonProperty("total_amount")]
         [STJJsonPropertyName("total_amount")]

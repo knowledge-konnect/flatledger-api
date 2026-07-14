@@ -1229,24 +1229,21 @@ BEGIN
              ELSE 0
         END;
 
-    -- ── 8. Expenses by category ───────────────────────────────────────────────
+    -- ── 8. Detailed expenses (ungrouped) ─────────────────────────────────────
     SELECT json_agg(row_to_json(d))
     INTO   v_expense_rows
     FROM (
         SELECT
+            e.date_incurred                            AS date_incurred,
             COALESCE(ec.display_name, e.category_code) AS category_name,
-            string_agg(
-                DISTINCT NULLIF(trim(e.description), ''),
-                E'\n' ORDER BY NULLIF(trim(e.description), '')
-            )                                         AS descriptions,
-            SUM(e.amount)                               AS total_amount
+            NULLIF(trim(e.description), '')            AS description,
+            e.amount                                   AS total_amount
         FROM   expenses e
         LEFT   JOIN expense_categories ec ON ec.code = e.category_code
         WHERE  e.society_id    = p_society_id
           AND  e.is_deleted    = false
           AND  e.date_incurred BETWEEN v_start_date AND v_end_date
-        GROUP  BY e.category_code, ec.display_name
-        ORDER  BY total_amount DESC
+        ORDER  BY e.date_incurred DESC, category_name, COALESCE(NULLIF(trim(e.description), ''), ''), e.id DESC
     ) d;
 
     -- ── 9. Summary text & alerts ──────────────────────────────────────────────
@@ -1453,24 +1450,21 @@ BEGIN
         ) exp ON exp.period = to_char(m.month_start, 'YYYY-MM')
     ) d;
 
-    -- ── 6. Expense summary by category ────────────────────────────────────────
+    -- ── 6. Detailed expenses (ungrouped) ─────────────────────────────────────
     SELECT json_agg(row_to_json(d))
     INTO   v_expense_rows
     FROM (
         SELECT
+            e.date_incurred                            AS date_incurred,
             COALESCE(ec.display_name, e.category_code) AS category_name,
-            string_agg(
-                DISTINCT NULLIF(trim(e.description), ''),
-                E'\n' ORDER BY NULLIF(trim(e.description), '')
-            )                                         AS descriptions,
-            SUM(e.amount)                               AS total_amount
+            NULLIF(trim(e.description), '')            AS description,
+            e.amount                                   AS total_amount
         FROM   expenses e
         LEFT   JOIN expense_categories ec ON ec.code = e.category_code
         WHERE  e.society_id    = p_society_id
           AND  e.is_deleted     = false
           AND  e.date_incurred  BETWEEN v_start_date AND v_end_date
-        GROUP  BY e.category_code, ec.display_name
-        ORDER  BY total_amount DESC
+        ORDER  BY e.date_incurred DESC, category_name, COALESCE(NULLIF(trim(e.description), ''), ''), e.id DESC
     ) d;
 
     -- ── 7. Summary text & alerts ──────────────────────────────────────────────
