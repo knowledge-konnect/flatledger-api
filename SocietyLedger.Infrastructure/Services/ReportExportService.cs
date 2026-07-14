@@ -7,12 +7,12 @@ namespace SocietyLedger.Infrastructure.Services
     public class ReportExportService : IReportExportService
     {
         // ── Design tokens ─────────────────────────────────────────────────────
-        private const string FontName = "Calibri";
+        private const string FontName = "Segoe UI";
         private const int TitleFontSize = 22;
         private const int SubtitleSize = 14;
         private const int SectionSize = 12;
         private const int DataSize = 11;
-        private const string AmountFormat = "₹#,##0";
+        private const string AmountFormat = "₹#,##0.00;[Red]-₹#,##0.00";
 
         // Layout: A–B are left-margin columns; all content starts at column C (index 3).
         // Right margin begins at column I (index 9) and beyond.
@@ -137,6 +137,11 @@ namespace SocietyLedger.Infrastructure.Services
             }
 
             FinalizeSheet(ws, ColStart, colEnd);
+            ApplyPreferredColumnWidths(ws, new Dictionary<int, double>
+            {
+                [ColStart + 0] = 34, // Label
+                [ColStart + 1] = 20, // Value
+            });
         }
 
         private static void BuildMonthlyPaymentsSheet(XLWorkbook wb, MonthlyReportDto data)
@@ -241,6 +246,17 @@ namespace SocietyLedger.Infrastructure.Services
 
             ws.Range(headerRow, ColStart, row - 1, colEnd).SetAutoFilter();
             FinalizeSheet(ws, ColStart, colEnd);
+            ApplyPreferredColumnWidths(ws, new Dictionary<int, double>
+            {
+                [ColStart + 0] = 12, // Flat No
+                [ColStart + 1] = 24, // Owner Name
+                [ColStart + 2] = 16, // Previous Balance
+                [ColStart + 3] = 16, // Monthly Charges
+                [ColStart + 4] = 20, // Total Due
+                [ColStart + 5] = 16, // Amount Paid
+                [ColStart + 6] = 16, // Outstanding
+                [ColStart + 7] = 14, // Status
+            });
         }
 
         private static string FormatMonthlyStatus(string? status)
@@ -278,12 +294,13 @@ namespace SocietyLedger.Infrastructure.Services
 
             row = WriteReportTitle(ws, row, ColStart, colEnd, data.SocietyName, $"Expenses - {data.PeriodLabel}");
 
+            int headerRow = row;
             WriteTableHeader(ws, row, ColStart, new[] { "Date", "Category", "Description", "Amount" });
             ws.SheetView.FreezeRows(row); // freeze through table header row
             row++;
 
             var expenses = (data.Expenses ?? new List<ExpenseDto>())
-                .OrderByDescending(e => e.DateIncurred)
+                .OrderBy(e => e.DateIncurred)
                 .ThenBy(e => e.CategoryName)
                 .ToList();
             int dataStart = row;
@@ -320,7 +337,16 @@ namespace SocietyLedger.Infrastructure.Services
                 ws.Cell(row, ColStart + 3).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
             }
 
+            ws.Range(headerRow, ColStart, row, dataColEnd).SetAutoFilter();
+
             FinalizeSheet(ws, ColStart, colEnd);
+            ApplyPreferredColumnWidths(ws, new Dictionary<int, double>
+            {
+                [ColStart + 0] = 14, // Date
+                [ColStart + 1] = 22, // Category
+                [ColStart + 2] = 50, // Description
+                [ColStart + 3] = 16, // Amount
+            });
         }
 
         // ─────────────────────────────────────────────────────────────────────
@@ -378,6 +404,11 @@ namespace SocietyLedger.Infrastructure.Services
             }
 
             FinalizeSheet(ws, ColStart, colEnd);
+            ApplyPreferredColumnWidths(ws, new Dictionary<int, double>
+            {
+                [ColStart + 0] = 34, // Label
+                [ColStart + 1] = 20, // Value
+            });
         }
 
         private static void BuildYearlyMonthlySummarySheet(XLWorkbook wb, YearlyReportDto data)
@@ -442,6 +473,15 @@ namespace SocietyLedger.Infrastructure.Services
 
             ws.Range(headerRow, ColStart, row - 1, colEnd).SetAutoFilter();
             FinalizeSheet(ws, ColStart, colEnd);
+            ApplyPreferredColumnWidths(ws, new Dictionary<int, double>
+            {
+                [ColStart + 0] = 20, // Month
+                [ColStart + 1] = 14, // Billed
+                [ColStart + 2] = 14, // Collected
+                [ColStart + 3] = 14, // Expenses
+                [ColStart + 4] = 14, // Net
+                [ColStart + 5] = 12, // Status
+            });
         }
 
         private static void BuildYearlyExpensesSheet(XLWorkbook wb, YearlyReportDto data)
@@ -455,12 +495,13 @@ namespace SocietyLedger.Infrastructure.Services
 
             row = WriteReportTitle(ws, row, ColStart, colEnd, data.SocietyName, $"Expenses - {data.YearLabel}");
 
+            int headerRow = row;
             WriteTableHeader(ws, row, ColStart, new[] { "Date", "Category", "Description", "Amount" });
             ws.SheetView.FreezeRows(row); // freeze through table header row
             row++;
 
             var expenses = (data.Expenses ?? new List<ExpenseDto>())
-                .OrderByDescending(e => e.DateIncurred)
+                .OrderBy(e => e.DateIncurred)
                 .ThenBy(e => e.CategoryName)
                 .ToList();
 
@@ -498,7 +539,16 @@ namespace SocietyLedger.Infrastructure.Services
                 ws.Cell(row, ColStart + 3).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
             }
 
+            ws.Range(headerRow, ColStart, row, dataColEnd).SetAutoFilter();
+
             FinalizeSheet(ws, ColStart, colEnd);
+            ApplyPreferredColumnWidths(ws, new Dictionary<int, double>
+            {
+                [ColStart + 0] = 14, // Date
+                [ColStart + 1] = 22, // Category
+                [ColStart + 2] = 50, // Description
+                [ColStart + 3] = 16, // Amount
+            });
         }
 
         // ─────────────────────────────────────────────────────────────────────
@@ -633,14 +683,22 @@ namespace SocietyLedger.Infrastructure.Services
                 cell.Style.Font.FontColor = ColourWhite;
                 cell.Style.Fill.BackgroundColor = ColourSectionBg;
                 cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                cell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+                cell.Style.Alignment.WrapText = true;
                 cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
                 cell.Style.Border.OutsideBorderColor = ColourBorderDark;
             }
+
+            ws.Row(row).Height = 24;
         }
 
         private static void ApplyRowBorder(IXLWorksheet ws, int row, int colStart, int colEnd, bool isAlternate)
         {
             var range = ws.Range(row, colStart, row, colEnd);
+            range.Style.Border.LeftBorder = XLBorderStyleValues.Thin;
+            range.Style.Border.LeftBorderColor = ColourBorder;
+            range.Style.Border.RightBorder = XLBorderStyleValues.Thin;
+            range.Style.Border.RightBorderColor = ColourBorder;
             range.Style.Border.BottomBorder = XLBorderStyleValues.Thin;
             range.Style.Border.BottomBorderColor = ColourBorder;
             if (isAlternate)
@@ -674,7 +732,16 @@ namespace SocietyLedger.Infrastructure.Services
             ws.Columns(colStart, colEnd).AdjustToContents();
             for (int i = colStart; i <= colEnd; i++)
             {
-                ws.Column(i).Width += 2;
+                var width = ws.Column(i).Width + 1.5;
+                ws.Column(i).Width = Math.Min(55, Math.Max(10, width));
+            }
+        }
+
+        private static void ApplyPreferredColumnWidths(IXLWorksheet ws, Dictionary<int, double> widths)
+        {
+            foreach (var (column, width) in widths)
+            {
+                ws.Column(column).Width = width;
             }
         }
     }

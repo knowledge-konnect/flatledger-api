@@ -1004,6 +1004,7 @@ DECLARE
     v_period         text;
     v_start_date     date;
     v_end_date       date;
+    v_end_exclusive  date;
     v_society_name   text;
 
     -- Society-level fund position
@@ -1031,6 +1032,7 @@ BEGIN
     v_period     := to_char(p_year, 'FM0000') || '-' || to_char(p_month, 'FM00');
     v_start_date := make_date(p_year, p_month, 1);
     v_end_date   := (v_start_date + interval '1 month - 1 day')::date;
+    v_end_exclusive := v_end_date + 1;
 
     -- ── 2. Society name ───────────────────────────────────────────────────────
     SELECT s.name
@@ -1063,7 +1065,7 @@ BEGIN
         FROM   maintenance_payments mp
         WHERE  mp.society_id = p_society_id
           AND  mp.is_deleted = false
-          AND  DATE(mp.payment_date) < v_start_date
+            AND  mp.payment_date < v_start_date::timestamp
     ) prior_pay
     CROSS JOIN (
         SELECT COALESCE(SUM(e.amount), 0) AS spent
@@ -1079,7 +1081,8 @@ BEGIN
     FROM   maintenance_payments mp
     WHERE  mp.society_id = p_society_id
       AND  mp.is_deleted = false
-      AND  DATE(mp.payment_date) BETWEEN v_start_date AND v_end_date;
+            AND  mp.payment_date >= v_start_date::timestamp
+            AND  mp.payment_date <  v_end_exclusive::timestamp;
 
     SELECT COALESCE(SUM(e.amount), 0)
     INTO   v_expenses
@@ -1149,9 +1152,10 @@ BEGIN
         payment_agg AS (
             SELECT
                 mp.flat_id,
-                COALESCE(SUM(CASE WHEN DATE(mp.payment_date) <  v_start_date                    THEN mp.amount END), 0) AS prior_paid,
-                COALESCE(SUM(CASE WHEN DATE(mp.payment_date) BETWEEN v_start_date AND v_end_date THEN mp.amount END), 0) AS current_paid,
-                COALESCE(SUM(CASE WHEN DATE(mp.payment_date) <= v_end_date                       THEN mp.amount END), 0) AS total_paid
+                COALESCE(SUM(CASE WHEN mp.payment_date <  v_start_date::timestamp   THEN mp.amount END), 0) AS prior_paid,
+                COALESCE(SUM(CASE WHEN mp.payment_date >= v_start_date::timestamp
+                                   AND mp.payment_date <  v_end_exclusive::timestamp THEN mp.amount END), 0) AS current_paid,
+                COALESCE(SUM(CASE WHEN mp.payment_date <  v_end_exclusive::timestamp THEN mp.amount END), 0) AS total_paid
             FROM   maintenance_payments mp
             WHERE  mp.society_id = p_society_id
               AND  mp.is_deleted  = false
@@ -1243,7 +1247,7 @@ BEGIN
         WHERE  e.society_id    = p_society_id
           AND  e.is_deleted    = false
           AND  e.date_incurred BETWEEN v_start_date AND v_end_date
-        ORDER  BY e.date_incurred DESC, category_name, COALESCE(NULLIF(trim(e.description), ''), ''), e.id DESC
+        ORDER  BY e.date_incurred ASC, category_name, COALESCE(NULLIF(trim(e.description), ''), ''), e.id ASC
     ) d;
 
     -- ── 9. Summary text & alerts ──────────────────────────────────────────────
@@ -1303,6 +1307,7 @@ CREATE FUNCTION public.get_yearly_report(p_society_id bigint, p_year integer, p_
 DECLARE
     v_start_date   date;
     v_end_date     date;
+    v_end_exclusive date;
     v_year_label   text;
     v_society_name text;
 
@@ -1328,6 +1333,8 @@ BEGIN
         v_end_date   := make_date(p_year, 12, 31);
         v_year_label := p_year::text;
     END IF;
+
+    v_end_exclusive := v_end_date + 1;
 
     -- ── 2. Society name ───────────────────────────────────────────────────────
     SELECT name
@@ -1360,7 +1367,7 @@ BEGIN
         FROM   maintenance_payments
         WHERE  society_id = p_society_id
           AND  is_deleted  = false
-          AND  DATE(payment_date) < v_start_date
+            AND  payment_date < v_start_date::timestamp
     ) prior_pay
     CROSS JOIN (
         SELECT COALESCE(SUM(amount), 0) AS spent
@@ -1376,7 +1383,8 @@ BEGIN
     FROM   maintenance_payments
     WHERE  society_id = p_society_id
       AND  is_deleted  = false
-      AND  DATE(payment_date) BETWEEN v_start_date AND v_end_date;
+            AND  payment_date >= v_start_date::timestamp
+            AND  payment_date <  v_end_exclusive::timestamp;
 
     SELECT COALESCE(SUM(amount), 0)
     INTO   v_expenses
@@ -1464,7 +1472,7 @@ BEGIN
         WHERE  e.society_id    = p_society_id
           AND  e.is_deleted     = false
           AND  e.date_incurred  BETWEEN v_start_date AND v_end_date
-        ORDER  BY e.date_incurred DESC, category_name, COALESCE(NULLIF(trim(e.description), ''), ''), e.id DESC
+        ORDER  BY e.date_incurred ASC, category_name, COALESCE(NULLIF(trim(e.description), ''), ''), e.id ASC
     ) d;
 
     -- ── 7. Summary text & alerts ──────────────────────────────────────────────
