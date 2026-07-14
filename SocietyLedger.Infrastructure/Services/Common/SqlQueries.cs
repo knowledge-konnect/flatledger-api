@@ -198,8 +198,9 @@ namespace SocietyLedger.Infrastructure.Services.Common
             collected AS (
                 SELECT COALESCE(SUM(mp.amount), 0) AS v
                 FROM   maintenance_payments mp
-                JOIN   bills b ON b.id = mp.bill_id
-                WHERE  b.society_id = @SocietyId AND b.period = @Period AND mp.is_deleted = FALSE
+                                WHERE  mp.society_id = @SocietyId
+                                    AND  mp.is_deleted = FALSE
+                                    AND  to_char(mp.payment_date, 'YYYY-MM') = @Period
             ),
             outstanding AS (
                 SELECT COALESCE(SUM(amount - COALESCE(paid_amount, 0)), 0) AS v

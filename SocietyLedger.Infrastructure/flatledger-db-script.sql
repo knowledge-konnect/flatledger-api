@@ -177,18 +177,12 @@ BEGIN
                            AND date_trunc('month', v_end)::date
         ),
 
-        -- Collection is period-consistent with billed:
-        -- sums payments allocated to bills whose period falls in the selected range.
-        -- This makes collection_rate meaningful — both sides refer to the same bills.
+        -- Collections for the selected date window (accounting date = payment_date).
+        -- This keeps dashboard filters aligned with cash movement month views.
         collection AS (
             SELECT COALESCE(SUM(mp.amount), 0) AS total_collected
             FROM   filtered_payments mp
-            JOIN   bills b ON b.id = mp.bill_id
-            WHERE  b.is_deleted    = false
-              AND  b.status_code  != 'cancelled'
-              AND  to_date(b.period || '-01', 'YYYY-MM-DD')
-                       BETWEEN date_trunc('month', v_start)::date
-                           AND date_trunc('month', v_end)::date
+            WHERE  mp.payment_date::date BETWEEN v_start AND v_end
         ),
 
         expense AS (
@@ -589,11 +583,11 @@ ALTER FUNCTION public.get_defaulters_report(p_society_id bigint, p_min_outstandi
 CREATE FUNCTION public.get_expense_by_category(p_society_id bigint, p_start_date date DEFAULT NULL::date, p_end_date date DEFAULT NULL::date) RETURNS json
     LANGUAGE plpgsql STABLE
     AS $$
-DECLARE 
+DECLARE
     v_result json;
 BEGIN
     WITH filtered_expenses AS (
-        SELECT 
+        SELECT
             e.amount,
             e.category_code,
             e.date_incurred
@@ -628,7 +622,7 @@ BEGIN
                 ORDER BY cs.total_amount DESC
             )
             FROM category_summary cs
-            JOIN expense_categories ec 
+            JOIN expense_categories ec
                 ON ec.code = cs.category_code
         ), '[]'::json)
     )
@@ -649,7 +643,7 @@ ALTER FUNCTION public.get_expense_by_category(p_society_id bigint, p_start_date 
 CREATE FUNCTION public.get_fund_ledger_report(p_society_id bigint, p_start_date date DEFAULT NULL::date, p_end_date date DEFAULT NULL::date) RETURNS jsonb
     LANGUAGE plpgsql STABLE
     AS $$
-DECLARE 
+DECLARE
     v_result jsonb;
 BEGIN
 
@@ -734,7 +728,7 @@ BEGIN
             f.*,
             ob.value
             + SUM(f.credit - f.debit) OVER (
-                ORDER BY 
+                ORDER BY
                     f.entry_date,
                     CASE f.entry_type
                         WHEN 'opening_fund' THEN 0
@@ -778,7 +772,7 @@ BEGIN
                             'reference', wb.reference,
                             'notes', wb.notes
                         )
-                        ORDER BY 
+                        ORDER BY
                             wb.entry_date,
                             CASE wb.entry_type
                                 WHEN 'opening_fund' THEN 0
