@@ -26,6 +26,12 @@ public partial class flat
 
     public string? contact_email { get; set; }
 
+    public string? tenant_name { get; set; }
+
+    public string? tenant_mobile { get; set; }
+
+    public string? tenant_email { get; set; }
+
     [Precision(13, 2)]
     public decimal maintenance_amount { get; set; }
 

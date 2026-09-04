@@ -9,6 +9,9 @@ namespace SocietyLedger.Application.DTOs.Flat
         string? OwnerName,
         string? ContactMobile,
         string? ContactEmail,
+        string? TenantName,
+        string? TenantMobile,
+        string? TenantEmail,
         string? StatusCode
     );
 }

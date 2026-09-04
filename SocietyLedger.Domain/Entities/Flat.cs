@@ -16,9 +16,15 @@
         public string? OwnerName { get; set; }
         public string? ContactMobile { get; set; }
         public string? ContactEmail { get; set; }
+
+        // Tenant fields - occupancy when flat is rented
+        public string? TenantName { get; set; }
+        public string? TenantMobile { get; set; }
+        public string? TenantEmail { get; set; }
+
         /// <summary>Monthly maintenance charge used as the default amount when generating bills for this flat.</summary>
         public decimal MaintenanceAmount { get; set; }
-        public short? StatusId { get; set; }              
+        public short? StatusId { get; set; }
         public string StatusName { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }

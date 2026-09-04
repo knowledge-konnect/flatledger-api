@@ -86,7 +86,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             var efFlat = await _db.flats
                 .ForSociety(societyId)
                 .FirstOrDefaultAsync(f => f.public_id == flat.PublicId);
-            
+
             if (efFlat == null)
                 throw new InvalidOperationException($"Flat with PublicId {flat.PublicId} not found in society {societyId}.");
 
@@ -94,6 +94,9 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             efFlat.owner_name = flat.OwnerName;
             efFlat.contact_mobile = flat.ContactMobile;
             efFlat.contact_email = flat.ContactEmail;
+            efFlat.tenant_name = flat.TenantName;
+            efFlat.tenant_mobile = flat.TenantMobile;
+            efFlat.tenant_email = flat.TenantEmail;
             efFlat.maintenance_amount = flat.MaintenanceAmount;
             efFlat.status_id = flat.StatusId;
             efFlat.updated_at = flat.UpdatedAt;
@@ -210,10 +213,10 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                 .GroupBy(_ => 1)
                 .Select(g => new FlatSummaryDto
                 {
-                    Total           = g.Count(),
-                    Occupied        = g.Count(f => f.status != null && f.status.code == Domain.Constants.FlatStatusCodes.OwnerOccupied),
-                    Vacant          = g.Count(f => f.status != null && f.status.code == Domain.Constants.FlatStatusCodes.Vacant),
-                    Rented          = g.Count(f => f.status != null && f.status.code == Domain.Constants.FlatStatusCodes.TenantOccupied),
+                    Total = g.Count(),
+                    Occupied = g.Count(f => f.status != null && f.status.code == Domain.Constants.FlatStatusCodes.OwnerOccupied),
+                    Vacant = g.Count(f => f.status != null && f.status.code == Domain.Constants.FlatStatusCodes.Vacant),
+                    Rented = g.Count(f => f.status != null && f.status.code == Domain.Constants.FlatStatusCodes.TenantOccupied),
                     ZeroAmountCount = g.Count(f => f.maintenance_amount == 0)
                 })
                 .FirstOrDefaultAsync(cancellationToken) ?? new FlatSummaryDto();

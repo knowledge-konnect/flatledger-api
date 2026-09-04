@@ -32,6 +32,8 @@ builder.Services.AddSharedServices();
 
 builder.Services.AddHostedService<MonthlyBillGenerationService>();
 builder.Services.AddHostedService<TrialExpirationService>();
+// Startup catch-up for missed monthly billing runs (runs once at app start)
+builder.Services.AddHostedService<BillingCatchupService>();
 
 var app = builder.Build();
 
