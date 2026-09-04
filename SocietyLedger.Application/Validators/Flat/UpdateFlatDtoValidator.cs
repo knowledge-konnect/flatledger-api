@@ -36,6 +36,21 @@ namespace SocietyLedger.Application.Validators.Flat
                 .When(x => !string.IsNullOrWhiteSpace(x.ContactEmail))
                 .WithMessage("Contact email must be valid.");
 
+            RuleFor(x => x.TenantName)
+                .MaximumLength(100)
+                .When(x => !string.IsNullOrWhiteSpace(x.TenantName))
+                .WithMessage("Tenant name cannot exceed 100 characters.");
+
+            RuleFor(x => x.TenantMobile)
+                .Matches(@"^[0-9]{10}$")
+                .When(x => !string.IsNullOrWhiteSpace(x.TenantMobile))
+                .WithMessage("Tenant mobile must be a valid 10-digit number.");
+
+            RuleFor(x => x.TenantEmail)
+                .EmailAddress()
+                .When(x => !string.IsNullOrWhiteSpace(x.TenantEmail))
+                .WithMessage("Tenant email must be valid.");
+
             RuleFor(x => x.MaintenanceAmount)
                 .GreaterThanOrEqualTo(0)
                 .When(x => x.MaintenanceAmount.HasValue)

@@ -14,32 +14,38 @@ namespace SocietyLedger.Application.DTOs.Flat
      string? OwnerName,
      string? ContactMobile,
      string? ContactEmail,
+     string? TenantName,
+     string? TenantMobile,
+     string? TenantEmail,
      decimal MaintenanceAmount,
      short? StatusId,
      string StatusName,
      DateTime CreatedAt,
      DateTime UpdatedAt
  )
- {
-     public decimal TotalOutstanding { get; init; } = 0m;
+    {
+        public decimal TotalOutstanding { get; init; } = 0m;
 
-     /// <summary>
-     /// Creates a FlatResponseDto from a Flat domain entity.
-     /// </summary>
-     public FlatResponseDto(FlatEntity flat) : this(
-         PublicId: flat.PublicId,
-         SocietyPublicId: flat.SocietyPublicId,
-         FlatNo: flat.FlatNo,
-         OwnerName: flat.OwnerName,
-         ContactMobile: flat.ContactMobile,
-         ContactEmail: flat.ContactEmail,
-         MaintenanceAmount: flat.MaintenanceAmount,
-         StatusId: flat.StatusId,
-         StatusName: flat.StatusName ?? "Unknown",
-         CreatedAt: flat.CreatedAt,
-         UpdatedAt: flat.UpdatedAt
-     )
-     {
-     }
- }
+        /// <summary>
+        /// Creates a FlatResponseDto from a Flat domain entity.
+        /// </summary>
+        public FlatResponseDto(FlatEntity flat) : this(
+            PublicId: flat.PublicId,
+            SocietyPublicId: flat.SocietyPublicId,
+            FlatNo: flat.FlatNo,
+            OwnerName: flat.OwnerName,
+            ContactMobile: flat.ContactMobile,
+            ContactEmail: flat.ContactEmail,
+            TenantName: flat.TenantName,
+            TenantMobile: flat.TenantMobile,
+            TenantEmail: flat.TenantEmail,
+            MaintenanceAmount: flat.MaintenanceAmount,
+            StatusId: flat.StatusId,
+            StatusName: flat.StatusName ?? "Unknown",
+            CreatedAt: flat.CreatedAt,
+            UpdatedAt: flat.UpdatedAt
+        )
+        {
+        }
+    }
 }

@@ -85,22 +85,6 @@ namespace SocietyLedger.Infrastructure.Services
             if (existingFlat != null)
                 throw new DuplicateException("flat", "flat number");
 
-            // Check for duplicate email in the same society
-            if (!string.IsNullOrWhiteSpace(dto.ContactEmail))
-            {
-                var existingEmail = await _repo.GetByEmailAndSocietyAsync(dto.ContactEmail, societyId);
-                if (existingEmail != null)
-                    throw new DuplicateException("flat", "email");
-            }
-
-            // Check for duplicate mobile in the same society
-            if (!string.IsNullOrWhiteSpace(dto.ContactMobile))
-            {
-                var existingMobile = await _repo.GetByMobileAndSocietyAsync(dto.ContactMobile, societyId);
-                if (existingMobile != null)
-                    throw new DuplicateException("flat", "mobile number");
-            }
-
             // Get status by code if provided, otherwise use default
             short? statusId = null;
             if (!string.IsNullOrEmpty(dto.StatusCode))
@@ -121,6 +105,9 @@ namespace SocietyLedger.Infrastructure.Services
                 OwnerName = dto.OwnerName,
                 ContactMobile = dto.ContactMobile,
                 ContactEmail = dto.ContactEmail,
+                TenantName = dto.TenantName,
+                TenantMobile = dto.TenantMobile,
+                TenantEmail = dto.TenantEmail,
                 MaintenanceAmount = dto.MaintenanceAmount ?? 0m,
                 StatusId = statusId,
                 CreatedAt = now,
@@ -153,12 +140,8 @@ namespace SocietyLedger.Infrastructure.Services
 
             var existingFlats = await _repo.GetBySocietyIdAsync(societyId);
             var existingFlatNoSet = existingFlats.Select(f => f.FlatNo).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            var existingEmailSet = existingFlats.Where(f => !string.IsNullOrEmpty(f.ContactEmail)).Select(f => f.ContactEmail!).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            var existingMobileSet = existingFlats.Where(f => !string.IsNullOrEmpty(f.ContactMobile)).Select(f => f.ContactMobile!).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
             var batchFlatNos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var batchEmails = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var batchMobiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             var maintenanceConfig = await _maintenanceConfigRepo.GetBySocietyIdAsync(societyId);
             var defaultMaintenanceAmount = maintenanceConfig?.DefaultMonthlyCharge ?? 0m;
@@ -188,27 +171,7 @@ namespace SocietyLedger.Infrastructure.Services
                         continue;
                     }
 
-                    if (!string.IsNullOrWhiteSpace(item.ContactEmail))
-                    {
-                        if (existingEmailSet.Contains(item.ContactEmail) || !batchEmails.Add(item.ContactEmail))
-                        {
-                            failed.Add(new BulkFlatFailure(i, item.FlatNo, "Email already exists in this society"));
-                            _logger.LogWarning("Bulk flat create: duplicate email {Email} at index {Index}", item.ContactEmail, i);
-                            continue;
-                        }
-                    }
-
-                    if (!string.IsNullOrWhiteSpace(item.ContactMobile))
-                    {
-                        if (existingMobileSet.Contains(item.ContactMobile) || !batchMobiles.Add(item.ContactMobile))
-                        {
-                            failed.Add(new BulkFlatFailure(i, item.FlatNo, "Mobile number already exists in this society"));
-                            _logger.LogWarning("Bulk flat create: duplicate mobile {Mobile} at index {Index}", item.ContactMobile, i);
-                            continue;
-                        }
-                    }
-
-                    short? statusId   = null;
+                    short? statusId = null;
                     string? statusName = null;
 
                     if (!string.IsNullOrEmpty(item.StatusCode))
@@ -219,24 +182,27 @@ namespace SocietyLedger.Infrastructure.Services
                             _logger.LogWarning("Bulk flat create: invalid status code {StatusCode} at index {Index}", item.StatusCode, i);
                             continue;
                         }
-                        statusId   = status.Id;
+                        statusId = status.Id;
                         statusName = status.DisplayName;
                     }
 
                     var flatEntity = new Flat
                     {
-                        PublicId          = Guid.NewGuid(),
-                        SocietyId         = societyId,
-                        SocietyPublicId   = societyPublicId,
-                        FlatNo            = item.FlatNo,
-                        OwnerName         = item.OwnerName,
-                        ContactMobile     = item.ContactMobile,
-                        ContactEmail      = item.ContactEmail,
+                        PublicId = Guid.NewGuid(),
+                        SocietyId = societyId,
+                        SocietyPublicId = societyPublicId,
+                        FlatNo = item.FlatNo,
+                        OwnerName = item.OwnerName,
+                        ContactMobile = item.ContactMobile,
+                        ContactEmail = item.ContactEmail,
+                        TenantName = item.TenantName,
+                        TenantMobile = item.TenantMobile,
+                        TenantEmail = item.TenantEmail,
                         MaintenanceAmount = defaultMaintenanceAmount,
-                        StatusId          = statusId,
-                        StatusName        = statusName,
-                        CreatedAt         = now,
-                        UpdatedAt         = now
+                        StatusId = statusId,
+                        StatusName = statusName ?? string.Empty,
+                        CreatedAt = now,
+                        UpdatedAt = now
                     };
 
                     validFlats.Add((i, item.FlatNo, flatEntity));
@@ -254,7 +220,7 @@ namespace SocietyLedger.Infrastructure.Services
                 try
                 {
                     var createdFlats = await _repo.BulkAddAsync(validFlats.Select(v => v.FlatEntity));
-                    var createdList  = createdFlats.ToList();
+                    var createdList = createdFlats.ToList();
 
                     succeeded.AddRange(createdList.Select(f => MapToDto(f)));
 
@@ -270,20 +236,20 @@ namespace SocietyLedger.Infrastructure.Services
                     else
                     {
                         var currentMonth = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-                        var period       = currentMonth.ToString("yyyy-MM");
+                        var period = currentMonth.ToString("yyyy-MM");
 
                         var billNow = DateTime.UtcNow;
 
                         var bills = createdList.Select(flat => new BillAddDto(
-                            SocietyId:   societyId,
-                            FlatId:      flat.Id,
-                            Period:      period,
-                            Amount:      flat.MaintenanceAmount > 0 ? flat.MaintenanceAmount : defaultMaintenanceAmount,
-                            StatusCode:  BillStatusCodes.Unpaid,
+                            SocietyId: societyId,
+                            FlatId: flat.Id,
+                            Period: period,
+                            Amount: flat.MaintenanceAmount > 0 ? flat.MaintenanceAmount : defaultMaintenanceAmount,
+                            StatusCode: BillStatusCodes.Unpaid,
                             GeneratedBy: null,
                             GeneratedAt: billNow,
-                            CreatedAt:   billNow,
-                            Source:      "flat-create"
+                            CreatedAt: billNow,
+                            Source: "flat-create"
                         )).ToList();
 
                         try
@@ -311,7 +277,7 @@ namespace SocietyLedger.Infrastructure.Services
             return new BulkCreateFlatsResponse(succeeded, failed);
         }
 
-        
+
         /// <summary>
         /// Get a flat by its public UUID with tenant isolation.
         /// </summary>
@@ -352,22 +318,6 @@ namespace SocietyLedger.Infrastructure.Services
                     throw new DuplicateException("flat", "flat number");
             }
 
-            // Check for duplicate email if changing
-            if (!string.IsNullOrWhiteSpace(normalizedEmail) && !AreSameEmail(normalizedEmail, existing.ContactEmail))
-            {
-                var conflictingEmail = await _repo.GetByEmailAndSocietyAsync(normalizedEmail, existing.SocietyId);
-                if (conflictingEmail != null && conflictingEmail.PublicId != existing.PublicId)
-                    throw new DuplicateException("flat", "email");
-            }
-
-            // Check for duplicate mobile if changing
-            if (!string.IsNullOrWhiteSpace(normalizedMobile) && !AreSameMobile(normalizedMobile, existing.ContactMobile))
-            {
-                var conflictingMobile = await _repo.GetByMobileAndSocietyAsync(normalizedMobile, existing.SocietyId);
-                if (conflictingMobile != null && conflictingMobile.PublicId != existing.PublicId)
-                    throw new DuplicateException("flat", "mobile number");
-            }
-
             // Get status by code if provided
             short? statusId = existing.StatusId;
             if (normalizedStatusCode != null)
@@ -393,6 +343,9 @@ namespace SocietyLedger.Infrastructure.Services
             existing.OwnerName = normalizedOwnerName ?? existing.OwnerName;
             existing.ContactMobile = normalizedMobile ?? existing.ContactMobile;
             existing.ContactEmail = normalizedEmail ?? existing.ContactEmail;
+            existing.TenantName = dto.TenantName ?? existing.TenantName;
+            existing.TenantMobile = dto.TenantMobile ?? existing.TenantMobile;
+            existing.TenantEmail = dto.TenantEmail ?? existing.TenantEmail;
             existing.MaintenanceAmount = dto.MaintenanceAmount ?? existing.MaintenanceAmount;
             existing.StatusId = statusId;
             existing.UpdatedAt = DateTime.UtcNow;
@@ -411,7 +364,7 @@ namespace SocietyLedger.Infrastructure.Services
             _logger.LogInformation("Flat updated successfully for PublicId {PublicId}", dto.PublicId);
             return MapToDto(existing);
         }
-        
+
 
         /// <summary>
         /// Delete a flat by its public UUID with tenant isolation. Returns true if deleted, false if not found.
@@ -440,7 +393,7 @@ namespace SocietyLedger.Infrastructure.Services
             return true;
         }
 
-       
+
         public async Task<IEnumerable<FlatStatusDto>> GetAllAsync()
         {
             var statuses = await _repo.GetAllAsync();
@@ -464,14 +417,14 @@ namespace SocietyLedger.Infrastructure.Services
 
             // Get all adjustments and payments for the flat within the date range
             var adjustments = await _adjustmentRepo.GetByFlatIdAsync(flatId, societyId, startDate, endDate);
-            var payments    = await _mpRepo.GetByFlatIdForLedgerAsync(flatId, societyId, startDate, endDate);
+            var payments = await _mpRepo.GetByFlatIdForLedgerAsync(flatId, societyId, startDate, endDate);
 
             // Calculate opening balance (sum of adjustments before startDate minus payments before startDate)
             decimal openingBalance = 0;
             if (startDate.HasValue)
             {
                 var adjustmentsBefore = await _adjustmentRepo.GetTotalAmountBeforeDateAsync(flatId, societyId, startDate.Value);
-                var paymentsBefore    = await _mpRepo.GetTotalAmountBeforeDateAsync(flatId, societyId, startDate.Value);
+                var paymentsBefore = await _mpRepo.GetTotalAmountBeforeDateAsync(flatId, societyId, startDate.Value);
                 openingBalance = adjustmentsBefore - paymentsBefore;
             }
 
@@ -533,12 +486,12 @@ namespace SocietyLedger.Infrastructure.Services
                 .OrderBy(b => b.period)
                 .Select(b => new FlatLedgerBillDto
                 {
-                    BillPublicId  = b.public_id,
-                    Period        = b.period,
-                    Amount        = b.amount,
-                    PaidAmount    = b.paid_amount ?? 0m,
+                    BillPublicId = b.public_id,
+                    Period = b.period,
+                    Amount = b.amount,
+                    PaidAmount = b.paid_amount ?? 0m,
                     BalanceAmount = b.amount - (b.paid_amount ?? 0m),
-                    StatusCode    = b.status_code
+                    StatusCode = b.status_code
                 })
                 .ToListAsync();
 
@@ -559,15 +512,15 @@ namespace SocietyLedger.Infrastructure.Services
 
             return new FlatLedgerResponse
             {
-                FlatPublicId    = flat.PublicId,
-                FlatNo          = flat.FlatNo,
-                OwnerName       = flat.OwnerName,
-                OpeningBalance  = openingBalance,
-                ClosingBalance  = runningBalance,
-                Entries         = ledgerEntries,
-                Bills           = bills,
+                FlatPublicId = flat.PublicId,
+                FlatNo = flat.FlatNo,
+                OwnerName = flat.OwnerName,
+                OpeningBalance = openingBalance,
+                ClosingBalance = runningBalance,
+                Entries = ledgerEntries,
+                Bills = bills,
                 TotalOutstanding = totalOutstanding,
-                TotalAdvance    = totalAdvance
+                TotalAdvance = totalAdvance
             };
         }
 
@@ -599,7 +552,7 @@ namespace SocietyLedger.Infrastructure.Services
             // Exclude cancelled bills — a cancelled bill is not a real outstanding obligation.
             var billOutstanding = await _billRepo.GetOutstandingByFlatIdAsync(flat.Id, societyId);
 
-            var totalCharges  = await _billRepo.GetTotalChargesByFlatIdAsync(flat.Id, societyId);
+            var totalCharges = await _billRepo.GetTotalChargesByFlatIdAsync(flat.Id, societyId);
             var totalPayments = await _mpRepo.GetTotalPaidByFlatIdAsync(flat.Id, societyId);
 
             return new FlatFinancialSummaryResponse
@@ -719,10 +672,10 @@ namespace SocietyLedger.Infrastructure.Services
             if (!string.IsNullOrWhiteSpace(search))
             {
                 query = query.Where(f =>
-                    EF.Functions.ILike(f.flat_no,        $"%{search}%") ||
-                    EF.Functions.ILike(f.owner_name,     $"%{search}%") ||
+                    EF.Functions.ILike(f.flat_no, $"%{search}%") ||
+                    (f.owner_name != null && EF.Functions.ILike(f.owner_name, $"%{search}%")) ||
                     (f.contact_mobile != null && EF.Functions.ILike(f.contact_mobile, $"%{search}%")) ||
-                    (f.contact_email  != null && EF.Functions.ILike(f.contact_email,  $"%{search}%")));
+                    (f.contact_email != null && EF.Functions.ILike(f.contact_email, $"%{search}%")));
             }
 
             if (!string.IsNullOrWhiteSpace(statusCode))
@@ -730,14 +683,14 @@ namespace SocietyLedger.Infrastructure.Services
 
             query = (sortBy.ToLower(), sortDir.ToLower()) switch
             {
-                ("flatno", "desc")            => query.OrderByDescending(f => f.flat_no),
-                ("flatno", _)                 => query.OrderBy(f => f.flat_no),
-                ("ownername", "desc")         => query.OrderByDescending(f => f.owner_name),
-                ("ownername", _)              => query.OrderBy(f => f.owner_name),
+                ("flatno", "desc") => query.OrderByDescending(f => f.flat_no),
+                ("flatno", _) => query.OrderBy(f => f.flat_no),
+                ("ownername", "desc") => query.OrderByDescending(f => f.owner_name),
+                ("ownername", _) => query.OrderBy(f => f.owner_name),
                 ("maintenanceamount", "desc") => query.OrderByDescending(f => f.maintenance_amount),
-                ("maintenanceamount", _)      => query.OrderBy(f => f.maintenance_amount),
-                ("createdat", "desc")         => query.OrderByDescending(f => f.created_at),
-                _                             => query.OrderBy(f => f.created_at),
+                ("maintenanceamount", _) => query.OrderBy(f => f.maintenance_amount),
+                ("createdat", "desc") => query.OrderByDescending(f => f.created_at),
+                _ => query.OrderBy(f => f.created_at),
             };
 
             var societyPublicId = await _db.societies
@@ -827,12 +780,16 @@ namespace SocietyLedger.Infrastructure.Services
                 f.OwnerName,
                 f.ContactMobile,
                 f.ContactEmail,
+                f.TenantName,
+                f.TenantMobile,
+                f.TenantEmail,
                 f.MaintenanceAmount,
                 f.StatusId,
                 f.StatusName,
                 f.CreatedAt,
                 f.UpdatedAt
-            ) { TotalOutstanding = totalOutstanding };
+            )
+            { TotalOutstanding = totalOutstanding };
         }
 
         /// <summary>
@@ -852,12 +809,16 @@ namespace SocietyLedger.Infrastructure.Services
                 f.owner_name,
                 f.contact_mobile,
                 f.contact_email,
+                f.tenant_name,
+                f.tenant_mobile,
+                f.tenant_email,
                 f.maintenance_amount,
                 f.status_id,
                 f.status?.display_name ?? string.Empty,
                 f.created_at,
                 f.updated_at
-            ) { TotalOutstanding = totalOutstanding };
+            )
+            { TotalOutstanding = totalOutstanding };
         }
 
         private async Task<Dictionary<long, decimal>> ComputeOutstandingByFlatIdAsync(List<long> flatIds)
