@@ -30,14 +30,14 @@ namespace SocietyLedger.Infrastructure.Services
             IDashboardService dashboardService,
             IDapperService dapper)
         {
-            _billRepo         = billRepo;
-            _flatRepo         = flatRepo;
-            _societyRepo      = societyRepo;
-            _maintConfigRepo  = maintConfigRepo;
-            _userContext       = userContext;
-            _logger           = logger;
+            _billRepo = billRepo;
+            _flatRepo = flatRepo;
+            _societyRepo = societyRepo;
+            _maintConfigRepo = maintConfigRepo;
+            _userContext = userContext;
+            _logger = logger;
             _dashboardService = dashboardService;
-            _dapper           = dapper;
+            _dapper = dapper;
         }
 
         // ------------------------------------------------------------------ //
@@ -79,15 +79,15 @@ namespace SocietyLedger.Infrastructure.Services
             var now = DateTime.UtcNow;
 
             var bills = flatList.Select(f => new BillAddDto(
-                SocietyId:   societyId,
-                FlatId:      f.Id,
-                Period:      period,
-                Amount:      f.MaintenanceAmount > 0 ? f.MaintenanceAmount : defaultCharge,
-                StatusCode:  BillStatusCodes.Unpaid,
+                SocietyId: societyId,
+                FlatId: f.Id,
+                Period: period,
+                Amount: f.MaintenanceAmount > 0 ? f.MaintenanceAmount : defaultCharge,
+                StatusCode: BillStatusCodes.Unpaid,
                 GeneratedBy: userId,
                 GeneratedAt: now,
-                CreatedAt:   now,
-                Source:      "manual"
+                CreatedAt: now,
+                Source: "manual"
             )).ToList();
 
             var insertedBills = await _billRepo.AddRangeAndReturnAsync(bills);
@@ -113,16 +113,20 @@ namespace SocietyLedger.Infrastructure.Services
         //  Billing status check for the current calendar month                //
         // ------------------------------------------------------------------ //
 
-        public async Task<BillingStatusResponse> GetBillingStatusAsync(long userId)
+        public async Task<BillingStatusResponse> GetBillingStatusAsync(long userId, string? period = null)
         {
             var societyId = await _userContext.GetSocietyIdAsync(userId);
-            var currentMonth = DateTime.UtcNow.ToString("yyyy-MM");
-            var count = await _billRepo.CountForPeriodAsync(societyId, currentMonth);
+            // If caller provided a period (YYYY-MM), use it; otherwise default to current UTC month
+            var targetMonth = string.IsNullOrWhiteSpace(period)
+                ? DateTime.UtcNow.ToString("yyyy-MM")
+                : period;
+
+            var count = await _billRepo.CountForPeriodAsync(societyId, targetMonth);
 
             return new BillingStatusResponse(
-                CurrentMonth   : currentMonth,
-                IsGenerated    : count > 0,
-                GeneratedCount : count
+                CurrentMonth: targetMonth,
+                IsGenerated: count > 0,
+                GeneratedCount: count
             );
         }
 
@@ -136,12 +140,12 @@ namespace SocietyLedger.Infrastructure.Services
                 ? new DateTime(billingMonth.Value.Year, billingMonth.Value.Month, 1, 0, 0, 0, DateTimeKind.Utc)
                 : new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
             var stopwatch = Stopwatch.StartNew();
-            var period    = month.ToString("yyyy-MM");
+            var period = month.ToString("yyyy-MM");
             var periodDate = DateOnly.FromDateTime(month); // first day of billing month as DateOnly for comparison
             int totalFlatsProcessed = 0;
-            int billsCreated        = 0;
-            int billsSkipped        = 0;
-            int failedSocieties     = 0;
+            int billsCreated = 0;
+            int billsSkipped = 0;
+            int failedSocieties = 0;
 
             _logger.LogInformation(
                 "GenerateMonthlyBillsAsync started. BillingMonth={BillingMonth:yyyy-MM}",
@@ -164,25 +168,25 @@ namespace SocietyLedger.Infrastructure.Services
                 return new BillingResult
                 {
                     TotalFlatsProcessed = 0,
-                    BillsCreated        = 0,
-                    BillsSkipped        = 0,
-                    ExecutionTime       = stopwatch.Elapsed,
-                    Success             = true,
-                    ErrorMessage        = "No active societies eligible for this billing period."
+                    BillsCreated = 0,
+                    BillsSkipped = 0,
+                    ExecutionTime = stopwatch.Elapsed,
+                    Success = true,
+                    ErrorMessage = "No active societies eligible for this billing period."
                 };
             }
 
-            var defaultCharges       = await _maintConfigRepo.GetDefaultChargesBySocietyIdsAsync(societyIds);
-            var allFlats             = (await _flatRepo.GetActiveFlatsBySocietyIdsAsync(societyIds))
+            var defaultCharges = await _maintConfigRepo.GetDefaultChargesBySocietyIdsAsync(societyIds);
+            var allFlats = (await _flatRepo.GetActiveFlatsBySocietyIdsAsync(societyIds))
                                            .ToLookup(f => f.SocietyId);
-            var existingBillFlatIds  = await _billRepo.GetExistingFlatIdsForSocietiesAsync(societyIds, period);
+            var existingBillFlatIds = await _billRepo.GetExistingFlatIdsForSocietiesAsync(societyIds, period);
 
             foreach (var societyId in societyIds)
             {
                 try
                 {
-                    var defaultCharge   = defaultCharges.GetValueOrDefault(societyId, 0m);
-                    var flats           = allFlats[societyId].ToList();
+                    var defaultCharge = defaultCharges.GetValueOrDefault(societyId, 0m);
+                    var flats = allFlats[societyId].ToList();
                     var flatIdsWithBill = existingBillFlatIds[societyId].ToHashSet();
 
                     totalFlatsProcessed += flats.Count;
@@ -193,7 +197,7 @@ namespace SocietyLedger.Infrastructure.Services
                         continue;
                     }
 
-                    var now      = DateTime.UtcNow;
+                    var now = DateTime.UtcNow;
                     var newBills = new List<BillAddDto>(flats.Count);
 
                     foreach (var flat in flats)
@@ -203,15 +207,15 @@ namespace SocietyLedger.Infrastructure.Services
                         var amount = flat.MaintenanceAmount > 0 ? flat.MaintenanceAmount : defaultCharge;
 
                         newBills.Add(new BillAddDto(
-                            SocietyId:   societyId,
-                            FlatId:      flat.FlatId,
-                            Period:      period,
-                            Amount:      amount,
-                            StatusCode:  BillStatusCodes.Unpaid,
+                            SocietyId: societyId,
+                            FlatId: flat.FlatId,
+                            Period: period,
+                            Amount: amount,
+                            StatusCode: BillStatusCodes.Unpaid,
                             GeneratedBy: null,
                             GeneratedAt: now,
-                            CreatedAt:   now,
-                            Source:      source
+                            CreatedAt: now,
+                            Source: source
                         ));
                     }
 
@@ -258,12 +262,12 @@ namespace SocietyLedger.Infrastructure.Services
             return new BillingResult
             {
                 TotalFlatsProcessed = totalFlatsProcessed,
-                BillsCreated        = billsCreated,
-                BillsSkipped        = billsSkipped,
-                FailedSocieties     = failedSocieties,
-                ExecutionTime       = stopwatch.Elapsed,
-                Success             = !hasFailures,
-                ErrorMessage        = hasFailures
+                BillsCreated = billsCreated,
+                BillsSkipped = billsSkipped,
+                FailedSocieties = failedSocieties,
+                ExecutionTime = stopwatch.Elapsed,
+                Success = !hasFailures,
+                ErrorMessage = hasFailures
                     ? $"{failedSocieties} society(s) failed to process for period {period}. Check logs for details."
                     : null
             };
@@ -271,7 +275,7 @@ namespace SocietyLedger.Infrastructure.Services
 
         public async Task GenerateBillForFlatAsync(Guid flatPublicId, long userId, DateTime billingMonth)
         {
-            var period    = billingMonth.ToString("yyyy-MM");
+            var period = billingMonth.ToString("yyyy-MM");
             var societyId = await _userContext.GetSocietyIdAsync(userId);
 
             var flat = await _flatRepo.GetByPublicIdAsync(flatPublicId, societyId);
@@ -289,15 +293,15 @@ namespace SocietyLedger.Infrastructure.Services
 
             var now = DateTime.UtcNow;
             var newBill = new BillAddDto(
-                SocietyId:   societyId,
-                FlatId:      flat.Id,
-                Period:      period,
-                Amount:      amount,
-                StatusCode:  BillStatusCodes.Unpaid,
+                SocietyId: societyId,
+                FlatId: flat.Id,
+                Period: period,
+                Amount: amount,
+                StatusCode: BillStatusCodes.Unpaid,
                 GeneratedBy: null,
                 GeneratedAt: now,
-                CreatedAt:   now,
-                Source:      "flat-create"
+                CreatedAt: now,
+                Source: "flat-create"
             );
 
             try
