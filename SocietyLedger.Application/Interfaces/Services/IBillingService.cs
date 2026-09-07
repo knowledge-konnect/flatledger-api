@@ -24,9 +24,10 @@ namespace SocietyLedger.Application.Interfaces.Services
         Task<GenerateBillsResponse> GenerateBillsAsync(long userId, string period);
 
         /// <summary>
-        /// Returns whether bills have already been generated for the current calendar month.
+        /// Returns whether bills have already been generated for a billing period.
+        /// If <paramref name="period"/> is omitted, returns status for the current calendar month.
         /// </summary>
-        Task<BillingStatusResponse> GetBillingStatusAsync(long userId);
+        Task<BillingStatusResponse> GetBillingStatusAsync(long userId, string? period = null);
 
         /// <summary>
         /// Generates monthly maintenance bills for ALL active societies.

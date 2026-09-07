@@ -27,9 +27,9 @@ namespace SocietyLedger.Api.Endpoints
                 [Authorize]
             [SwaggerOperation(
                     Summary = "Get billing status",
-                    Description = "Returns whether bills have been generated for the current calendar month and how many were created."
+                    Description = "Returns whether bills have been generated for the specified period (YYYY-MM). If omitted, returns current calendar month status."
                 )]
-            async (IBillingService billingService, HttpContext ctx) =>
+            async (IBillingService billingService, HttpContext ctx, [FromQuery] string? period) =>
                 {
                     var userId = ctx.GetUserId();
 
@@ -40,7 +40,7 @@ namespace SocietyLedger.Api.Endpoints
                         return Results.Json(errorResponse, statusCode: 401);
                     }
 
-                    var result = await billingService.GetBillingStatusAsync(userId);
+                    var result = await billingService.GetBillingStatusAsync(userId, period);
                     return Results.Ok(ApiResponse<BillingStatusResponse>.Success(result, "Billing status retrieved successfully"));
                 })
             .WithTags(groupName)
