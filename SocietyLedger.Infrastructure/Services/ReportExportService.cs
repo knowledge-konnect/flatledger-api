@@ -8,6 +8,7 @@ namespace SocietyLedger.Infrastructure.Services
     {
         // ── Design tokens ─────────────────────────────────────────────────────
         private const string FontName = "Segoe UI";
+        private const string BuildingIcon = "🏢";
         private const int TitleFontSize = 22;
         private const int SubtitleSize = 14;
         private const int SectionSize = 12;
@@ -73,23 +74,13 @@ namespace SocietyLedger.Infrastructure.Services
             row = WriteReportTitle(ws, row, ColStart, colEnd, data.SocietyName, $"Monthly Report - {data.PeriodLabel}");
             ws.SheetView.FreezeRows(2); // freeze branded title rows 1-2
 
-            // Enhanced legend note
-            ws.Range(row, ColStart, row, colEnd).Merge();
-            ws.Cell(row, ColStart).Value = "Note: Positive = member owes the society; Negative = society owes member (advance).";
-            ws.Cell(row, ColStart).Style.Font.Italic = true;
-            ws.Cell(row, ColStart).Style.Font.FontSize = 9;
-            ws.Cell(row, ColStart).Style.Font.FontColor = XLColor.DarkGray;
-            ws.Cell(row, ColStart).Style.Fill.BackgroundColor = XLColor.FromHtml("#F9FAFB");
-            ws.Cell(row, ColStart).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
-            ws.Cell(row, ColStart).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
-            ws.Cell(row, ColStart).Style.Border.OutsideBorderColor = ColourBorder;
-            ws.Row(row).Height = 20;
-            row += 2;
+            row += 1;
 
             // Fund Position
             row = WriteSectionHeader(ws, row, ColStart, colEnd, "Fund Position");
             row = WriteKvRow(ws, row, ColStart, "Opening Balance", data.FundPosition.OpeningBalance, isAmount: true);
             row = WriteKvRow(ws, row, ColStart, "Collected", data.FundPosition.Collected, isAmount: true);
+            row = WriteKvRow(ws, row, ColStart, "Society Other Income", data.PaymentSummary?.OtherIncome ?? 0m, isAmount: true, valueColor: ColourPaidText);
             row = WriteKvRow(ws, row, ColStart, "Expenses", data.FundPosition.Expenses, isAmount: true);
             row = WriteKvRow(ws, row, ColStart, "Closing Balance", data.FundPosition.ClosingBalance, isAmount: true, bold: true, highlight: true);
             row++;
@@ -102,6 +93,7 @@ namespace SocietyLedger.Infrastructure.Services
             row = WriteKvRow(ws, row, ColStart, "Pending", ps.Pending, valueColor: ps.Pending > 0 ? ColourPendingText : null);
             row = WriteKvRow(ws, row, ColStart, "Total Billed", ps.TotalBilled, isAmount: true);
             row = WriteKvRow(ws, row, ColStart, "Total Collected", ps.TotalCollected, isAmount: true, valueColor: ColourPaidText);
+            row = WriteKvRow(ws, row, ColStart, "Society Other Income", ps.OtherIncome, isAmount: true, valueColor: ColourPaidText);
             row = WriteKvRow(ws, row, ColStart, "Pending Amount", ps.PendingAmount, isAmount: true, valueColor: ps.PendingAmount > 0 ? ColourPendingText : null);
             row = WriteKvRow(ws, row, ColStart, "Collection Efficiency", $"{ps.CollectionEfficiency}%");
             row++;
@@ -112,6 +104,10 @@ namespace SocietyLedger.Infrastructure.Services
             {
                 foreach (var alert in data.Alerts)
                     row = WriteAlertRow(ws, row, ColStart, colEnd, alert, isWarning: true);
+            }
+            else if (ps.TotalCollected > ps.TotalBilled)
+            {
+                row = WriteAlertRow(ws, row, ColStart, colEnd, "All maintenance dues cleared. One or more flats have advance / overpayment credit.", isWarning: false);
             }
             else
             {
@@ -164,19 +160,20 @@ namespace SocietyLedger.Infrastructure.Services
             ws.Cell(noteRow, ColStart).Style.Font.FontColor = XLColor.DarkGray;
             ws.Cell(noteRow, ColStart).Style.Fill.BackgroundColor = XLColor.FromHtml("#F9FAFB");
             ws.Cell(noteRow, ColStart).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
+            ws.Cell(noteRow, ColStart).Style.Alignment.WrapText = true;
             ws.Cell(noteRow, ColStart).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
             ws.Cell(noteRow, ColStart).Style.Border.OutsideBorderColor = ColourBorder;
-            ws.Row(noteRow).Height = 20;
+            ws.Row(noteRow).Height = GetWrappedRowHeight("Note: 'Total Due (Before Payment)' = Previous Balance + Monthly Charges. 'Outstanding' = Total Due - Amount Paid.", colEnd - ColStart + 1);
             row++;
 
             int headerRow = row;
             WriteTableHeader(ws, row, ColStart, new[]
             {
                 "Flat No",
-                "Owner Name",
+                "Resident Name",
                 "Previous Balance",
                 "Monthly Charges",
-                "Total Due (Before Payment)",
+                "Total Due",
                 "Amount Paid",
                 "Outstanding",
                 "Status"
@@ -184,78 +181,165 @@ namespace SocietyLedger.Infrastructure.Services
             ws.SheetView.FreezeRows(row); // freeze through table header row
             row++;
 
-            int dataStart = row;
-            foreach (var flat in data.FlatDetails ?? new List<FlatDetailDto>())
+            var flatRows = data.FlatDetails ?? new List<FlatDetailDto>();
+            if (flatRows.Count == 0)
             {
-                var outstanding = flat.BalanceAmount;
-                bool isAlternate = (row - dataStart) % 2 == 1; // Alternate every other row
-
-                ws.Cell(row, ColStart + 0).Value = flat.FlatNo;
-                ws.Cell(row, ColStart + 1).Value = flat.OwnerName ?? "-";
-                ws.Cell(row, ColStart + 2).Value = flat.OpeningBalance;   // Previous Balance
-                ws.Cell(row, ColStart + 3).Value = flat.CurrentBill;      // Monthly Charges
-                ws.Cell(row, ColStart + 4).Value = flat.TotalDue;         // Total Due
-                ws.Cell(row, ColStart + 5).Value = flat.CurrentPaid;      // Amount Paid
-                ws.Cell(row, ColStart + 6).Value = outstanding;           // Outstanding
-                ws.Range(row, ColStart + 2, row, ColStart + 6).Style.NumberFormat.Format = AmountFormat;
-                ws.Range(row, ColStart + 2, row, ColStart + 6).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
-
-                if (flat.CurrentPaid > 0)
-                {
-                    ws.Cell(row, ColStart + 5).Style.Font.FontColor = ColourPaidText;
-                    ws.Cell(row, ColStart + 5).Style.Font.Bold = true;
-                }
-
-                if (outstanding > 0)
-                {
-                    ws.Cell(row, ColStart + 6).Style.Font.FontColor = ColourPendingText;
-                    ws.Cell(row, ColStart + 6).Style.Font.Bold = true;
-                }
-                else if (outstanding < 0)
-                {
-                    ws.Cell(row, ColStart + 6).Style.Font.FontColor = ColourPaidText;
-                    ws.Cell(row, ColStart + 6).Style.Font.Bold = true;
-                }
-
-                var statusCell = ws.Cell(row, ColStart + 7);
-                statusCell.Value = FormatMonthlyStatus(flat.Status);
-                statusCell.Style.Font.Bold = true;
-                statusCell.Style.Font.FontColor = GetMonthlyStatusColor(flat.Status, outstanding);
-                statusCell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-
-                ApplyRowBorder(ws, row, ColStart, colEnd, isAlternate);
-                row++;
+                row = WriteEmptyTableMessage(ws, row, ColStart, colEnd, "No flat payment data for this period.");
             }
-            int dataEnd = row - 1;
-
-            if (dataEnd >= dataStart)
+            else
             {
-                // Previous Balance (col+2) and Total Due (col+4) are not additive across flats — omit from totals.
-                ApplyTotalRow(ws, row, ColStart, colEnd, new Dictionary<int, string>
+                int dataStart = row;
+                foreach (var flat in flatRows)
                 {
-                    [ColStart + 3] = $"SUM({ws.Cell(dataStart, ColStart + 3).Address}:{ws.Cell(dataEnd, ColStart + 3).Address})",
-                    [ColStart + 5] = $"SUM({ws.Cell(dataStart, ColStart + 5).Address}:{ws.Cell(dataEnd, ColStart + 5).Address})",
-                    [ColStart + 6] = $"SUM({ws.Cell(dataStart, ColStart + 6).Address}:{ws.Cell(dataEnd, ColStart + 6).Address})",
+                    var outstanding = flat.BalanceAmount;
+                    bool isAlternate = (row - dataStart) % 2 == 1; // Alternate every other row
+
+                    ws.Cell(row, ColStart + 0).Value = flat.FlatNo;
+                    ws.Cell(row, ColStart + 1).Value = GetResidentDisplayName(flat.TenantName, flat.OwnerName);
+                    ws.Cell(row, ColStart + 2).Value = flat.OpeningBalance;   // Previous Balance
+                    ws.Cell(row, ColStart + 3).Value = flat.CurrentBill;      // Monthly Charges
+                    ws.Cell(row, ColStart + 4).Value = flat.TotalDue;         // Total Due
+                    ws.Cell(row, ColStart + 5).Value = flat.CurrentPaid;      // Amount Paid
+                    ws.Cell(row, ColStart + 6).Value = outstanding;           // Outstanding
+                    ws.Range(row, ColStart + 2, row, ColStart + 6).Style.NumberFormat.Format = AmountFormat;
+                    ws.Range(row, ColStart + 2, row, ColStart + 6).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+
+                    if (flat.CurrentPaid > 0)
+                    {
+                        ws.Cell(row, ColStart + 5).Style.Font.FontColor = ColourPaidText;
+                        ws.Cell(row, ColStart + 5).Style.Font.Bold = true;
+                    }
+
+                    if (outstanding > 0)
+                    {
+                        ws.Cell(row, ColStart + 6).Style.Font.FontColor = ColourPendingText;
+                        ws.Cell(row, ColStart + 6).Style.Font.Bold = true;
+                    }
+                    else if (outstanding < 0)
+                    {
+                        ws.Cell(row, ColStart + 6).Style.Font.FontColor = ColourPaidText;
+                        ws.Cell(row, ColStart + 6).Style.Font.Bold = true;
+                    }
+
+                    var statusCell = ws.Cell(row, ColStart + 7);
+                    statusCell.Value = FormatMonthlyStatus(flat.Status);
+                    statusCell.Style.Font.Bold = true;
+                    statusCell.Style.Font.FontColor = GetMonthlyStatusColor(flat.Status, outstanding);
+                    statusCell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+
+                    ApplyRowBorder(ws, row, ColStart, colEnd, isAlternate);
+                    row++;
+                }
+                int dataEnd = row - 1;
+
+                if (dataEnd >= dataStart)
+                {
+                    // Previous Balance (col+2) and Total Due (col+4) are not additive across flats — omit from totals.
+                    ApplyTotalRow(ws, row, ColStart, colEnd, new Dictionary<int, string>
+                    {
+                        [ColStart + 3] = $"SUM({ws.Cell(dataStart, ColStart + 3).Address}:{ws.Cell(dataEnd, ColStart + 3).Address})",
+                        [ColStart + 5] = $"SUM({ws.Cell(dataStart, ColStart + 5).Address}:{ws.Cell(dataEnd, ColStart + 5).Address})",
+                        [ColStart + 6] = $"SUM({ws.Cell(dataStart, ColStart + 6).Address}:{ws.Cell(dataEnd, ColStart + 6).Address})",
+                    });
+                    ws.Range(row, ColStart + 3, row, ColStart + 3).Style.NumberFormat.Format = AmountFormat;
+                    ws.Range(row, ColStart + 3, row, ColStart + 3).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+                    ws.Range(row, ColStart + 5, row, ColStart + 6).Style.NumberFormat.Format = AmountFormat;
+                    ws.Range(row, ColStart + 5, row, ColStart + 6).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+                    row++;
+                }
+            }
+
+            var otherIncomeRows = (data.IncomeDetails ?? new List<IncomeDetailDto>())
+                .OrderBy(i => i.DatePaid)
+                .ThenBy(i => i.CategoryName)
+                .ToList();
+
+            if (otherIncomeRows.Count > 0)
+            {
+                row += 2;
+                const int incomeColEnd = ColStart + 5; // columns C:H
+                var incomeHeaderRow = row;
+                ws.Range(row, ColStart, row, incomeColEnd).Merge();
+                var incomeTitle = "Society Other Income Details (Not Maintenance Dues)";
+                ws.Cell(row, ColStart).Value = incomeTitle;
+                ws.Cell(row, ColStart).Style.Font.Bold = true;
+                ws.Cell(row, ColStart).Style.Font.FontColor = XLColor.White;
+                ws.Cell(row, ColStart).Style.Fill.BackgroundColor = ColourSectionBg;
+                ws.Cell(row, ColStart).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
+                ws.Cell(row, ColStart).Style.Alignment.WrapText = true;
+                ws.Cell(row, ColStart).Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
+                ws.Cell(row, ColStart).Style.Border.OutsideBorderColor = ColourBorderDark;
+                ws.Row(row).Height = GetWrappedRowHeight(incomeTitle, incomeColEnd - ColStart + 1, 30);
+                row++;
+
+                WriteTableHeader(ws, row, ColStart, new[] { "Flat No", "Owner / Tenant", "Date", "Category", "Description", "Amount" });
+                int incomeDataStart = row + 1;
+                int incomeDataEnd = incomeDataStart - 1;
+                row++;
+
+                foreach (var income in otherIncomeRows)
+                {
+                    bool isAlternate = (row - incomeDataStart) % 2 == 1;
+                    ws.Cell(row, ColStart).Value = string.IsNullOrWhiteSpace(income.FlatNo) ? "-" : income.FlatNo;
+                    // Prefer tenant name (if present) for the resident column, else fallback to owner name
+                    var resident = string.IsNullOrWhiteSpace(income.TenantName)
+                        ? (string.IsNullOrWhiteSpace(income.OwnerName) ? "-" : income.OwnerName)
+                        : income.TenantName;
+                    ws.Cell(row, ColStart + 1).Value = resident;
+                    ws.Cell(row, ColStart + 2).Value = income.DatePaid.ToDateTime(TimeOnly.FromTimeSpan(TimeSpan.Zero));
+                    ws.Cell(row, ColStart + 2).Style.DateFormat.Format = "dd-mmm-yyyy";
+                    ws.Cell(row, ColStart + 3).Value = income.CategoryName;
+                    ws.Cell(row, ColStart + 4).Value = string.IsNullOrWhiteSpace(income.Description) ? "-" : income.Description;
+                    ws.Cell(row, ColStart + 4).Style.Alignment.WrapText = true;
+                    ws.Cell(row, ColStart + 4).Style.Alignment.Vertical = XLAlignmentVerticalValues.Top;
+                    ws.Cell(row, ColStart + 5).Value = income.Amount;
+                    ws.Cell(row, ColStart + 5).Style.NumberFormat.Format = AmountFormat;
+                    ws.Cell(row, ColStart + 5).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+                    ApplyRowBorder(ws, row, ColStart, incomeColEnd, isAlternate);
+                    incomeDataEnd = row;
+                    row++;
+                }
+
+                if (incomeDataEnd >= incomeDataStart)
+                {
+                    var total = otherIncomeRows.Sum(i => i.Amount);
+                    ApplyTotalRow(ws, row, ColStart, incomeColEnd, new Dictionary<int, string>
+                    {
+                        [ColStart + 5] = $"SUM({ws.Cell(incomeDataStart, ColStart + 5).Address}:{ws.Cell(incomeDataEnd, ColStart + 5).Address})",
+                    });
+                    ws.Cell(row, ColStart + 5).Value = total;
+                    ws.Cell(row, ColStart + 5).Style.NumberFormat.Format = AmountFormat;
+                    ws.Cell(row, ColStart + 5).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+                    row++;
+                }
+
+                ws.Range(incomeHeaderRow, ColStart, row - 1, incomeColEnd).SetAutoFilter();
+                ApplyPreferredColumnWidths(ws, new Dictionary<int, double>
+                {
+                    [ColStart + 0] = 12,
+                    [ColStart + 1] = 28,
+                    [ColStart + 2] = 16,
+                    [ColStart + 3] = 22,
+                    [ColStart + 4] = 38,
+                    [ColStart + 5] = 22,
                 });
-                ws.Range(row, ColStart + 3, row, ColStart + 3).Style.NumberFormat.Format = AmountFormat;
-                ws.Range(row, ColStart + 3, row, ColStart + 3).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
-                ws.Range(row, ColStart + 5, row, ColStart + 6).Style.NumberFormat.Format = AmountFormat;
-                ws.Range(row, ColStart + 5, row, ColStart + 6).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
-                row++;
             }
 
-            ws.Range(headerRow, ColStart, row - 1, colEnd).SetAutoFilter();
+            //if (flatRows.Count > 0)
+            //{
+            //    ws.Range(headerRow, ColStart, row - 1, colEnd).SetAutoFilter();
+            //}
             FinalizeSheet(ws, ColStart, colEnd);
             ApplyPreferredColumnWidths(ws, new Dictionary<int, double>
             {
                 [ColStart + 0] = 12, // Flat No
-                [ColStart + 1] = 24, // Owner Name
-                [ColStart + 2] = 16, // Previous Balance
-                [ColStart + 3] = 16, // Monthly Charges
-                [ColStart + 4] = 20, // Total Due
-                [ColStart + 5] = 16, // Amount Paid
-                [ColStart + 6] = 16, // Outstanding
-                [ColStart + 7] = 14, // Status
+                [ColStart + 1] = 30, // Resident Name
+                [ColStart + 2] = 20, // Previous Balance
+                [ColStart + 3] = 20, // Monthly Charges
+                [ColStart + 4] = 30, // Total Due
+                [ColStart + 5] = 20, // Amount Paid
+                [ColStart + 6] = 20, // Outstanding
+                [ColStart + 7] = 16, // Status
             });
         }
 
@@ -303,41 +387,50 @@ namespace SocietyLedger.Infrastructure.Services
                 .OrderBy(e => e.DateIncurred)
                 .ThenBy(e => e.CategoryName)
                 .ToList();
-            int dataStart = row;
-            foreach (var exp in expenses)
-            {
-                bool isAlternate = (row - dataStart) % 2 == 1; // Alternate every other row
 
-                ws.Cell(row, ColStart).Value = exp.DateIncurred.ToDateTime(TimeOnly.MinValue);
-                ws.Cell(row, ColStart).Style.DateFormat.Format = "dd-mmm-yyyy";
-                ws.Cell(row, ColStart + 1).Value = exp.CategoryName;
-                ws.Cell(row, ColStart + 2).Value = string.IsNullOrWhiteSpace(exp.Description) ? "-" : exp.Description;
-                ws.Cell(row, ColStart + 2).Style.Alignment.WrapText = true;
-                ws.Cell(row, ColStart + 2).Style.Alignment.Vertical = XLAlignmentVerticalValues.Top;
-                ws.Cell(row, ColStart + 3).Value = exp.TotalAmount;
-                ws.Cell(row, ColStart + 3).Style.NumberFormat.Format = AmountFormat;
-                ws.Cell(row, ColStart + 3).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
-                ApplyRowBorder(ws, row, ColStart, dataColEnd, isAlternate);
-                row++;
+            if (expenses.Count == 0)
+            {
+                row = WriteEmptyTableMessage(ws, row, ColStart, dataColEnd, "No expense entries recorded for this period.");
             }
-            int dataEnd = row - 1;
-
-            if (dataEnd >= dataStart)
+            else
             {
-                // Compute explicit total to ensure the value is visible in the generated file
-                var total = expenses.Sum(e => e.TotalAmount);
-                ApplyTotalRow(ws, row, ColStart, dataColEnd, new Dictionary<int, string>
+                int dataStart = row;
+                foreach (var exp in expenses)
                 {
-                    // keep a formula for Excel if desired, but we'll overwrite it with the computed value
-                    [ColStart + 3] = $"SUM({ws.Cell(dataStart, ColStart + 3).Address}:{ws.Cell(dataEnd, ColStart + 3).Address})",
-                });
-                // Overwrite formula with computed numeric value so the amount always shows
-                ws.Cell(row, ColStart + 3).Value = total;
-                ws.Cell(row, ColStart + 3).Style.NumberFormat.Format = AmountFormat;
-                ws.Cell(row, ColStart + 3).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
-            }
+                    bool isAlternate = (row - dataStart) % 2 == 1; // Alternate every other row
 
-            ws.Range(headerRow, ColStart, row, dataColEnd).SetAutoFilter();
+                    ws.Cell(row, ColStart).Value = exp.DateIncurred.ToDateTime(TimeOnly.MinValue);
+                    ws.Cell(row, ColStart).Style.DateFormat.Format = "dd-mmm-yyyy";
+                    ws.Cell(row, ColStart + 1).Value = exp.CategoryName;
+                    ws.Cell(row, ColStart + 2).Value = string.IsNullOrWhiteSpace(exp.Description) ? "-" : exp.Description;
+                    ws.Cell(row, ColStart + 2).Style.Alignment.WrapText = true;
+                    ws.Cell(row, ColStart + 2).Style.Alignment.Vertical = XLAlignmentVerticalValues.Top;
+                    ws.Cell(row, ColStart + 3).Value = exp.TotalAmount;
+                    ws.Cell(row, ColStart + 3).Style.NumberFormat.Format = AmountFormat;
+                    ws.Cell(row, ColStart + 3).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+                    ApplyRowBorder(ws, row, ColStart, dataColEnd, isAlternate);
+                    row++;
+                }
+                int dataEnd = row - 1;
+
+                if (dataEnd >= dataStart)
+                {
+                    // Compute explicit total to ensure the value is visible in the generated file
+                    var total = expenses.Sum(e => e.TotalAmount);
+                    ApplyTotalRow(ws, row, ColStart, dataColEnd, new Dictionary<int, string>
+                    {
+                        // keep a formula for Excel if desired, but we'll overwrite it with the computed value
+                        [ColStart + 3] = $"SUM({ws.Cell(dataStart, ColStart + 3).Address}:{ws.Cell(dataEnd, ColStart + 3).Address})",
+                    });
+                    // Overwrite formula with computed numeric value so the amount always shows
+                    ws.Cell(row, ColStart + 3).Value = total;
+                    ws.Cell(row, ColStart + 3).Style.NumberFormat.Format = AmountFormat;
+                    ws.Cell(row, ColStart + 3).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+                    row++;
+                }
+
+                ws.Range(headerRow, ColStart, row - 1, dataColEnd).SetAutoFilter();
+            }
 
             FinalizeSheet(ws, ColStart, colEnd);
             ApplyPreferredColumnWidths(ws, new Dictionary<int, double>
@@ -363,6 +456,8 @@ namespace SocietyLedger.Infrastructure.Services
 
             row = WriteReportTitle(ws, row, ColStart, colEnd, data.SocietyName, $"Annual Report - {data.YearLabel}");
             ws.SheetView.FreezeRows(2); // freeze branded title rows 1-2
+
+            row += 1;
 
             // Fund Position
             row = WriteSectionHeader(ws, row, ColStart, colEnd, "Fund Position");
@@ -427,51 +522,59 @@ namespace SocietyLedger.Infrastructure.Services
             ws.SheetView.FreezeRows(row); // freeze through table header row
             row++;
 
-            int dataStart = row;
-            foreach (var m in data.MonthSummary ?? new List<MonthSummaryDto>())
+            var monthlySummary = data.MonthSummary ?? new List<MonthSummaryDto>();
+            if (monthlySummary.Count == 0)
             {
-                bool isAlternate = (row - dataStart) % 2 == 1; // Alternate every other row
-
-                ws.Cell(row, ColStart + 0).Value = m.MonthLabel;
-                ws.Cell(row, ColStart + 1).Value = m.Billed;
-                ws.Cell(row, ColStart + 2).Value = m.Collected;
-                ws.Cell(row, ColStart + 3).Value = m.Expenses;
-                ws.Cell(row, ColStart + 4).Value = m.Net;
-                ws.Range(row, ColStart + 1, row, ColStart + 4).Style.NumberFormat.Format = AmountFormat;
-                ws.Range(row, ColStart + 1, row, ColStart + 4).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
-
-                ws.Cell(row, ColStart + 4).Style.Font.Bold = true;
-
-                // Use MonthStatus from SQL if present; fall back to deriving from Net
-                var rawStatus = m.MonthStatus?.Trim().ToLowerInvariant();
-                bool isSurplus = rawStatus == "surplus" || (rawStatus == null && m.Net >= 0);
-                var statusCell = ws.Cell(row, ColStart + 5);
-                statusCell.Value = isSurplus ? "Surplus" : "Deficit";
-                statusCell.Style.Font.Bold = true;
-                statusCell.Style.Font.FontColor = isSurplus ? ColourPaidText : ColourPendingText;
-                statusCell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-
-                ApplyRowBorder(ws, row, ColStart, colEnd, isAlternate);
-                row++;
+                row = WriteEmptyTableMessage(ws, row, ColStart, colEnd, "No monthly summary data for this year.");
             }
-            int dataEnd = row - 1;
-
-            if (dataEnd >= dataStart)
+            else
             {
-                // Billed (col+1), Collected (col+2), Expenses (col+3), Net (col+4) are summable
-                ApplyTotalRow(ws, row, ColStart, colEnd, new Dictionary<int, string>
+                int dataStart = row;
+                foreach (var m in monthlySummary)
                 {
-                    [ColStart + 1] = $"SUM({ws.Cell(dataStart, ColStart + 1).Address}:{ws.Cell(dataEnd, ColStart + 1).Address})",
-                    [ColStart + 2] = $"SUM({ws.Cell(dataStart, ColStart + 2).Address}:{ws.Cell(dataEnd, ColStart + 2).Address})",
-                    [ColStart + 3] = $"SUM({ws.Cell(dataStart, ColStart + 3).Address}:{ws.Cell(dataEnd, ColStart + 3).Address})",
-                    [ColStart + 4] = $"SUM({ws.Cell(dataStart, ColStart + 4).Address}:{ws.Cell(dataEnd, ColStart + 4).Address})",
-                });
-                ws.Range(row, ColStart + 1, row, ColStart + 4).Style.NumberFormat.Format = AmountFormat;
-                ws.Range(row, ColStart + 1, row, ColStart + 4).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
-                row++;
-            }
+                    bool isAlternate = (row - dataStart) % 2 == 1; // Alternate every other row
 
-            ws.Range(headerRow, ColStart, row - 1, colEnd).SetAutoFilter();
+                    ws.Cell(row, ColStart + 0).Value = m.MonthLabel;
+                    ws.Cell(row, ColStart + 1).Value = m.Billed;
+                    ws.Cell(row, ColStart + 2).Value = m.Collected;
+                    ws.Cell(row, ColStart + 3).Value = m.Expenses;
+                    ws.Cell(row, ColStart + 4).Value = m.Net;
+                    ws.Range(row, ColStart + 1, row, ColStart + 4).Style.NumberFormat.Format = AmountFormat;
+                    ws.Range(row, ColStart + 1, row, ColStart + 4).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+
+                    ws.Cell(row, ColStart + 4).Style.Font.Bold = true;
+
+                    // Use MonthStatus from SQL if present; fall back to deriving from Net
+                    var rawStatus = m.MonthStatus?.Trim().ToLowerInvariant();
+                    bool isSurplus = rawStatus == "surplus" || (rawStatus == null && m.Net >= 0);
+                    var statusCell = ws.Cell(row, ColStart + 5);
+                    statusCell.Value = isSurplus ? "Surplus" : "Deficit";
+                    statusCell.Style.Font.Bold = true;
+                    statusCell.Style.Font.FontColor = isSurplus ? ColourPaidText : ColourPendingText;
+                    statusCell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+
+                    ApplyRowBorder(ws, row, ColStart, colEnd, isAlternate);
+                    row++;
+                }
+                int dataEnd = row - 1;
+
+                if (dataEnd >= dataStart)
+                {
+                    // Billed (col+1), Collected (col+2), Expenses (col+3), Net (col+4) are summable
+                    ApplyTotalRow(ws, row, ColStart, colEnd, new Dictionary<int, string>
+                    {
+                        [ColStart + 1] = $"SUM({ws.Cell(dataStart, ColStart + 1).Address}:{ws.Cell(dataEnd, ColStart + 1).Address})",
+                        [ColStart + 2] = $"SUM({ws.Cell(dataStart, ColStart + 2).Address}:{ws.Cell(dataEnd, ColStart + 2).Address})",
+                        [ColStart + 3] = $"SUM({ws.Cell(dataStart, ColStart + 3).Address}:{ws.Cell(dataEnd, ColStart + 3).Address})",
+                        [ColStart + 4] = $"SUM({ws.Cell(dataStart, ColStart + 4).Address}:{ws.Cell(dataEnd, ColStart + 4).Address})",
+                    });
+                    ws.Range(row, ColStart + 1, row, ColStart + 4).Style.NumberFormat.Format = AmountFormat;
+                    ws.Range(row, ColStart + 1, row, ColStart + 4).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+                    row++;
+                }
+
+                ws.Range(headerRow, ColStart, row - 1, colEnd).SetAutoFilter();
+            }
             FinalizeSheet(ws, ColStart, colEnd);
             ApplyPreferredColumnWidths(ws, new Dictionary<int, double>
             {
@@ -505,41 +608,49 @@ namespace SocietyLedger.Infrastructure.Services
                 .ThenBy(e => e.CategoryName)
                 .ToList();
 
-            int dataStart = row;
-            foreach (var exp in expenses)
+            if (expenses.Count == 0)
             {
-                bool isAlternate = (row - dataStart) % 2 == 1; // Alternate every other row
-
-                ws.Cell(row, ColStart).Value = exp.DateIncurred.ToDateTime(TimeOnly.MinValue);
-                ws.Cell(row, ColStart).Style.DateFormat.Format = "dd-mmm-yyyy";
-                ws.Cell(row, ColStart + 1).Value = exp.CategoryName;
-                ws.Cell(row, ColStart + 2).Value = string.IsNullOrWhiteSpace(exp.Description) ? "-" : exp.Description;
-                ws.Cell(row, ColStart + 2).Style.Alignment.WrapText = true;
-                ws.Cell(row, ColStart + 2).Style.Alignment.Vertical = XLAlignmentVerticalValues.Top;
-                ws.Cell(row, ColStart + 3).Value = exp.TotalAmount;
-                ws.Cell(row, ColStart + 3).Style.NumberFormat.Format = AmountFormat;
-                ws.Cell(row, ColStart + 3).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
-                ApplyRowBorder(ws, row, ColStart, dataColEnd, isAlternate);
-                row++;
+                row = WriteEmptyTableMessage(ws, row, ColStart, dataColEnd, "No expense entries recorded for this year.");
             }
-            int dataEnd = row - 1;
-
-            if (dataEnd >= dataStart)
+            else
             {
-                // Compute explicit total to ensure the value is visible in the generated file
-                var total = expenses.Sum(e => e.TotalAmount);
-                ApplyTotalRow(ws, row, ColStart, dataColEnd, new Dictionary<int, string>
+                int dataStart = row;
+                foreach (var exp in expenses)
                 {
-                    // keep a formula for Excel if desired, but we'll overwrite it with the computed value
-                    [ColStart + 3] = $"SUM({ws.Cell(dataStart, ColStart + 3).Address}:{ws.Cell(dataEnd, ColStart + 3).Address})",
-                });
-                // Overwrite formula with computed numeric value so the amount always shows
-                ws.Cell(row, ColStart + 3).Value = total;
-                ws.Cell(row, ColStart + 3).Style.NumberFormat.Format = AmountFormat;
-                ws.Cell(row, ColStart + 3).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
-            }
+                    bool isAlternate = (row - dataStart) % 2 == 1; // Alternate every other row
 
-            ws.Range(headerRow, ColStart, row, dataColEnd).SetAutoFilter();
+                    ws.Cell(row, ColStart).Value = exp.DateIncurred.ToDateTime(TimeOnly.MinValue);
+                    ws.Cell(row, ColStart).Style.DateFormat.Format = "dd-mmm-yyyy";
+                    ws.Cell(row, ColStart + 1).Value = exp.CategoryName;
+                    ws.Cell(row, ColStart + 2).Value = string.IsNullOrWhiteSpace(exp.Description) ? "-" : exp.Description;
+                    ws.Cell(row, ColStart + 2).Style.Alignment.WrapText = true;
+                    ws.Cell(row, ColStart + 2).Style.Alignment.Vertical = XLAlignmentVerticalValues.Top;
+                    ws.Cell(row, ColStart + 3).Value = exp.TotalAmount;
+                    ws.Cell(row, ColStart + 3).Style.NumberFormat.Format = AmountFormat;
+                    ws.Cell(row, ColStart + 3).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+                    ApplyRowBorder(ws, row, ColStart, dataColEnd, isAlternate);
+                    row++;
+                }
+                int dataEnd = row - 1;
+
+                if (dataEnd >= dataStart)
+                {
+                    // Compute explicit total to ensure the value is visible in the generated file
+                    var total = expenses.Sum(e => e.TotalAmount);
+                    ApplyTotalRow(ws, row, ColStart, dataColEnd, new Dictionary<int, string>
+                    {
+                        // keep a formula for Excel if desired, but we'll overwrite it with the computed value
+                        [ColStart + 3] = $"SUM({ws.Cell(dataStart, ColStart + 3).Address}:{ws.Cell(dataEnd, ColStart + 3).Address})",
+                    });
+                    // Overwrite formula with computed numeric value so the amount always shows
+                    ws.Cell(row, ColStart + 3).Value = total;
+                    ws.Cell(row, ColStart + 3).Style.NumberFormat.Format = AmountFormat;
+                    ws.Cell(row, ColStart + 3).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+                    row++;
+                }
+
+                ws.Range(headerRow, ColStart, row - 1, dataColEnd).SetAutoFilter();
+            }
 
             FinalizeSheet(ws, ColStart, colEnd);
             ApplyPreferredColumnWidths(ws, new Dictionary<int, double>
@@ -580,19 +691,24 @@ namespace SocietyLedger.Infrastructure.Services
         private static int WriteReportTitle(IXLWorksheet ws, int row, int colStart, int colEnd,
             string societyName, string subtitle)
         {
+            var displaySocietyName = string.IsNullOrWhiteSpace(societyName)
+                ? "Society"
+                : $"{BuildingIcon} {societyName.Trim()}";
+
             // Row 1: Society Name — merged C:colEnd
             ws.Range(row, colStart, row, colEnd).Merge();
             var titleCell = ws.Cell(row, colStart);
-            titleCell.Value = societyName;
+            titleCell.Value = displaySocietyName;
             titleCell.Style.Font.FontSize = TitleFontSize;
             titleCell.Style.Font.Bold = true;
             titleCell.Style.Font.FontColor = XLColor.White;
             titleCell.Style.Fill.BackgroundColor = ColourHeaderBg;
             titleCell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
             titleCell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+            titleCell.Style.Alignment.WrapText = true;
             titleCell.Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
             titleCell.Style.Border.OutsideBorderColor = ColourBorderDark;
-            ws.Row(row).Height = 40;
+            ws.Row(row).Height = GetWrappedRowHeight(displaySocietyName, colEnd - colStart + 1, 38);
             row++;
 
             // Row 2: Subtitle — merged C:colEnd
@@ -605,12 +721,81 @@ namespace SocietyLedger.Infrastructure.Services
             subCell.Style.Fill.BackgroundColor = ColourSectionBg;
             subCell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
             subCell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+            subCell.Style.Alignment.WrapText = true;
             subCell.Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
             subCell.Style.Border.OutsideBorderColor = ColourBorderDark;
-            ws.Row(row).Height = 28;
+            ws.Row(row).Height = GetWrappedRowHeight(subtitle, colEnd - colStart + 1, 28);
             row += 2; // blank spacing after title
 
             return row;
+        }
+
+        private static int WriteReportMetadata(IXLWorksheet ws, int row, int colStart, int colEnd, string societyName, string periodLabel, string reportType)
+        {
+            var metadataText = $"{reportType} • {societyName} • {periodLabel} • Exported: {DateTime.Now:dd MMM yyyy, HH:mm}";
+            ws.Range(row, colStart, row, colEnd).Merge();
+            var cell = ws.Cell(row, colStart);
+            cell.Value = metadataText;
+            cell.Style.Font.FontSize = 9;
+            cell.Style.Font.Italic = true;
+            cell.Style.Font.FontColor = XLColor.DarkGray;
+            cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#F9FAFB");
+            cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
+            cell.Style.Alignment.WrapText = true;
+            cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+            cell.Style.Border.OutsideBorderColor = ColourBorder;
+            ws.Row(row).Height = 26;
+            return row + 1;
+        }
+
+        private static int WriteEmptyTableMessage(IXLWorksheet ws, int row, int colStart, int colEnd, string message)
+        {
+            ws.Range(row, colStart, row, colEnd).Merge();
+            var cell = ws.Cell(row, colStart);
+            cell.Value = message;
+            cell.Style.Font.Bold = true;
+            cell.Style.Font.FontColor = ColourPendingText;
+            cell.Style.Fill.BackgroundColor = ColourPendingBg;
+            cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
+            cell.Style.Alignment.WrapText = true;
+            cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+            cell.Style.Border.OutsideBorderColor = ColourBorder;
+            ws.Row(row).Height = GetWrappedRowHeight(message, colEnd - colStart + 1, 26);
+            return row + 1;
+        }
+
+        private static double GetWrappedRowHeight(string text, int mergedColumnCount, double minimumHeight = 24)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return minimumHeight;
+
+            var columnWidthFactor = Math.Max(16, mergedColumnCount * 10.5);
+            var estimatedLines = Math.Max(1, (int)Math.Ceiling(text.Length / (double)columnWidthFactor));
+            return Math.Max(minimumHeight, estimatedLines * 15.5 + 8);
+        }
+
+        private static void WriteReportFooter(IXLWorksheet ws, int colStart, int colEnd, string note)
+        {
+            var lastRow = ws.LastRowUsed();
+            var footerRow = lastRow is null ? 1 : lastRow.RowNumber() + 1;
+            ws.Range(footerRow, colStart, footerRow, colEnd).Merge();
+            var cell = ws.Cell(footerRow, colStart);
+            cell.Value = note;
+            cell.Style.Font.FontSize = 9;
+            cell.Style.Font.Italic = true;
+            cell.Style.Font.FontColor = XLColor.DarkGray;
+            cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#F9FAFB");
+            cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
+            cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+            cell.Style.Border.OutsideBorderColor = ColourBorder;
+            ws.Row(footerRow).Height = 18;
+        }
+
+        private static string GetResidentDisplayName(string? tenantName, string? ownerName)
+        {
+            if (!string.IsNullOrWhiteSpace(tenantName)) return tenantName.Trim();
+            if (!string.IsNullOrWhiteSpace(ownerName)) return ownerName.Trim();
+            return "-";
         }
 
         private static int WriteSectionHeader(IXLWorksheet ws, int row, int colStart, int colEnd, string title)
@@ -624,9 +809,10 @@ namespace SocietyLedger.Infrastructure.Services
             cell.Style.Fill.BackgroundColor = ColourSectionBg;
             cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
             cell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+            cell.Style.Alignment.WrapText = true;
             cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
             cell.Style.Border.OutsideBorderColor = ColourBorderDark;
-            ws.Row(row).Height = 22;
+            ws.Row(row).Height = GetWrappedRowHeight(title, colEnd - colStart + 1, 28);
             return row + 1;
         }
 
@@ -668,8 +854,10 @@ namespace SocietyLedger.Infrastructure.Services
             cell.Style.Fill.BackgroundColor = isWarning ? ColourPendingBg : ColourPaidBg;
             cell.Style.Font.Italic = true;
             cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
+            cell.Style.Alignment.WrapText = true;
             cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
             cell.Style.Border.OutsideBorderColor = ColourBorder;
+            ws.Row(row).Height = GetWrappedRowHeight(alert, colEnd - colStart + 1, 26);
             return row + 1;
         }
 
@@ -732,8 +920,8 @@ namespace SocietyLedger.Infrastructure.Services
             ws.Columns(colStart, colEnd).AdjustToContents();
             for (int i = colStart; i <= colEnd; i++)
             {
-                var width = ws.Column(i).Width + 1.5;
-                ws.Column(i).Width = Math.Min(55, Math.Max(10, width));
+                var width = ws.Column(i).Width + 2.5;
+                ws.Column(i).Width = Math.Min(140, Math.Max(12, width));
             }
         }
 

@@ -39,6 +39,10 @@ namespace SocietyLedger.Application.DTOs.Reports
         [JsonProperty("expenses")]
         [STJJsonPropertyName("expenses")]
         public List<ExpenseDto> Expenses { get; set; } = new();
+
+        [JsonProperty("income_details")]
+        [STJJsonPropertyName("income_details")]
+        public List<IncomeDetailDto> IncomeDetails { get; set; } = new();
     }
 
     public class FundPositionDto
@@ -101,6 +105,11 @@ namespace SocietyLedger.Application.DTOs.Reports
         [STJJsonConverter(typeof(ZeroOnNullDecimalConverter))]
         public decimal PendingAmount { get; set; }
 
+        [JsonProperty("other_income")]
+        [STJJsonPropertyName("other_income")]
+        [STJJsonConverter(typeof(ZeroOnNullDecimalConverter))]
+        public decimal OtherIncome { get; set; }
+
         [JsonProperty("collection_efficiency")]
         [STJJsonPropertyName("collection_efficiency")]
         [STJJsonConverter(typeof(ZeroOnNullDecimalConverter))]
@@ -116,6 +125,10 @@ namespace SocietyLedger.Application.DTOs.Reports
         [JsonProperty("owner_name")]
         [STJJsonPropertyName("owner_name")]
         public string? OwnerName { get; set; }
+
+        [JsonProperty("tenant_name")]
+        [STJJsonPropertyName("tenant_name")]
+        public string? TenantName { get; set; }
 
         [JsonProperty("opening_balance")]
         [STJJsonPropertyName("opening_balance")]
@@ -197,6 +210,7 @@ namespace SocietyLedger.Application.DTOs.Reports
     {
         [JsonProperty("date_incurred")]
         [STJJsonPropertyName("date_incurred")]
+        [STJJsonConverter(typeof(DateOnlyJsonConverter))]
         public DateOnly DateIncurred { get; set; }
 
         [JsonProperty("category_name")]
@@ -211,6 +225,71 @@ namespace SocietyLedger.Application.DTOs.Reports
         [STJJsonPropertyName("total_amount")]
         [STJJsonConverter(typeof(ZeroOnNullDecimalConverter))]
         public decimal TotalAmount { get; set; }
+    }
+
+    public class IncomeDetailDto
+    {
+        [JsonProperty("flat_no")]
+        [STJJsonPropertyName("flat_no")]
+        public string? FlatNo { get; set; }
+
+        [JsonProperty("owner_name")]
+        [STJJsonPropertyName("owner_name")]
+        public string? OwnerName { get; set; }
+
+        [JsonProperty("tenant_name")]
+        [STJJsonPropertyName("tenant_name")]
+        public string? TenantName { get; set; }
+
+        [JsonProperty("date_paid")]
+        [STJJsonPropertyName("date_paid")]
+        [STJJsonConverter(typeof(DateOnlyJsonConverter))]
+        public DateOnly DatePaid { get; set; }
+
+        [JsonProperty("category_name")]
+        [STJJsonPropertyName("category_name")]
+        public string CategoryName { get; set; } = string.Empty;
+
+        [JsonProperty("description")]
+        [STJJsonPropertyName("description")]
+        public string? Description { get; set; }
+
+        [JsonProperty("amount")]
+        [STJJsonPropertyName("amount")]
+        [STJJsonConverter(typeof(ZeroOnNullDecimalConverter))]
+        public decimal Amount { get; set; }
+    }
+
+    public sealed class DateOnlyJsonConverter : System.Text.Json.Serialization.JsonConverter<DateOnly>
+    {
+        public override DateOnly Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            if (reader.TokenType == JsonTokenType.Null)
+                return default;
+
+            if (reader.TokenType == JsonTokenType.String)
+            {
+                var value = reader.GetString();
+                if (string.IsNullOrWhiteSpace(value))
+                    return default;
+
+                if (DateOnly.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var parsedDate))
+                    return parsedDate;
+
+                if (DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var parsedDateTime))
+                    return DateOnly.FromDateTime(parsedDateTime);
+
+                if (DateTime.TryParse(value, CultureInfo.CurrentCulture, DateTimeStyles.AssumeLocal, out parsedDateTime))
+                    return DateOnly.FromDateTime(parsedDateTime);
+            }
+
+            throw new System.Text.Json.JsonException($"Unable to parse DateOnly value from token type {reader.TokenType}.");
+        }
+
+        public override void Write(Utf8JsonWriter writer, DateOnly value, JsonSerializerOptions options)
+        {
+            writer.WriteStringValue(value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+        }
     }
 
     public sealed class ZeroOnNullDecimalConverter : System.Text.Json.Serialization.JsonConverter<decimal>

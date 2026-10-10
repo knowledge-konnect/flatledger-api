@@ -12,8 +12,8 @@
     "Issuer": "flatledger-dev",
     "Audience": "flatledger-frontend",
     "Key": "YOUR_LOCAL_32_PLUS_BYTE_SECRET_HERE_BASE64_OR_RAW",
-    "AccessTokenExpirationMinutes": 15,
-    "RefreshTokenExpirationDays": 30
+    "AccessTokenExpirationMinutes": 30,
+    "RefreshTokenExpirationDays": 7
   },
   "Razorpay": {
     "KeyId": "rzp_test_xxxxx",

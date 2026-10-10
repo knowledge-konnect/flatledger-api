@@ -78,6 +78,7 @@ namespace SocietyLedger.Infrastructure.Services
             var data = await _reportRepo.GetMonthlyReportDataAsync(societyId, year, month, ct);
             if (string.IsNullOrWhiteSpace(data.SocietyName))
                 throw new SocietyLedger.Domain.Exceptions.NotFoundException("Society", societyId.ToString());
+
             var bytes = _exportService.GenerateMonthlyReport(data);
             var monthName = new DateTime(year, month, 1).ToString("MMMM");
             var safeName = SanitizeFileName(data.SocietyName);

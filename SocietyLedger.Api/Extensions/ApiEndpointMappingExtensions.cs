@@ -30,6 +30,7 @@ public static class ApiEndpointMappingExtensions
         api.MapGroup("/invoices").MapInvoiceRoutes("Invoices", versionSet);
         api.MapGroup("/flats").MapFlatRoutes("Flats", versionSet);
         api.MapGroup("/maintenance-payments").MapMaintenancePaymentRoutes("MaintenancePayments", versionSet);
+        api.MapGroup("/income-payments").MapIncomePaymentRoutes("IncomePayments", versionSet);
 
         return app;
     }

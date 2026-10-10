@@ -74,18 +74,38 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                     ReferenceNumber = mp.reference_number,
                     ReceiptUrl = mp.receipt_url,
                     Notes = mp.notes,
+                    Category = mp.category,
                     RecordedBy = mp.recorded_by,
                     RecordedByName = mp.recorded_byNavigation != null ? mp.recorded_byNavigation.name : null,
                     CreatedAt = mp.created_at,
                     BillPublicId = mp.bill != null ? mp.bill.public_id : null,
                     Period = mp.payment_date.ToString("yyyy-MM"),
-                    BillStatus = mp.bill != null ? mp.bill.status_code : null,
+                    BillStatus = ResolveBillStatus(mp.bill != null ? mp.bill.status_code : null, mp.amount, mp.bill != null && mp.bill.public_id != Guid.Empty),
                     OutstandingAfterPayment = mp.outstanding_after_payment
                 })
                 .AsNoTracking()
                 .ToListAsync();
 
             return payments;
+        }
+
+        private static string? ResolveBillStatus(string? billStatus, decimal amount, bool hasLinkedBill)
+        {
+            if (!hasLinkedBill)
+                return null;
+
+            var normalized = (billStatus ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(normalized))
+                return amount > 0m ? "paid" : null;
+
+            if (string.Equals(normalized, "paid", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "partial", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "overdue", StringComparison.OrdinalIgnoreCase))
+                return normalized.ToLowerInvariant();
+
+            // Some older rows have a stale bill status of 'unpaid' even after an allocation exists.
+            // The payment amount itself is authoritative evidence that the bill has been settled or partially settled.
+            return amount > 0m ? "paid" : normalized.ToLowerInvariant();
         }
 
         public async Task<IEnumerable<MaintenancePaymentEntity>> GetByFlatPublicIdAsync(Guid flatPublicId, long societyId)
@@ -128,6 +148,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                 reference_number = payment.ReferenceNumber,
                 receipt_url = payment.ReceiptUrl,
                 notes = payment.Notes,
+                category = payment.Category,
                 recorded_by = payment.RecordedBy,
                 public_id = Guid.NewGuid(),
                 created_at = DateTime.UtcNow
@@ -210,6 +231,9 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
 
         private MaintenancePaymentEntity MapToDto(maintenance_payment payment)
         {
+            var billPublicId = payment.bill?.public_id;
+            var billStatus = ResolveBillStatus(payment.bill?.status_code, payment.amount, billPublicId.HasValue);
+
             return new MaintenancePaymentEntity
             {
                 PublicId = payment.public_id,
@@ -224,12 +248,13 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                 ReferenceNumber = payment.reference_number,
                 ReceiptUrl = payment.receipt_url,
                 Notes = payment.notes,
+                Category = payment.category,
                 RecordedBy = payment.recorded_by,
                 RecordedByName = payment.recorded_byNavigation?.name,
                 CreatedAt = payment.created_at,
-                BillPublicId = payment.bill?.public_id,
-                Period = payment.bill?.period,
-                BillStatus = payment.bill?.status_code,
+                BillPublicId = billPublicId,
+                Period = payment.bill?.period ?? payment.payment_date.ToString("yyyy-MM"),
+                BillStatus = billStatus,
                 OutstandingAfterPayment = payment.outstanding_after_payment
             };
         }

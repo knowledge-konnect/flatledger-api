@@ -10,14 +10,15 @@ namespace SocietyLedger.Application.DTOs.MaintenancePayment
     /// <c>Idempotency-Key</c> header, falling back to a generated UUID.
     /// </summary>
     public record MaintenancePaymentRequest(
-        Guid     FlatPublicId,
-        decimal  Amount,
+        Guid FlatPublicId,
+        decimal Amount,
         DateTime PaymentDate,
-        string   PaymentModeCode,
-        string?  ReferenceNumber,
-        string?  ReceiptUrl,
-        string?  Notes,
-        string?  IdempotencyKey = null
+        string PaymentModeCode,
+        string? ReferenceNumber,
+        string? ReceiptUrl,
+        string? Notes,
+        string? Category,
+        string? IdempotencyKey = null
     );
 
     /// <summary>
@@ -26,25 +27,26 @@ namespace SocietyLedger.Application.DTOs.MaintenancePayment
     /// Caller must supply an <c>Idempotency-Key</c> header.
     /// </summary>
     public record CreateMaintenancePaymentRequest(
-        Guid     FlatPublicId,
-        decimal  Amount,
+        Guid FlatPublicId,
+        decimal Amount,
         DateTime PaymentDate,
-        string   PaymentModeCode,
-        string?  ReferenceNumber,
-        string?  ReceiptUrl,
-        string?  Notes
+        string PaymentModeCode,
+        string? ReferenceNumber,
+        string? ReceiptUrl,
+        string? Notes,
+        string? Category
     );
 
     /// <summary>
     /// All fields are optional — only supplied fields are updated.
     /// </summary>
     public record UpdateMaintenancePaymentRequest(
-        decimal?  Amount,
+        decimal? Amount,
         DateTime? PaymentDate,
-        string?   PaymentModeCode,
-        string?   ReferenceNumber,
-        string?   ReceiptUrl,
-        string?   Notes
+        string? PaymentModeCode,
+        string? ReferenceNumber,
+        string? ReceiptUrl,
+        string? Notes
     );
 
     // =========================================================================
@@ -62,41 +64,42 @@ namespace SocietyLedger.Application.DTOs.MaintenancePayment
     public record MaintenancePaymentResponse
     {
         // Identity — populated on reads; null on the create/allocate response
-        public Guid?     PublicId        { get; init; }
-        public Guid?     SocietyPublicId { get; init; }
-        public Guid?     FlatPublicId    { get; init; }
-        public string?   FlatNumber      { get; init; }
+        public Guid? PublicId { get; init; }
+        public Guid? SocietyPublicId { get; init; }
+        public Guid? FlatPublicId { get; init; }
+        public string? FlatNumber { get; init; }
 
         // Payment details
-        public decimal?  Amount          { get; init; }
-        public DateTime? PaymentDate     { get; init; }
-        public string?   PaymentModeName { get; init; }
-        public string?   ReferenceNumber { get; init; }
-        public string?   ReceiptUrl      { get; init; }
-        public string?   Notes           { get; init; }
-        public string?   RecordedByName  { get; init; }
-        public DateTime? CreatedAt       { get; init; }
+        public decimal? Amount { get; init; }
+        public DateTime? PaymentDate { get; init; }
+        public string? PaymentModeName { get; init; }
+        public string? ReferenceNumber { get; init; }
+        public string? ReceiptUrl { get; init; }
+        public string? Notes { get; init; }
+        public string? Category { get; init; }
+        public string? RecordedByName { get; init; }
+        public DateTime? CreatedAt { get; init; }
 
         // Allocation summary
-        public decimal                           TotalPaid        { get; init; }
-        public List<MaintenancePaymentAllocation> Allocations     { get; init; } = [];
-        public decimal                           RemainingAdvance { get; init; }
+        public decimal TotalPaid { get; init; }
+        public List<MaintenancePaymentAllocation> Allocations { get; init; } = [];
+        public decimal RemainingAdvance { get; init; }
         /// <summary>
         /// Status of the linked bill after this payment was applied (e.g. "unpaid", "partial", "paid").
         /// Null for advance or opening-balance rows that are not linked to a bill.
         /// </summary>
-        public string?                           BillStatus       { get; init; }
+        public string? BillStatus { get; init; }
         /// <summary>
         /// Informational message when all dues are already settled and the payment
         /// was recorded as advance credit, or any other notable allocation outcome.
         /// </summary>
-        public string?                           Message          { get; init; }
+        public string? Message { get; init; }
         /// <summary>
         /// Flat's total outstanding (opening balance dues + unpaid bills − advance)
         /// snapshotted at the moment this payment was processed. Null for rows
         /// created before this column was added; the frontend should fall back gracefully.
         /// </summary>
-        public decimal?                          OutstandingAfterPayment { get; init; }
+        public decimal? OutstandingAfterPayment { get; init; }
     }
 
     /// <summary>
@@ -105,7 +108,7 @@ namespace SocietyLedger.Application.DTOs.MaintenancePayment
     /// frontend to badge arrear payments vs current-month payments.
     /// </summary>
     public record MaintenancePaymentAllocation(
-        Guid    BillPublicId,
+        Guid BillPublicId,
         decimal AllocatedAmount,
         string? Period
     );
@@ -125,7 +128,7 @@ namespace SocietyLedger.Application.DTOs.MaintenancePayment
     ///   <item><c>TotalCollected</c>          — sum of payments allocated to bills for the period (excludes OB and advance).</item>
     ///   <item><c>BillOutstanding</c>         — remaining unpaid balance on bills for the period.</item>
     ///   <item><c>OpeningBalanceRemaining</c> — pre-system dues still owed across all flats.</item>
-    ///   <item><c>TotalOutstanding</c>        — BillOutstanding + OpeningBalanceRemaining.</item>
+    ///   <item><c>TotalOutstanding</c>        — selected-period unpaid bill balance only; opening balance remains separate.</item>
     ///   <item><c>CollectionPercentage</c>    — TotalCollected / TotalCharges × 100.</item>
     /// </list>
     /// </summary>
@@ -135,7 +138,8 @@ namespace SocietyLedger.Application.DTOs.MaintenancePayment
         decimal BillOutstanding,
         decimal OpeningBalanceRemaining,
         decimal TotalOutstanding,
-        decimal CollectionPercentage
+        decimal CollectionPercentage,
+        decimal OtherIncome
     );
 
     /// <summary>Public-facing payment mode option.</summary>
@@ -162,25 +166,26 @@ namespace SocietyLedger.Application.DTOs.MaintenancePayment
     /// </summary>
     public record MaintenancePaymentEntity
     {
-        public Guid     PublicId        { get; init; }
-        public long     SocietyId       { get; init; }
-        public Guid     SocietyPublicId { get; init; }
-        public Guid     FlatPublicId    { get; init; }
-        public string?  FlatNumber      { get; init; }
-        public decimal  Amount          { get; init; }
-        public DateTime PaymentDate     { get; init; }
-        public short    PaymentModeId   { get; init; }
-        public string?  PaymentModeName { get; init; }
-        public string?  ReferenceNumber { get; init; }
-        public string?  ReceiptUrl      { get; init; }
-        public string?  Notes           { get; init; }
-        public long?    RecordedBy      { get; init; }
-        public string?  RecordedByName  { get; init; }
-        public DateTime CreatedAt       { get; init; }
+        public Guid PublicId { get; init; }
+        public long SocietyId { get; init; }
+        public Guid SocietyPublicId { get; init; }
+        public Guid FlatPublicId { get; init; }
+        public string? FlatNumber { get; init; }
+        public decimal Amount { get; init; }
+        public DateTime PaymentDate { get; init; }
+        public short PaymentModeId { get; init; }
+        public string? PaymentModeName { get; init; }
+        public string? ReferenceNumber { get; init; }
+        public string? ReceiptUrl { get; init; }
+        public string? Notes { get; init; }
+        public string? Category { get; init; }
+        public long? RecordedBy { get; init; }
+        public string? RecordedByName { get; init; }
+        public DateTime CreatedAt { get; init; }
         // Bill info — null for advance / opening-balance rows
-        public Guid?    BillPublicId    { get; init; }
-        public string?  Period          { get; init; }
-        public string?  BillStatus      { get; init; }
+        public Guid? BillPublicId { get; init; }
+        public string? Period { get; init; }
+        public string? BillStatus { get; init; }
         // Snapshotted flat outstanding after this payment was applied; null for pre-migration rows
         public decimal? OutstandingAfterPayment { get; init; }
     }
@@ -189,7 +194,7 @@ namespace SocietyLedger.Application.DTOs.MaintenancePayment
     /// Payment mode row as returned by the repository layer.
     /// </summary>
     public record PaymentModeEntity(
-        short  Id,
+        short Id,
         string Code,
         string DisplayName
     );

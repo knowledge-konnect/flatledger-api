@@ -7,6 +7,9 @@ namespace SocietyLedger.Application.DTOs.Reports
         [JsonPropertyName("total_income")]
         public decimal TotalIncome { get; set; }
 
+        [JsonPropertyName("total_other_income")]
+        public decimal TotalOtherIncome { get; set; }
+
         [JsonPropertyName("total_expense")]
         public decimal TotalExpense { get; set; }
 
@@ -27,6 +30,9 @@ namespace SocietyLedger.Application.DTOs.Reports
 
         [JsonPropertyName("income")]
         public decimal Income { get; set; }
+
+        [JsonPropertyName("other_income")]
+        public decimal OtherIncome { get; set; }
 
         [JsonPropertyName("expense")]
         public decimal Expense { get; set; }

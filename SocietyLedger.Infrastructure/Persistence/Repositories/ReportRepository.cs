@@ -64,14 +64,14 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             long societyId, DateOnly? startDate, DateOnly? endDate,
             int page, int pageSize, CancellationToken ct = default)
         {
-            if (page     < 1) page     = 1;
+            if (page < 1) page = 1;
             if (pageSize < 1) pageSize = 50;
 
             var offset = (page - 1) * pageSize;
 
             // Two independent read-only queries — run on separate connections so they
             // execute genuinely in parallel without blocking each other.
-            await using var dataConn  = (NpgsqlConnection)_connectionFactory.CreateConnection();
+            await using var dataConn = (NpgsqlConnection)_connectionFactory.CreateConnection();
             await using var countConn = (NpgsqlConnection)_connectionFactory.CreateConnection();
 
             // Open both connections concurrently to minimise connection-acquisition latency.
@@ -83,7 +83,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
 
             // Build parameter bags — date params with explicit DbType.Date so Npgsql
             // sends PostgreSQL 'date' (not 'timestamp without time zone').
-            var dataParams  = PagedDateParams(societyId, startDate, endDate, pageSize, offset);
+            var dataParams = PagedDateParams(societyId, startDate, endDate, pageSize, offset);
 
             // Only one query needed; total_count comes from the result set.
             var rows = await dataConn.QueryAsync<PaymentRegisterRow>(
@@ -95,16 +95,17 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             var items = rows
                 .Select(r => new PaymentRegisterDto
                 {
-                    DatePaid    = DateOnly.FromDateTime(r.date_paid),
-                    FlatNo      = r.flat_no,
-                    OwnerName   = r.owner_name,
-                    Amount      = r.amount,
+                    DatePaid = DateOnly.FromDateTime(r.date_paid),
+                    FlatNo = r.flat_no,
+                    OwnerName = r.owner_name,
+                    Amount = r.amount,
+                    Category = r.category,
                     PaymentMode = r.payment_mode,
-                    Reference   = r.reference,
-                    Notes       = r.notes,
-                    Period      = r.period,
+                    Reference = r.reference,
+                    Notes = r.notes,
+                    Period = r.period,
                     PeriodLabel = r.period_label,
-                    RecordedBy  = r.recorded_by
+                    RecordedBy = r.recorded_by
                 })
                 .ToList();   // materialise once; avoid double-enumeration
 
@@ -201,14 +202,39 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
                 root = root[0];
             }
 
-            // Unwrap single-property objects where the value is the actual payload.
+            // PostgreSQL function wrappers can be returned as:
+            //   { "get_monthly_report": { ...payload... } }
+            //   [ { "get_monthly_report": { ...payload... } } ]
+            //   { "get_yearly_report": { ...payload... } }
             while (root.ValueKind == JsonValueKind.Object)
             {
                 var props = root.EnumerateObject().ToList();
                 if (props.Count != 1)
                     break;
 
-                root = props[0].Value;
+                var only = props[0];
+                var name = only.Name;
+
+                // If the object is exactly a function wrapper, unwrap the payload.
+                if (name.StartsWith("get_", StringComparison.OrdinalIgnoreCase) ||
+                    name.StartsWith("get", StringComparison.OrdinalIgnoreCase))
+                {
+                    root = only.Value;
+                    continue;
+                }
+
+                // Otherwise, unwrap a single-property object if it is just a wrapper.
+                root = only.Value;
+                if (root.ValueKind != JsonValueKind.Object)
+                    break;
+
+                // Guard against loops on a true single-property object that is not a wrapper.
+                if (root.EnumerateObject().Count() == 1)
+                {
+                    continue;
+                }
+
+                break;
             }
 
             return root;
@@ -223,7 +249,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             p.Add("SocietyId", societyId);
             // Npgsql 6+ maps DateOnly → PostgreSQL 'date', avoiding ambiguous timestamp inference.
             p.Add("StartDate", start.HasValue ? (object)start.Value : DBNull.Value, DbType.Date);
-            p.Add("EndDate",   end.HasValue   ? (object)end.Value   : DBNull.Value, DbType.Date);
+            p.Add("EndDate", end.HasValue ? (object)end.Value : DBNull.Value, DbType.Date);
             return p;
         }
 
@@ -234,7 +260,7 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
             long societyId, DateOnly? start, DateOnly? end, int limit, int offset)
         {
             var p = DateParams(societyId, start, end);
-            p.Add("p_limit",  limit);
+            p.Add("p_limit", limit);
             p.Add("p_offset", offset);
             return p;
         }
@@ -249,16 +275,17 @@ namespace SocietyLedger.Infrastructure.Persistence.Repositories
         //  This record stays private; callers always receive PaymentRegisterDto.
         // ------------------------------------------------------------------ //
         private sealed record PaymentRegisterRow(
-            DateTime  date_paid,
-            string    flat_no,
-            string    owner_name,
-            decimal   amount,
-            string?   payment_mode,
-            string?   reference,
-            string?   notes,
-            string?   period,
-            string?   period_label,
-            string?   recorded_by,
-            long      total_count);
+            DateTime date_paid,
+            string flat_no,
+            string owner_name,
+            decimal amount,
+            string? category,
+            string? payment_mode,
+            string? reference,
+            string? notes,
+            string? period,
+            string? period_label,
+            string? recorded_by,
+            long total_count);
     }
 }
