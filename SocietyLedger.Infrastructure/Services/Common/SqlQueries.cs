@@ -56,7 +56,10 @@ namespace SocietyLedger.Infrastructure.Services.Common
               AND  society_id = @SocietyId";
 
         /// <summary>
-        /// Returns all bills with an outstanding balance for the given flat, ordered newest-period-first (current month first). FOR UPDATE locks each row to prevent concurrent allocations.
+        /// Returns all bills with an outstanding balance for the given flat, ordered oldest unpaid first.
+        /// This ensures a delayed payment clears earlier arrears before newer bills, which matches
+        /// society accounting expectations for missed payments.
+        /// FOR UPDATE locks each row to prevent concurrent allocations.
         /// Excludes 'paid' and 'cancelled' bills — cancelled bills are not real obligations and
         /// must never receive payment allocations.
         /// </summary>
@@ -73,7 +76,9 @@ namespace SocietyLedger.Infrastructure.Services.Common
               AND  b.is_deleted = FALSE
               AND  b.status_code NOT IN ('paid', 'cancelled')
               AND  (b.amount - COALESCE(b.paid_amount, 0)) > 0
-            ORDER  BY b.period DESC
+            ORDER  BY b.due_date ASC NULLS LAST,
+                      b.period ASC,
+                      b.id ASC
             FOR UPDATE";
 
         /// <summary>
@@ -82,10 +87,10 @@ namespace SocietyLedger.Infrastructure.Services.Common
         public const string InsertMaintenancePayment = @"
             INSERT INTO maintenance_payments
                 (society_id, flat_id, bill_id, adjustment_id, amount, payment_date, payment_mode_id,
-                 reference_number, receipt_url, notes, recorded_by, idempotency_key, created_at)
+                 reference_number, receipt_url, notes, recorded_by, idempotency_key, created_at, category)
             VALUES
                 (@SocietyId, @FlatId, @BillId, @AdjustmentId, @Amount, @PaymentDate, @PaymentModeId,
-                 @ReferenceNumber, @ReceiptUrl, @Notes, @RecordedBy, @IdempotencyKey, @Now)
+                 @ReferenceNumber, @ReceiptUrl, @Notes, @RecordedBy, @IdempotencyKey, @Now, CAST(@Category AS payment_category))
             RETURNING id";
 
         /// <summary>
@@ -100,7 +105,9 @@ namespace SocietyLedger.Infrastructure.Services.Common
                            THEN 'paid'
                        WHEN due_date IS NOT NULL AND due_date < NOW()
                            THEN 'overdue'
-                       ELSE 'partial'
+                       WHEN @PaidAmount > 0 AND (due_date IS NULL OR due_date >= NOW())
+                           THEN 'partial'
+                       ELSE 'unpaid'
                    END,
                    updated_at  = @Now
             WHERE  id         = @BillId
@@ -154,10 +161,11 @@ namespace SocietyLedger.Infrastructure.Services.Common
         public const string SummaryTotalCollected = @"
             SELECT COALESCE(SUM(mp.amount), 0)
             FROM   maintenance_payments mp
-            JOIN   bills b ON b.id = mp.bill_id
-            WHERE  b.society_id  = @SocietyId
-              AND  b.period      = @Period
-              AND  mp.is_deleted = FALSE";
+            WHERE  mp.society_id = @SocietyId
+              AND  mp.bill_id    IS NOT NULL
+              AND  mp.is_deleted = FALSE
+              AND  to_char(mp.payment_date, 'YYYY-MM') = @Period
+              AND  (mp.category IS NULL OR LOWER(CAST(mp.category AS text)) = 'maintenance')";
 
         /// <summary>
         /// Remaining unpaid balance on bills for the period. Uses (amount − paid_amount) > 0 rather than status_code for accuracy.
@@ -169,6 +177,18 @@ namespace SocietyLedger.Infrastructure.Services.Common
               AND  period                            = @Period
               AND  is_deleted                        = FALSE
               AND  (amount - COALESCE(paid_amount, 0)) > 0";
+
+        /// <summary>
+        /// Sum of non-maintenance payments (other income) collected in the specified period.
+        /// Excludes rows where category = 'maintenance'. Uses to_char(payment_date, 'YYYY-MM') = @Period for period filtering.
+        /// </summary>
+        public const string SummaryOtherIncomeForPeriod = @"
+                        SELECT COALESCE(SUM(mp.amount), 0)
+                        FROM   maintenance_payments mp
+                        WHERE  mp.society_id = @SocietyId
+                            AND  mp.is_deleted = FALSE
+                            AND  to_char(mp.payment_date, 'YYYY-MM') = @Period
+                            AND  (mp.category IS NULL OR LOWER(CAST(mp.category AS text)) <> 'maintenance')";
 
         /// <summary>
         /// Sum of all pre-system opening-balance dues still owed across the society. Not period-specific: these dues exist until each flat's adjustment is fully cleared by FIFO payments.
@@ -198,9 +218,11 @@ namespace SocietyLedger.Infrastructure.Services.Common
             collected AS (
                 SELECT COALESCE(SUM(mp.amount), 0) AS v
                 FROM   maintenance_payments mp
-                                WHERE  mp.society_id = @SocietyId
-                                    AND  mp.is_deleted = FALSE
-                                    AND  to_char(mp.payment_date, 'YYYY-MM') = @Period
+                WHERE  mp.society_id = @SocietyId
+                  AND  mp.bill_id IS NOT NULL
+                  AND  mp.is_deleted = FALSE
+                  AND  to_char(mp.payment_date, 'YYYY-MM') = @Period
+                  AND  (mp.category IS NULL OR LOWER(CAST(mp.category AS text)) = 'maintenance')
             ),
             outstanding AS (
                 SELECT COALESCE(SUM(amount - COALESCE(paid_amount, 0)), 0) AS v
@@ -245,15 +267,15 @@ namespace SocietyLedger.Infrastructure.Services.Common
                              AND  is_deleted = FALSE
                        ), 0) >= amount
                            THEN 'paid'
+                       WHEN due_date IS NOT NULL AND due_date < NOW()
+                           THEN 'overdue'
                        WHEN COALESCE((
                            SELECT SUM(amount)
                            FROM   maintenance_payments
                            WHERE  bill_id    = @BillId
                              AND  is_deleted = FALSE
-                       ), 0) > 0
+                       ), 0) > 0 AND (due_date IS NULL OR due_date >= NOW())
                            THEN 'partial'
-                       WHEN due_date IS NOT NULL AND due_date < NOW()
-                           THEN 'overdue'
                        ELSE 'unpaid'
                    END,
                    updated_at = NOW()
@@ -312,6 +334,8 @@ namespace SocietyLedger.Infrastructure.Services.Common
                                 WHERE bill_id = @BillId AND is_deleted = FALSE
                             ), 0) >= amount
                            THEN 'paid'
+                       WHEN due_date IS NOT NULL AND due_date < NOW()
+                           THEN 'overdue'
                        WHEN COALESCE((
                                 SELECT SUM(amount) FROM maintenance_payments
                                 WHERE bill_id = @BillId AND is_deleted = FALSE

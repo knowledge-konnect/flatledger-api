@@ -144,6 +144,9 @@ BEGIN
             FROM   bills
             WHERE  society_id = p_society_id
               AND  is_deleted  = false
+              AND  to_date(period || '-01', 'YYYY-MM-DD')
+                       BETWEEN date_trunc('month', v_start)::date
+                           AND date_trunc('month', v_end)::date
         ),
         filtered_payments AS (
             SELECT *
@@ -180,7 +183,8 @@ BEGIN
         -- Collections for the selected date window (accounting date = payment_date).
         -- This keeps dashboard filters aligned with cash movement month views.
         collection AS (
-            SELECT COALESCE(SUM(mp.amount), 0) AS total_collected
+            SELECT COALESCE(SUM(CASE WHEN LOWER(CAST(mp.category AS text)) = 'maintenance' THEN mp.amount ELSE 0 END), 0) AS total_collected,
+                   COALESCE(SUM(CASE WHEN LOWER(CAST(mp.category AS text)) <> 'maintenance' THEN mp.amount ELSE 0 END), 0) AS other_income
             FROM   filtered_payments mp
             WHERE  mp.payment_date::date BETWEEN v_start AND v_end
         ),
@@ -191,20 +195,15 @@ BEGIN
             WHERE  date_incurred BETWEEN v_start AND v_end
         ),
 
-        -- Cancelled bills excluded from all outstanding calculations.
-        all_time_bill_outstanding AS (
-            SELECT COALESCE(SUM(amount - COALESCE(paid_amount, 0)), 0) AS amt
-            FROM   filtered_bills
-            WHERE  status_code != 'cancelled'
-        ),
-
+        -- Outstanding for the selected period only. This is the value used for
+        -- dashboard period cards and pending-flats calculations. The previous
+        -- version accidentally summed all unpaid bills instead of only the active
+        -- date window, which caused stale September/October values.
         period_bill_outstanding AS (
             SELECT COALESCE(SUM(amount - COALESCE(paid_amount, 0)), 0) AS amt
             FROM   filtered_bills
             WHERE  status_code != 'cancelled'
-              AND  to_date(period || '-01', 'YYYY-MM-DD')
-                       BETWEEN date_trunc('month', v_start)::date
-                           AND date_trunc('month', v_end)::date
+              AND  (amount - COALESCE(paid_amount, 0)) > 0
         ),
 
         -- Total opening balance dues still remaining across all flats.
@@ -279,7 +278,8 @@ BEGIN
 
         monthly_income AS (
             SELECT date_trunc('month', payment_date)::date AS m,
-                   SUM(amount)                             AS income
+                   COALESCE(SUM(CASE WHEN LOWER(CAST(category AS text)) = 'maintenance' THEN amount ELSE 0 END), 0) AS income,
+                   COALESCE(SUM(CASE WHEN LOWER(CAST(category AS text)) <> 'maintenance' THEN amount ELSE 0 END), 0) AS other_income
             FROM   filtered_payments
             GROUP  BY 1
         ),
@@ -292,10 +292,11 @@ BEGIN
         ),
 
         monthly AS (
-            SELECT to_char(m.m, 'Mon YYYY')  AS label,
-                   COALESCE(i.income,  0)    AS income,
-                   COALESCE(e.expense, 0)    AS expense,
-                   m.m                       AS month_ymd
+            SELECT to_char(m.m, 'Mon YYYY')                  AS label,
+                   COALESCE(i.income,  0)                    AS income,
+                   COALESCE(i.other_income, 0)              AS other_income,
+                   COALESCE(e.expense, 0)                    AS expense,
+                   m.m                                      AS month_ymd
             FROM   months m
             LEFT   JOIN monthly_income  i ON i.m = m.m
             LEFT   JOIN monthly_expense e ON e.m = m.m
@@ -322,10 +323,8 @@ BEGIN
         -- are correctly included in the defaulters list and pending_flats_count.
         all_defaulters AS (
             SELECT f.flat_no,
-                   COALESCE(bill_dues.amt, 0) +
-                   COALESCE(ob_dues.amt,   0) AS outstanding
+                   COALESCE(bill_dues.amt, 0) AS outstanding
             FROM   flats f
-            -- unpaid bill dues per flat (cancelled bills excluded)
             LEFT JOIN (
                 SELECT flat_id,
                        SUM(amount - COALESCE(paid_amount, 0)) AS amt
@@ -333,20 +332,9 @@ BEGIN
                 WHERE  status_code != 'cancelled'
                 GROUP  BY flat_id
             ) bill_dues ON bill_dues.flat_id = f.id
-            -- opening balance remaining dues per flat
-            LEFT JOIN (
-                SELECT flat_id,
-                       SUM(remaining_amount) AS amt
-                FROM   adjustments
-                WHERE  society_id       = p_society_id
-                  AND  entry_type       = 'opening_balance'
-                  AND  remaining_amount > 0
-                  AND  is_deleted       = false
-                GROUP  BY flat_id
-            ) ob_dues ON ob_dues.flat_id = f.id
             WHERE  f.society_id = p_society_id
               AND  f.is_deleted = false
-              AND  (COALESCE(bill_dues.amt, 0) + COALESCE(ob_dues.amt, 0)) > 0
+              AND  COALESCE(bill_dues.amt, 0) > 0
         ),
 
         pending_flats AS (
@@ -435,6 +423,7 @@ BEGIN
                 'total_flats',               base.total_flats,
                 'total_billed',              billed.total_billed,
                 'total_collected',           collection.total_collected,
+                'other_income',              collection.other_income,
                 'collection_rate',
                     CASE
                         WHEN billed.total_billed = 0 THEN 0
@@ -442,20 +431,17 @@ BEGIN
                     END,
                 'pending_flats_count',       pending_flats.cnt,
                 'period_bill_outstanding',   period_bill_outstanding.amt,
-                'all_time_bill_outstanding', all_time_bill_outstanding.amt,
                 'opening_dues_remaining',    opening_dues.amt,
-                'all_time_member_outstanding',
-                    all_time_bill_outstanding.amt + opening_dues.amt,
+                'total_member_outstanding',  period_bill_outstanding.amt,
                 'total_expense',             expense.total_expense,
-                'net_cash_flow',             collection.total_collected - expense.total_expense,
+                'net_cash_flow',             collection.total_collected + collection.other_income - expense.total_expense,
                 'opening_fund_balance',      opening_fund_balance.amt,
                 'period_fund_inflow',        period_fund_inflow.amt,
                 'period_fund_outflow',       period_fund_outflow.amt,
                 'closing_fund_balance',      closing_fund_balance.amt,
                 'present_balance',           closing_fund_balance.amt,
-                -- backward-compatible aliases
-                'bill_outstanding',          all_time_bill_outstanding.amt,
-                'total_member_outstanding',  all_time_bill_outstanding.amt + opening_dues.amt,
+                -- backward-compatible aliases for period-scoped dashboard values
+                'bill_outstanding',          period_bill_outstanding.amt,
                 'bank_balance',              closing_fund_balance.amt
             ),
             'trend_meta', jsonb_build_object(
@@ -465,7 +451,7 @@ BEGIN
             'trends', (
                 SELECT COALESCE(
                     jsonb_agg(
-                        jsonb_build_object('label', label, 'income', income, 'expense', expense)
+                        jsonb_build_object('label', label, 'income', income, 'other_income', other_income, 'expense', expense)
                         ORDER BY month_ymd
                     ),
                     '[]'
@@ -516,7 +502,7 @@ BEGIN
             )
         )
         FROM base, billed, collection, expense,
-             period_bill_outstanding, all_time_bill_outstanding,
+             period_bill_outstanding,
              opening_dues,
              opening_fund_balance, period_fund_inflow, period_fund_outflow, closing_fund_balance,
              pending_flats
@@ -811,8 +797,9 @@ BEGIN
     WITH monthly_income AS (
         SELECT
             TO_CHAR(payment_date, 'YYYY-MM') AS month,
-            SUM(amount) AS income
-        FROM maintenance_payments
+            SUM(amount) AS income,
+            COALESCE(SUM(CASE WHEN LOWER(CAST(category AS text)) <> 'maintenance' THEN amount ELSE 0 END), 0) AS other_income
+        FROM maintenance_payments mp
         WHERE society_id = p_society_id
           AND NOT is_deleted
           AND payment_date IS NOT NULL
@@ -859,6 +846,7 @@ BEGIN
     )
     SELECT json_build_object(
         'total_income',  COALESCE((SELECT SUM(income)  FROM monthly_income),  0),
+        'total_other_income', COALESCE((SELECT SUM(other_income) FROM monthly_income), 0),
         'total_expense', COALESCE((SELECT SUM(expense) FROM monthly_expense), 0),
         'net_balance',   COALESCE((SELECT SUM(income)  FROM monthly_income),  0)
                        - COALESCE((SELECT SUM(expense) FROM monthly_expense), 0),
@@ -866,9 +854,10 @@ BEGIN
             SELECT json_agg(
                 json_build_object(
                     'month',   m.month,
-                    'income',  COALESCE(i.income,  0),
-                    'expense', COALESCE(e.expense, 0),
-                    'net',     COALESCE(i.income,  0) - COALESCE(e.expense, 0)
+                    'income',     COALESCE(i.income,  0),
+                    'other_income', COALESCE(i.other_income, 0),
+                    'expense',    COALESCE(e.expense, 0),
+                    'net',        COALESCE(i.income,  0) - COALESCE(e.expense, 0)
                 ) ORDER BY m.month
             )
             FROM all_months m
@@ -904,7 +893,7 @@ ALTER FUNCTION public.get_income_vs_expense(p_society_id bigint, p_start_date da
 -- Name: get_maintenance_payment_register(bigint, date, date, integer, integer); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
-CREATE FUNCTION public.get_maintenance_payment_register(p_society_id bigint, p_start_date date DEFAULT NULL::date, p_end_date date DEFAULT NULL::date, p_limit integer DEFAULT 50, p_offset integer DEFAULT 0) RETURNS TABLE(date_paid date, flat_no text, owner_name text, amount numeric, payment_mode text, reference text, notes text, period text, period_label text, recorded_by text, total_count bigint)
+CREATE FUNCTION public.get_maintenance_payment_register(p_society_id bigint, p_start_date date DEFAULT NULL::date, p_end_date date DEFAULT NULL::date, p_limit integer DEFAULT 50, p_offset integer DEFAULT 0) RETURNS TABLE(date_paid date, flat_no text, owner_name text, amount numeric, category text, payment_mode text, reference text, notes text, period text, period_label text, recorded_by text, total_count bigint)
     LANGUAGE sql STABLE
     AS $$
 WITH filtered_payments AS (
@@ -934,6 +923,7 @@ SELECT
     f.flat_no,
     COALESCE(f.owner_name, 'Unknown') AS owner_name,
     p.amount,
+    p.category::text AS category,
     COALESCE(pm.display_name, 'Unknown') AS payment_mode,
     p.reference_number AS reference,
     p.notes,
@@ -1010,6 +1000,7 @@ DECLARE
     -- Society-level fund position
     v_opening_bal    numeric := 0;
     v_collected      numeric := 0;
+    v_other_income   numeric := 0;
     v_expenses       numeric := 0;
     v_closing_bal    numeric := 0;
 
@@ -1024,6 +1015,7 @@ DECLARE
     -- JSON fragments
     v_flat_rows    json;
     v_expense_rows json;
+    v_income_rows  json;
     v_summary      text;
     v_alerts       json;
 
@@ -1076,13 +1068,16 @@ BEGIN
     ) prior_exp;
 
     -- ── 4. Current-month society totals ──────────────────────────────────────
-    SELECT COALESCE(SUM(mp.amount), 0)
-    INTO   v_collected
-    FROM   maintenance_payments mp
-    WHERE  mp.society_id = p_society_id
-      AND  mp.is_deleted = false
-            AND  mp.payment_date >= v_start_date::timestamp
-            AND  mp.payment_date <  v_end_exclusive::timestamp;
+                -- Only maintenance-category payments count towards "collected" for
+                -- the purposes of the maintenance payment summary. Other income
+                -- is tracked separately in v_other_income.
+        SELECT COALESCE(SUM(CASE WHEN LOWER(CAST(mp.category AS text)) = 'maintenance' THEN mp.amount ELSE 0 END), 0)
+        INTO   v_collected
+        FROM   maintenance_payments mp
+        WHERE  mp.society_id = p_society_id
+            AND  mp.is_deleted = false
+                        AND  mp.payment_date >= v_start_date::timestamp
+                        AND  mp.payment_date <  v_end_exclusive::timestamp;
 
     SELECT COALESCE(SUM(e.amount), 0)
     INTO   v_expenses
@@ -1091,7 +1086,17 @@ BEGIN
       AND  e.is_deleted    = false
       AND  e.date_incurred BETWEEN v_start_date AND v_end_date;
 
-    v_closing_bal := v_opening_bal + v_collected - v_expenses;
+
+        SELECT COALESCE(SUM(CASE WHEN LOWER(CAST(mp.category AS text)) <> 'maintenance' THEN mp.amount ELSE 0 END), 0)
+        INTO   v_other_income
+        FROM   maintenance_payments mp
+        WHERE  mp.society_id = p_society_id
+            AND  mp.is_deleted = false
+                        AND  mp.payment_date >= v_start_date::timestamp
+                        AND  mp.payment_date <  v_end_exclusive::timestamp;
+    -- Closing balance should include both maintenance collections and
+    -- non-maintenance (other) income received in the period.
+    v_closing_bal := v_opening_bal + v_collected + v_other_income - v_expenses;
 
     -- ── 5. Total flat count ───────────────────────────────────────────────────
     SELECT COUNT(*)
@@ -1152,10 +1157,13 @@ BEGIN
         payment_agg AS (
             SELECT
                 mp.flat_id,
-                COALESCE(SUM(CASE WHEN mp.payment_date <  v_start_date::timestamp   THEN mp.amount END), 0) AS prior_paid,
-                COALESCE(SUM(CASE WHEN mp.payment_date >= v_start_date::timestamp
-                                   AND mp.payment_date <  v_end_exclusive::timestamp THEN mp.amount END), 0) AS current_paid,
-                COALESCE(SUM(CASE WHEN mp.payment_date <  v_end_exclusive::timestamp THEN mp.amount END), 0) AS total_paid
+                COALESCE(SUM(CASE WHEN LOWER(CAST(mp.category AS text)) = 'maintenance'
+                                     AND mp.payment_date <  v_start_date::timestamp THEN mp.amount END), 0) AS prior_paid,
+                COALESCE(SUM(CASE WHEN LOWER(CAST(mp.category AS text)) = 'maintenance'
+                                     AND mp.payment_date >= v_start_date::timestamp
+                                     AND mp.payment_date <  v_end_exclusive::timestamp THEN mp.amount END), 0) AS current_paid,
+                COALESCE(SUM(CASE WHEN LOWER(CAST(mp.category AS text)) = 'maintenance'
+                                     AND mp.payment_date <  v_end_exclusive::timestamp THEN mp.amount END), 0) AS total_paid
             FROM   maintenance_payments mp
             WHERE  mp.society_id = p_society_id
               AND  mp.is_deleted  = false
@@ -1250,11 +1258,40 @@ BEGIN
         ORDER  BY e.date_incurred ASC, category_name, COALESCE(NULLIF(trim(e.description), ''), ''), e.id ASC
     ) d;
 
+    SELECT json_agg(row_to_json(d))
+    INTO   v_income_rows
+    FROM (
+        SELECT
+            f.flat_no                                    AS flat_no,
+            f.owner_name                                 AS owner_name,
+            f.tenant_name                                AS tenant_name,
+            mp.payment_date                              AS date_paid,
+            CASE mp.category::text
+                WHEN 'maintenance' THEN 'Maintenance'
+                WHEN 'lift_usage_charges' THEN 'Lift Usage Charges'
+                WHEN 'parking_income' THEN 'Parking Income'
+                WHEN 'bank_interest' THEN 'Bank Interest'
+                WHEN 'other_income' THEN 'Other Income'
+                ELSE initcap(replace(mp.category::text, '_', ' '))
+            END AS category_name,
+            COALESCE(NULLIF(trim(mp.notes), ''), NULLIF(trim(mp.reference_number), ''), 'Income') AS description,
+            mp.amount                                    AS amount
+        FROM   maintenance_payments mp
+        LEFT   JOIN flats f ON f.id = mp.flat_id
+        WHERE  mp.society_id = p_society_id
+          AND  mp.is_deleted = false
+          AND  mp.payment_date >= v_start_date::timestamp
+          AND  mp.payment_date <  v_end_exclusive::timestamp
+          AND  LOWER(CAST(mp.category AS text)) <> 'maintenance'
+        ORDER  BY mp.payment_date ASC, category_name, COALESCE(NULLIF(trim(mp.notes), ''), ''), mp.id ASC
+    ) d;
+
     -- ── 9. Summary text & alerts ──────────────────────────────────────────────
     v_summary :=
-        'Total collection ₹' || v_collected ||
-        ', expenses ₹'       || v_expenses  ||
-        '. '                 || v_pending_count || ' flat(s) have pending dues.';
+        'Total maintenance collection ₹' || v_collected ||
+        ', other income ₹'               || v_other_income ||
+        ', expenses ₹'                   || v_expenses    ||
+        '. '                             || v_pending_count || ' flat(s) have pending dues.';
 
     v_alerts :=
         CASE WHEN v_pending_count > 0
@@ -1281,11 +1318,13 @@ BEGIN
             'total_billed',          v_total_billed,
             'total_collected',       v_collected,
             'pending_amount',        v_pending_amount,
-            'collection_efficiency', v_collection_eff
+            'collection_efficiency', v_collection_eff,
+            'other_income',          v_other_income
         ),
 
         'flat_details',  COALESCE(v_flat_rows,   '[]'::json),
         'expenses',      COALESCE(v_expense_rows, '[]'::json),
+        'income_details', COALESCE(v_income_rows, '[]'::json),
         'summary',       v_summary,
         'alerts',        v_alerts
     );

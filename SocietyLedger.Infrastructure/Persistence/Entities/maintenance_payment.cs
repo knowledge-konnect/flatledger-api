@@ -36,6 +36,8 @@ public partial class maintenance_payment
 
     public string? notes { get; set; }
 
+    public string? category { get; set; }
+
     public long? recorded_by { get; set; }
 
     public DateTime created_at { get; set; }

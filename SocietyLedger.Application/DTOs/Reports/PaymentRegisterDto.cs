@@ -13,6 +13,9 @@ namespace SocietyLedger.Application.DTOs.Reports
         [JsonPropertyName("amount")]
         public decimal Amount { get; set; }
 
+        [JsonPropertyName("category")]
+        public string? Category { get; set; }
+
         [JsonPropertyName("payment_mode")]
         public string? PaymentMode { get; set; }
 
@@ -33,7 +36,7 @@ namespace SocietyLedger.Application.DTOs.Reports
 
         [JsonPropertyName("recorded_by")]
         public string? RecordedBy { get; set; }
-        
+
         [JsonPropertyName("date_paid")]
         public DateOnly DatePaid { get; set; }
     }

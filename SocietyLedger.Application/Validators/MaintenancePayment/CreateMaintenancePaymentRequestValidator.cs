@@ -36,6 +36,17 @@ namespace SocietyLedger.Application.Validators.MaintenancePayment
             RuleFor(x => x.Notes)
                 .MaximumLength(1000).WithMessage("Notes cannot exceed 1000 characters.")
                 .When(x => !string.IsNullOrEmpty(x.Notes));
+
+            RuleFor(x => x.Category)
+                .MaximumLength(50).WithMessage("Category cannot exceed 50 characters.")
+                .When(x => !string.IsNullOrEmpty(x.Category));
+
+            // If category is supplied, ensure it is one of the allowed values.
+            var allowed = new[] { "maintenance", "lift_usage_charges", "parking_income", "bank_interest", "other_income" };
+            RuleFor(x => x.Category)
+                .Must(c => string.IsNullOrEmpty(c) || allowed.Contains(c))
+                .WithMessage($"Category must be one of: {string.Join(", ", allowed)}")
+                .When(x => !string.IsNullOrEmpty(x.Category));
         }
     }
 }

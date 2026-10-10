@@ -14,6 +14,9 @@ namespace SocietyLedger.Application.DTOs.Dashboard
         [JsonPropertyName("income")]
         public decimal Income { get; set; }
 
+        [JsonPropertyName("other_income")]
+        public decimal OtherIncome { get; set; }
+
         [JsonPropertyName("expense")]
         public decimal Expense { get; set; }
     }
